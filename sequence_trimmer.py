@@ -48,7 +48,6 @@ class SequenceTrimmer(nn.Module):
                 if self.training:
                     q = min(1, random.uniform(*self.target))
                     maxlen = torch.quantile(mask.type_as(x).sum(dim=-1), q).long()
-                    print("Quantile maxlen: ", maxlen)
                     rand = torch.rand_like(mask.type_as(x))
                     rand.masked_fill_(~mask, -1) # Masked particles are given a random number of -1
                     # Then they are sorted last here, this way masked particles are always truncated
