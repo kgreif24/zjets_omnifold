@@ -35,7 +35,7 @@ def pad_kinematics(input_array, max_tracks=None) -> np.ndarray:
     return input_array
 
 
-def get_kinematics(tree, filter=None, get_mask=True, **kwargs):
+def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenatd as a single numpy array. An optional "filter"
     argument will allow the user to filter events with a boolean array.
@@ -46,6 +46,7 @@ def get_kinematics(tree, filter=None, get_mask=True, **kwargs):
     tree - uproot TTree object
     filter - boolean array to filter events, optional
     get_mask - boolean to return mask of padded tracks, optional
+    muon_only - boolean to return only muon kinematics, optional
     **kwargs - keyword arguments to pass to the "pad_kinematics" function
 
     Returns:
@@ -62,41 +63,56 @@ def get_kinematics(tree, filter=None, get_mask=True, **kwargs):
 
     m1_kinematics = np.stack([m1_pt, m1_eta, m1_phi], axis=1)
     m2_kinematics = np.stack([m2_pt, m2_eta, m2_phi], axis=1)
-    muon_kinematics = np.stack([m1_kinematics, m2_kinematics], axis=2)
+    kinematics = np.stack([m1_kinematics, m2_kinematics], axis=2)
 
-    # Track information
-    track_pt = tree['pT_tracks'].array()
-    track_eta = tree['eta_tracks'].array()
-    track_phi = tree['phi_tracks'].array()
+    # Find events with either muon pT == -99
+    good_pts = np.logical_and(m1_pt != -99, m2_pt != -99)
 
-    # Run padding function
-    pad_pt = pad_kinematics(track_pt, **kwargs)
-    pad_eta = pad_kinematics(track_eta, **kwargs)
-    pad_phi = pad_kinematics(track_phi, **kwargs)
+    # Track information if requested
+    if not muon_only:
 
-    # Stack tracks
-    track_kinematics = np.stack([pad_pt, pad_eta, pad_phi], axis=1)
-    # Hack to fix missing 11k events, should be removed!
-    if track_kinematics.shape[0] != muon_kinematics.shape[0]:
-        print("Warning! Track kinematics shape does not match muon kinematics shape!")
-        muon_kinematics = muon_kinematics[:track_kinematics.shape[0],...]
-        filter = filter[:track_kinematics.shape[0]]
+        # Pull info, note taking log of track pT values here
+        track_pt = np.log(tree['pT_tracks'].array())
+        track_eta = tree['eta_tracks'].array()
+        track_phi = tree['phi_tracks'].array()
 
-    # Concatenate muon and track kinematics
-    kinematics = np.concatenate([muon_kinematics, track_kinematics], axis=2)
+        # Run padding function
+        pad_pt = pad_kinematics(track_pt, **kwargs)
+        pad_eta = pad_kinematics(track_eta, **kwargs)
+        pad_phi = pad_kinematics(track_phi, **kwargs)
 
-    # Filter kinematics by pass 190 flag
-    if filter is None:
-        filter = np.ones(kinematics.shape[0], dtype=bool)
-    kinematics = kinematics[filter == True,...]
+        # Stack tracks
+        track_kinematics = np.stack([pad_pt, pad_eta, pad_phi], axis=1)
 
-    # Build padded track mask if necessary
+        # Hack to fix missing 11k events, should be removed!
+        if track_kinematics.shape[0] != kinematics.shape[0]:
+            print("Warning! Track kinematics shape does not match muon kinematics shape!")
+            kinematics = kinematics[:track_kinematics.shape[0],...]
+            filter = filter[:track_kinematics.shape[0]]
+            good_pts = good_pts[:track_kinematics.shape[0]]
+
+        # Concatenate muon and track kinematics
+        kinematics = np.concatenate([kinematics, track_kinematics], axis=2)
+
+    # Drop events with either muon pT == -99, and drop from filter if passed
+    kinematics = kinematics[good_pts,...]
+    if filter is not None:
+        filter = filter[good_pts]
+
+    # Take log of muon pT values now that negatives have been cleaned
+    kinematics[:,0,0:2] = np.log(kinematics[:,0,0:2])
+
+    # Apply filter
+    if filter is not None:
+        kinematics = kinematics[filter == True,...]
+
+    # Build padded mask if necessary
     if get_mask:
-        track_mask = np.zeros_like(kinematics[:,0,:], dtype=bool)
+        mask = np.zeros_like(kinematics[:,0,:], dtype=bool)
         # Note assumes pT is the 0th element along axis 1
-        track_mask[kinematics[:,0,:] != 0] = True
-        track_mask = np.expand_dims(track_mask, axis=1)
-        return kinematics, track_mask
+        mask[kinematics[:,0,:] != 0] = True
+        mask = np.expand_dims(mask, axis=1)
+        return kinematics, mask
 
     # Else just return the kinematics array
     else:

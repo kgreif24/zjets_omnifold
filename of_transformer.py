@@ -67,20 +67,23 @@ class OfTransformer(nn.Module):
             cfg_cls_block.update(cls_block_params)
 
         self.pair_extra_dim = pair_extra_dim
-        self.embed = Embed(input_dim, embed_dims, activation=activation) if len(embed_dims) > 0 else nn.Identity()
-        self.pair_embed = PairEmbed(
-            pair_input_dim, pair_extra_dim, pair_embed_dims + [cfg_block['num_heads']],
-            remove_self_pair=remove_self_pair, use_pre_activation_pair=use_pre_activation_pair,
-            for_onnx=for_inference) if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
+        print("Batch normalization disabled in embedding!")
+        self.embed = Embed(input_dim, embed_dims, activation=activation, normalize_input=False) if len(embed_dims) > 0 else nn.Identity()
+        # self.pair_embed = PairEmbed(
+        #     pair_input_dim, pair_extra_dim, pair_embed_dims + [cfg_block['num_heads']],
+        #     remove_self_pair=remove_self_pair, use_pre_activation_pair=use_pre_activation_pair,
+        #     for_onnx=for_inference) if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
         self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
         self.cls_blocks = nn.ModuleList([Block(**cfg_cls_block) for _ in range(num_cls_layers)])
         self.norm = nn.LayerNorm(embed_dim)
+
+        # self.flatten = nn.Flatten()
 
         if fc_params is not None:
             fcs = []
             in_dim = embed_dim
             for out_dim, drop_rate in fc_params:
-                fcs.append(nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU(), nn.Dropout(drop_rate)))
+                fcs.append(nn.Sequential(nn.Linear(in_dim, out_dim), nn.GELU(), nn.Dropout(drop_rate)))
                 in_dim = out_dim
             fcs.append(nn.Linear(in_dim, num_classes))
             self.fc = nn.Sequential(*fcs)
@@ -107,11 +110,18 @@ class OfTransformer(nn.Module):
                 if uu_idx is not None:
                     uu = build_sparse_tensor(uu, uu_idx, x.size(-1))
             x, v, mask, uu = self.trimmer(x, v, mask, uu)
+            # Removing dimension from mask and taking not, for use in attention blocks
             padding_mask = ~mask.squeeze(1)  # (N, P)
 
         with torch.cuda.amp.autocast(enabled=self.use_amp):
+
             # input embedding
-            x = self.embed(x).masked_fill(~mask.permute(2, 0, 1), 0)  # (P, N, C)
+            x = self.embed(x).masked_fill(~mask, 0)  # (batch, embed_dim, seq_len)
+
+            # after input embedding, reshape to (seq_len, batch, embed_dim) for attention layers
+            x = x.permute(2, 0, 1) # (seq_len, batch, embed_dim)
+            mask = mask.permute(2, 0, 1) # (seq_len, batch, 1)
+
             # attn_mask = None
             # if (v is not None or uu is not None) and self.pair_embed is not None:
             #     attn_mask = self.pair_embed(v, uu).view(-1, v.size(-1), v.size(-1))  # (N*n um_heads, P, P)
@@ -121,7 +131,7 @@ class OfTransformer(nn.Module):
                 x = block(x, x_cls=None, padding_mask=padding_mask)
 
             # extract class token
-            cls_tokens = self.cls_token.expand(1, x.size(1), -1)  # (1, N, C)
+            cls_tokens = self.cls_token.expand(1, x.size(1), -1)  # (1, batch, embed_dim)
             for block in self.cls_blocks:
                 cls_tokens = block(x, x_cls=cls_tokens, padding_mask=padding_mask)
 
@@ -130,6 +140,5 @@ class OfTransformer(nn.Module):
             # fc
             if self.fc is None:
                 return x_cls
-            output = self.fc(x_cls) 
-
+            output = self.fc(x_cls)
             return output

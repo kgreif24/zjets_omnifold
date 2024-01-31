@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from input_distributed import InputDistributed
+
 # Should "input_dim" here be the number of particle features or the maximum
 # number of particles? I think the latter, and then we mask after the embedding layer.
 class Embed(nn.Module):
@@ -11,19 +13,17 @@ class Embed(nn.Module):
         module_list = []
         for dim in dims:
             module_list.extend([
-                nn.LayerNorm(input_dim),
                 nn.Linear(input_dim, dim),
+                # nn.BatchNorm1d(dim),
                 nn.GELU() if activation == 'gelu' else nn.ReLU(),
             ])
             input_dim = dim
-        self.embed = nn.Sequential(*module_list)
+        embed_one_element = nn.Sequential(*module_list)
+        self.embed = InputDistributed(embed_one_element)
 
     def forward(self, x):
+        # x: (batch, seq_len, input_dim)
         if self.input_bn is not None:
-            # x: (batch, embed_dim, seq_len)
             x = self.input_bn(x)
-            # Permuting here to put the embedding dimension last, since this is the dimension
-            # we want to layers to act on
-            x = x.permute(2, 0, 1).contiguous()
-        # x: (seq_len, batch, embed_dim)
+        # x: (batch, seq_len, dims[-1])
         return self.embed(x)
