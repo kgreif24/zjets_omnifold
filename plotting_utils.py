@@ -21,58 +21,160 @@ common_hist_settings = {
     'density': True,
     'linear_scale': False,
     'bins': 150,
-    'ylim': None
+    'ylim': None,
+    'rlim': [0.5, 1.5]
 }
 
 # Individual histogram settings
 define_hists = [
     {
-        'sequence_index': 0,
-        'feature_index': 0,
-        'key': 'm1_pt',
+        'key': 'pT_l1',
         'xlabel': r'$p_{T,\mu1}$',
         'bins': np.linspace(0, 1e3, 150),
-        'simple_modifier': np.exp
     },
     {
-        'sequence_index': 1,
-        'feature_index': 0,
-        'key': 'm2_pt',
+        'key': 'pT_l2',
         'xlabel': r'$p_{T,\mu2}$',
         'bins': np.linspace(0, 800, 150),
-        'simple_modifier': np.exp
+    },
+    {
+        'key': 'eta_l1',
+        'xlabel': r'$\eta_{\mu1}$',
+        'bins': np.linspace(-3, 3, 150)
+    },
+    {
+        'key': 'eta_l2',
+        'xlabel': r'$\eta_{\mu2}$',
+        'bins': np.linspace(-3, 3, 150)
+    },
+    {
+        'key': 'phi_l1',
+        'xlabel': r'$\phi_{\mu1}$',
+        'bins': np.linspace(-3.2, 3.2, 150),
+        'rlim': [0.9, 1.1]
+    },
+    {
+        'key': 'phi_l2',
+        'xlabel': r'$\phi_{\mu2}$',
+        'bins': np.linspace(-3.2, 3.2, 150),
+        'rlim': [0.9, 1.1]
+    },
+    {
+        'key': 'pT_ll',
+        'xlabel': r'$p_{T, \mu\mu}$',
+        'bins': np.linspace(0, 1e3, 150)
+    },
+    {
+        'key': 'y_ll',
+        'xlabel': r'$y_{\mu\mu}$',
+        'bins': np.linspace(-3, 3, 150)
+    },
+    {
+        'key': 'pT_trackj1',
+        'xlabel': r'$p_{T, j1}$',
+        'bins': np.linspace(0, 1e3, 150)
+    },
+    {
+        'key': 'pT_trackj2',
+        'xlabel': r'$p_{T, j2}$',
+        'bins': np.linspace(0, 1e3, 150)
+    },
+    {
+        'key': 'y_trackj1',
+        'xlabel': r'$y_{j1}$',
+        'bins': np.linspace(-3, 3, 150)
+    },
+    {
+        'key': 'y_trackj2',
+        'xlabel': r'$y_{j2}$',
+        'bins': np.linspace(-3, 3, 150)
+    },
+    {
+        'key': 'phi_trackj1',
+        'xlabel': r'$\phi_{j1}$',
+        'bins': np.linspace(-3.2, 3.2, 150),
+        'rlim': [0.9, 1.1]
+    },
+    {
+        'key': 'phi_trackj2',
+        'xlabel': r'$\phi_{j2}$',
+        'bins': np.linspace(-3.2, 3.2, 150),
+        'rlim': [0.9, 1.1]
+    },
+    {
+        'key': 'm_trackj1',
+        'xlabel': r'$m_{j1}$',
+        'bins': np.linspace(0, 100, 150)
+    },
+    {
+        'key': 'm_trackj2',
+        'xlabel': r'$m_{j2}$',
+        'bins': np.linspace(0, 100, 150)
+    },
+    {
+        'key': 'tau1_trackj1',
+        'xlabel': r'$\tau_{1,j1}$',
+        'bins': np.linspace(0, 0.9, 150)
+    },
+    {
+        'key': 'tau1_trackj2',
+        'xlabel': r'$\tau_{1,j2}$',
+        'bins': np.linspace(0, 0.9, 150)
+    },
+    {
+        'key': 'tau2_trackj1',
+        'xlabel': r'$\tau_{2,j1}$',
+        'bins': np.linspace(0, 0.6, 150)
+    },
+    {
+        'key': 'tau2_trackj2',
+        'xlabel': r'$\tau_{2,j2}$',
+        'bins': np.linspace(0, 0.6, 150)
+    },
+    {
+        'key': 'tau3_trackj1',
+        'xlabel': r'$\tau_{3,j1}$',
+        'bins': np.linspace(0, 0.4, 150)
+    },
+    {
+        'key': 'tau3_trackj2',
+        'xlabel': r'$\tau_{3,j2}$',
+        'bins': np.linspace(0, 0.4, 150)
     }
 ]
 
 special_hists = []
 
 # Overwrite default settings
-new_settings = []
+default_settings = []
 for hist_dict in define_hists:
     copy = common_hist_settings.copy()
     copy.update(hist_dict)
-    new_settings.append(copy)
+    default_settings.append(copy)
 
-new_settings = new_settings + special_hists
+default_settings = default_settings + special_hists
 
 
 ###############################################################################################
 
-def make_logged_plots(inputs, labels, outputs, definitions=new_settings, save_location='./plot_storage'):
+def make_logged_plots(plot_data, labels, start_weights, outputs, definitions=default_settings, save_location='./plot_storage', display=False):
     """ make_logged_plots - This function will be called by the pytorch lightning module
     at the end of every validation epoch. It will generate histograms showing the quality of the 
     reweighting. The histograms will be logged to wandb.
 
     Histograms are defined in the define_hists list of dictionaries. This list is set as a 
-    default argument to the function but can be overridden at any time. List also contains
-    codes for making special histograms which are derived dimensions from the input data.
+    default argument to the function but can be overridden at any time.
+
+    Plots are made from the "plot_datasets" contained in the pytorch lightning data module
 
     Arguments:
-    inputs - numpy array of validation data
-    labels - numpy array of validation labels
-    outputs - numpy array of network outputs
+    plot_data - numpy array of the data to be plotted
+    labels - numpy array of the labels for the data
+    start_weights - numpy array of the weights used in network training
+    outputs - numpy array of network outputs over the events contained in "plot_data"
     definitions - list of dictionaries describing each of the histograms to build
     save_location - location of directory for plot staging
+    display - if true, display the plots to the screen
 
     Returns:
     dict - A dictionary of histograms with form {save_name: filepath}, where filepath
@@ -80,49 +182,47 @@ def make_logged_plots(inputs, labels, outputs, definitions=new_settings, save_lo
     """
 
     # First calculate weights from outputs
-    sig_outputs = 1 / (1 + np.exp(-outputs))
-    weights = sig_outputs / (1 - sig_outputs)
+    probs = 1 / (1 + np.exp(-outputs))
+    derived_weights = probs / (1 - probs)
 
     # Make dictionary for return
     return_dict = {}
 
+    # Get numpy array of the plotting data, labels, and starting weights
+    # Indeces of relevant information in dataset are hardcoded here. Beware of changing them!
+    end_weights = start_weights * derived_weights
+    assert len(plot_data) == len(labels) == len(start_weights) == len(end_weights)
+
     # Loop over list of dictionaries
-    for element in definitions:
+    for i, element in enumerate(definitions):
 
-        # If element is a dictionary, make the requested plot
-        if isinstance(element, dict):
+        # Pull plotting data for this particular histogram
+        this_data = plot_data[:,i]
 
-            # Pull data from inputs
-            x = inputs[:,element['feature_index'],element['sequence_index']]
+        # Modify if requested
+        if 'simple_modifier' in element:
+            this_data = element['simple_modifier'](this_data)
+        
+        # Make reweighting plot
+        fig = plot_reweighting(
+            this_data[labels==0],
+            start_weights[labels==0],
+            end_weights[labels==0],
+            this_data[labels==1], 
+            bins=element['bins'], 
+            xlabel=element['xlabel'], 
+            linear_scale=element['linear_scale'],
+            ylim=element['ylim'],
+            rlim=element['rlim']
+        )
 
-            # Modify if requested
-            if 'simple_modifier' in element:
-                x = element['simple_modifier'](x)
-            
-            # Make reweighting plot
-            fig = plot_reweighting(
-                x[labels==0], 
-                weights[labels==0], 
-                x[labels==1], 
-                bins=element['bins'], 
-                xlabel=element['xlabel'], 
-                linear_scale=element['linear_scale'],
-                ylim=element['ylim']
-            )
-
-            # Save histogram
-            hist_path = f'{save_location}/{element["key"]}.png'
-            fig.savefig(hist_path, dpi=300)
-            fig.close()
-            return_dict[element['key']] = hist_path
-
-
-        # If element is a string, we need to call the relevant function below
-        elif element == 'pt_mm':
-            fig = plot_pt_mm(inputs, labels, outputs, save_location=save_location)
-        else:
-            print("Unrecognized histogram definition, skipping")
-            pass
+        # Save histogram
+        hist_path = f'{save_location}/{element["key"]}.png'
+        fig.savefig(hist_path, dpi=300)
+        if display:
+            plt.show()
+        plt.close()
+        return_dict[element['key']] = hist_path
 
     return return_dict
 

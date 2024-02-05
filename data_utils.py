@@ -65,9 +65,6 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
     m2_kinematics = np.stack([m2_pt, m2_eta, m2_phi], axis=1)
     kinematics = np.stack([m1_kinematics, m2_kinematics], axis=2)
 
-    # Find events with either muon pT == -99
-    good_pts = np.logical_and(m1_pt != -99, m2_pt != -99)
-
     # Track information if requested
     if not muon_only:
 
@@ -89,22 +86,16 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
             print("Warning! Track kinematics shape does not match muon kinematics shape!")
             kinematics = kinematics[:track_kinematics.shape[0],...]
             filter = filter[:track_kinematics.shape[0]]
-            good_pts = good_pts[:track_kinematics.shape[0]]
 
         # Concatenate muon and track kinematics
         kinematics = np.concatenate([kinematics, track_kinematics], axis=2)
 
-    # Drop events with either muon pT == -99, and drop from filter if passed
-    kinematics = kinematics[good_pts,...]
-    if filter is not None:
-        filter = filter[good_pts]
-
-    # Take log of muon pT values now that negatives have been cleaned
-    kinematics[:,0,0:2] = np.log(kinematics[:,0,0:2])
-
     # Apply filter
     if filter is not None:
         kinematics = kinematics[filter == True,...]
+
+    # Take log of muon pT values
+    kinematics[:,0,0:2] = np.log(kinematics[:,0,0:2])
 
     # Build padded mask if necessary
     if get_mask:
@@ -117,3 +108,45 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
     # Else just return the kinematics array
     else:
         return kinematics
+
+
+def get_plotting(tree, vars=[], filter=None, muon_only=False, **kwargs):
+    """ get_plotting - This function will accept an uproot TTree object, and return the
+    requested branches as numpy arrays. Branches are passed in as a list of strings to the
+    "vars" keyword argument.
+
+    Arguments:
+    tree - uproot TTree object
+    vars - list of strings of branches to return
+    filter - boolean array to filter events, optional
+    muon_only - boolean to return only muon kinematics, in practice just does not
+    truncate away the 11k events with missing track information
+
+    Returns:
+    plotting - numpy array of requested branches, stacked along the second axis
+    """
+
+    # Initialize empty list to hold requested branches
+    plotting = []
+
+    # Look at track pT information if we need to truncate away 11k events with missing tracks
+    if not muon_only:
+        track_pts = tree['pT_tracks'].array()
+        num_good_events = len(track_pts)
+    else:
+        muon_pts = tree['pT_l1'].array()
+        num_good_events = len(muon_pts)
+
+    # Loop over requested branches
+    for var in vars:
+        plotting.append(ak.to_numpy(tree[var].array())[:num_good_events])
+
+    # Stack requested branches
+    plotting = np.stack(plotting, axis=1)
+
+    # Apply filter if passed
+    if filter is not None:
+        filter = filter[:num_good_events]
+        plotting = plotting[filter == True,...]
+
+    return plotting

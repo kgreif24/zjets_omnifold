@@ -7,7 +7,7 @@
 #SBATCH -C gpu
 #SBATCH -G 4
 #SBATCH -q regular
-#SBATCH -J full_tracks_2
+#SBATCH -J all_tracks_8
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
