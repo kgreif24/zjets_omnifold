@@ -11,7 +11,11 @@ from plotting_utils import *
 
 
 # Define a single flag for entering debug mode (simple network, muons only)
-debug = False
+debug = True
+if debug:
+    n_devices = 4
+else:
+    n_devices = 4
 
 # Make a random integer between 0 and 1000 for the seed
 rng = np.random.default_rng()
@@ -29,7 +33,8 @@ d_module = LOfData(
 )
 
 # Login to wandb
-wandb.login()
+if not debug:
+    wandb.login()
 
 # Initialise the wandb logger and callbacks
 if not debug:
@@ -53,7 +58,7 @@ early_stopping = L.pytorch.callbacks.EarlyStopping(
 # Build trainer
 trainer = L.Trainer(
     accelerator='gpu',
-    devices=4,
+    devices=n_devices,
     logger=wandb_logger,
     reload_dataloaders_every_n_epochs=1,
     callbacks=[lr_monitor, checkpoints],
@@ -81,6 +86,7 @@ l_module = LOfTransformer(
 trainer.fit(l_module, d_module)
 
 # Close W&B
-wandb.finish()
+if not debug:
+    wandb.finish()
 
 

@@ -67,6 +67,9 @@ class LOfTransformer(L.LightningModule):
         # Plot staging
         self.plot_staging = plot_staging
 
+        # Debug flag
+        self.debug = debug
+
 
     # Forward pass
     def forward(self, inputs, mask):
@@ -106,7 +109,7 @@ class LOfTransformer(L.LightningModule):
     def on_validation_epoch_end(self):
 
         # Skip plotting logic if sanity checking
-        if not self.trainer.sanity_checking:
+        if (not self.trainer.sanity_checking) and (not self.debug):
 
             # Gather predictions from across processses and send to numpy
             predictions = torch.flatten(self.all_gather(torch.cat(self.validation_step_outputs)))
@@ -291,6 +294,9 @@ class LOfData(L.LightningDataModule):
         No arguments or returns
         """
 
+        print("In data module setup function, making train / val split")
+        print("Seed is set to {}".format(self.seed))
+
         # Make train and validation split if necessary
         if not self.testing:
             generator = torch.Generator().manual_seed(self.seed)
@@ -299,6 +305,8 @@ class LOfData(L.LightningDataModule):
                 [0.8, 0.2],
                 generator=generator
             )
+            print("First events in train set: {}".format(self.train_dataset[:][0][:5,0,:]))
+            print("First events in val set: {}".format(self.val_dataset[:][0][:5,0,:]))
 
 
     # Train dataloader
@@ -310,6 +318,8 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader for the training data.
         """
         assert not self.testing
+        print("Making train dataloader")
+        print("First events in train set: {}".format(self.train_dataset[:][0][:5,0,:]))
         return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.dataloader_workers)
     
 
@@ -322,6 +332,8 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader for the validation data.
         """
         assert not self.testing
+        print("Making val dataloader")
+        print("First events in val set: {}".format(self.val_dataset[:][0][:5,0,:]))
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
     
 
