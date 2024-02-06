@@ -186,7 +186,7 @@ class LOfData(L.LightningDataModule):
         muon_only=False,
         batch_size=256,
         dataloader_workers=0,
-        seed=420,
+        split_seed=420,
         testing=False,
         **kwargs
     ):
@@ -202,7 +202,8 @@ class LOfData(L.LightningDataModule):
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
             dataloader_workers {int} -- The number of workers for the data loaders.
-            seed {int} - The random seed to use in making train / val split
+            split_seed {int} - The random seed to use in making train / val split,
+                ensure this is common between all processes
             testing {bool} - Set to true if this data module is for testing
         """
 
@@ -213,7 +214,7 @@ class LOfData(L.LightningDataModule):
         self.max_tracks = max_tracks
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
-        self.seed = seed
+        self.split_seed = split_seed
         self.testing = testing
 
         # Logging
@@ -286,7 +287,7 @@ class LOfData(L.LightningDataModule):
 
 
     # Setup function
-    def setup(self, stage=None):
+    def setup(self, stage: str):
         """ setup - This method performs the train / validation split on the data
         loaded in the init function, unless we are using the data module for testing
         in which case no split is performed.
@@ -294,19 +295,14 @@ class LOfData(L.LightningDataModule):
         No arguments or returns
         """
 
-        print("In data module setup function, making train / val split")
-        print("Seed is set to {}".format(self.seed))
-
         # Make train and validation split if necessary
-        if not self.testing:
-            generator = torch.Generator().manual_seed(self.seed)
+        if not stage == 'test':
+            generator = torch.Generator().manual_seed(self.split_seed)
             self.train_dataset, self.val_dataset = torch.utils.data.random_split(
                 self.all_dataset, 
                 [0.8, 0.2],
                 generator=generator
             )
-            print("First events in train set: {}".format(self.train_dataset[:][0][:5,0,:]))
-            print("First events in val set: {}".format(self.val_dataset[:][0][:5,0,:]))
 
 
     # Train dataloader
@@ -318,8 +314,6 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader for the training data.
         """
         assert not self.testing
-        print("Making train dataloader")
-        print("First events in train set: {}".format(self.train_dataset[:][0][:5,0,:]))
         return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.dataloader_workers)
     
 
@@ -332,8 +326,6 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader for the validation data.
         """
         assert not self.testing
-        print("Making val dataloader")
-        print("First events in val set: {}".format(self.val_dataset[:][0][:5,0,:]))
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
     
 
@@ -359,7 +351,6 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
         if self.testing:
-            print("Testing over data loader with shape {}".format(self.all_dataset.tensors[0].shape))
             return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
         else:
             return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)

@@ -5,21 +5,23 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
 
 from lightning_module import *
 from plotting_utils import *
 
 
+# Parse command line args
+parser = argparse.ArgumentParser(description='Train a transformer model on Z+jets data')
+parser.add_argument('--seed', type=int, default=420, help='Seed for the train / validation split')
+args = parser.parse_args()
+
 # Define a single flag for entering debug mode (simple network, muons only)
 debug = True
 if debug:
-    n_devices = 4
+    n_devices = 1
 else:
     n_devices = 4
-
-# Make a random integer between 0 and 1000 for the seed
-rng = np.random.default_rng()
-seed = int(rng.integers(0, 1000))
 
 # Build data module
 d_module = LOfData(
@@ -28,7 +30,7 @@ d_module = LOfData(
     muon_only=debug,
     batch_size=256,
     dataloader_workers=1,
-    seed=seed,
+    split_seed=args.seed,
     testing=False
 )
 
@@ -60,7 +62,6 @@ trainer = L.Trainer(
     accelerator='gpu',
     devices=n_devices,
     logger=wandb_logger,
-    reload_dataloaders_every_n_epochs=1,
     callbacks=[lr_monitor, checkpoints],
     max_epochs=70,
     log_every_n_steps=50,
