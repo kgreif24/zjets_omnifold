@@ -7,7 +7,7 @@
 #SBATCH -C gpu
 #SBATCH -G 4
 #SBATCH -q regular
-#SBATCH -J all_tracks_8
+#SBATCH -J all_tracks_9
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
@@ -24,4 +24,4 @@ export OMP_PROC_BIND=spread
 
 #run the application: 
 # applications may perform better with --gpu-bind=none instead of --gpu-bind=single:1
-srun -n 4 -c 32 --cpu_bind=cores -G 4 --gpu-bind=none python lightning_train.py
+srun -n 4 -c 32 --cpu_bind=cores -G 4 --gpu-bind=none python lightning_train.py --seed $((RANDOM))

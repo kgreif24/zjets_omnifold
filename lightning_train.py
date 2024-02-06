@@ -14,11 +14,11 @@ from plotting_utils import *
 # Parse command line args
 parser = argparse.ArgumentParser(description='Train a transformer model on Z+jets data')
 parser.add_argument('--seed', type=int, default=420, help='Seed for the train / validation split')
+parser.add_argument('--debug', action='store_true', help='Run in debug mode (single device, muons only)')
 args = parser.parse_args()
 
 # Define a single flag for entering debug mode (simple network, muons only)
-debug = True
-if debug:
+if args.debug:
     n_devices = 1
 else:
     n_devices = 4
@@ -27,7 +27,7 @@ else:
 d_module = LOfData(
     mc_file='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train.root',
     data_file='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Dec15.root',
-    muon_only=debug,
+    muon_only=args.debug,
     batch_size=256,
     dataloader_workers=1,
     split_seed=args.seed,
@@ -35,12 +35,12 @@ d_module = LOfData(
 )
 
 # Login to wandb
-if not debug:
+if not args.debug:
     wandb.login()
 
 # Initialise the wandb logger and callbacks
-if not debug:
-    wandb_logger = WandbLogger(project='test-of-project', name='all_tracks_8', save_dir='./checkpoints')
+if not args.debug:
+    wandb_logger = WandbLogger(project='test-of-project', name='all_tracks_9', save_dir='./checkpoints')
 else:
     wandb_logger = None
 
@@ -71,7 +71,7 @@ trainer = L.Trainer(
 # Build lightning module
 l_module = LOfTransformer(
     5,
-    debug=debug,
+    debug=args.debug,
     num_classes=1,
     trim=False,
     embed_dims=[128, 256, 128],
@@ -87,7 +87,7 @@ l_module = LOfTransformer(
 trainer.fit(l_module, d_module)
 
 # Close W&B
-if not debug:
+if not args.debug:
     wandb.finish()
 
 
