@@ -35,7 +35,52 @@ def pad_kinematics(input_array, max_tracks=None) -> np.ndarray:
     return input_array
 
 
-def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
+def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
+    """ get_one_hot - This function produces a one-hot encoding, which says whether
+    each object contained in the kinematics array is a muon, belongs to any of the 
+    track jets from 1 to n_jets, or belongs to any other jet. All arrays initialized
+    here will be of type np.int8. This will be cast to torch tensor with type float32.
+
+    Arguments:
+    kinematics - numpy array of muon and track kinematics
+    track_jet_indeces - numpy array of track jet indeces, one for each track
+    n_jets - number of track jets to consider, optional
+
+    Returns:
+    one_hot - one-hot encoding as a numpy array
+    """
+
+    # List for accepting one-hot encodings
+    one_hots = []
+
+    # Assume muons are the first two objects in the kinematics array
+    muon_one_hot = np.concatenate([np.ones((kinematics.shape[0], 2), dtype=np.int8), np.zeros((kinematics.shape[0], kinematics.shape[2]-2), dtype=np.int8)], axis=1)
+    one_hots.append(muon_one_hot)
+
+    # Loop through track jet indeces
+    for i in range(n_jets):
+
+        # Find tracks that belong to the i-th track jet
+        tj_one_hot = np.zeros((kinematics.shape[0], kinematics.shape[2]-2), dtype=np.int8)
+        tj_one_hot[track_jet_indeces == i] = 1
+
+        # Add on more zeros for muon one-hot encodings
+        tj_one_hot = np.concatenate([np.zeros((kinematics.shape[0], 2), dtype=np.int8), tj_one_hot], axis=1)
+
+        # Append to one-hot list
+        one_hots.append(tj_one_hot)
+
+    # For any other tracks, do the same as above
+    other_one_hot = np.zeros((kinematics.shape[0], kinematics.shape[2]-2), dtype=np.int8)
+    other_one_hot[track_jet_indeces >= n_jets] = 1
+    other_one_hot = np.concatenate([np.zeros((kinematics.shape[0], 2), dtype=np.int8), other_one_hot], axis=1)
+    one_hots.append(other_one_hot)
+
+    # Stack one-hot encodings and return
+    return np.stack(one_hots, axis=1)
+
+
+def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=True, **kwargs):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenatd as a single numpy array. An optional "filter"
     argument will allow the user to filter events with a boolean array.
@@ -47,6 +92,8 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
     filter - boolean array to filter events, optional
     get_mask - boolean to return mask of padded tracks, optional
     muon_only - boolean to return only muon kinematics, optional
+    one_hot - boolean to include one-hot encoded labels of muon, track jet 1-5,
+        and everything else, optional
     **kwargs - keyword arguments to pass to the "pad_kinematics" function
 
     Returns:
@@ -89,6 +136,13 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, **kwargs):
 
         # Concatenate muon and track kinematics
         kinematics = np.concatenate([kinematics, track_kinematics], axis=2)
+
+        # Make one hot encodings if requested
+        if one_hot:
+            track_jet_indeces = tree['trackJetIndex_tracks'].array()[:track_kinematics.shape[0],...]
+            pad_indeces = pad_kinematics(track_jet_indeces, **kwargs)
+            one_hot_inputs = get_one_hot(kinematics, pad_indeces)
+            kinematics = np.concatenate([kinematics, one_hot_inputs], axis=1)
 
     # Apply filter
     if filter is not None:

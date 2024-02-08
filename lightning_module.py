@@ -9,6 +9,7 @@ python3
 
 import torch
 import lightning as L
+import torchmetrics
 import wandb
 
 import numpy as np
@@ -32,7 +33,7 @@ class LOfTransformer(L.LightningModule):
     """
 
     # Init function 
-    def __init__(self, input_dim=3, plot_staging='./plot_storage', debug=False, **kwargs):
+    def __init__(self, input_dim=3, plot_staging='./plot_storage', debug=False, seed=420, **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
         There is one required argument which gives the input dimension for the 
         transformer. This is the # of features per object (usually 3). 
@@ -43,6 +44,7 @@ class LOfTransformer(L.LightningModule):
             input_dim {int} -- The input dimension of the model.
             plot_staging {str} -- The path to the directory where plots will be stored for logging
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
+            seed {int} -- The random seed to use for the train / val split. Only used for logging
             **kwargs {dict} -- A dictionary of keyword arguments to be passed
                 to the OfTransformer init function.
         """
@@ -61,14 +63,18 @@ class LOfTransformer(L.LightningModule):
         self.validation_step_start_weights = []
         self.validation_step_plotting = []
 
+        # Performance metrics
+        self.auc = torchmetrics.classification.AUROC(task='binary')
+
         # Log hyperparameters
-        self.save_hyperparameters(ignore=['plot_staging'])
+        self.save_hyperparameters(ignore=['plot_staging', 'debug'])
 
         # Plot staging
         self.plot_staging = plot_staging
 
-        # Debug flag
+        # Debug flag and seed value
         self.debug = debug
+        self.seed = seed
 
 
     # Forward pass
@@ -97,6 +103,10 @@ class LOfTransformer(L.LightningModule):
         loss = self.criterion(output, target) * weights
         loss = loss.mean()
         self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
+
+        # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
+        self.auc(output, target)
+        self.log('val_auc', self.auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Store data, labels, and outputs
         self.validation_step_plotting.append(plotting)
@@ -234,9 +244,9 @@ class LOfData(L.LightningDataModule):
         print("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
 
         # Load kinematics
-        mc_kinematics, mc_mask = get_kinematics(tree_mc, filter=pass190_mc, max_tracks=self.max_tracks, muon_only=muon_only, **kwargs)
+        mc_kinematics, mc_mask = get_kinematics(tree_mc, filter=pass190_mc, max_tracks=self.max_tracks, muon_only=muon_only, one_hot=True, **kwargs)
         # pseudo data kinematics will take the maximum # of tracks from MC
-        pd_kinematics, pd_mask = get_kinematics(tree_pd, filter=pass190_pd, max_tracks=mc_kinematics.shape[2]-2, muon_only=muon_only, **kwargs)
+        pd_kinematics, pd_mask = get_kinematics(tree_pd, filter=pass190_pd, max_tracks=mc_kinematics.shape[2]-2, muon_only=muon_only, one_hot=True, **kwargs)
 
         # Weights
         mc_weights = ak.to_numpy(tree_mc['weight'].array())
@@ -256,21 +266,12 @@ class LOfData(L.LightningDataModule):
         mc_plotting = get_plotting(tree_mc, vars=plotting_variables, filter=pass190_mc, muon_only=muon_only, **kwargs)
         pd_plotting = get_plotting(tree_pd, vars=plotting_variables, filter=pass190_pd, muon_only=muon_only, **kwargs)
 
-        # Concatenate MC and pseudodata together. Since class ratio with MC weights is about 1.0 just use all events
+        # Concatenate MC and pseudodata together
         kinematics = np.concatenate([mc_kinematics, pd_kinematics], axis=0)
         mask = np.concatenate([mc_mask, pd_mask], axis=0)
         weights = np.concatenate([mc_weights, pd_weights], axis=0)
         labels = np.concatenate([mc_labels, pd_labels], axis=0)
         plotting = np.concatenate([mc_plotting, pd_plotting], axis=0)
-
-        # Make one-hot encoding dimensions identifying whether the object is a muon or track, unless we are only considering muons
-        if not muon_only:
-            is_muon = np.concatenate([np.ones((kinematics.shape[0], 2)), np.zeros((kinematics.shape[0], kinematics.shape[2]-2))], axis=1)
-            is_track = np.concatenate([np.zeros((kinematics.shape[0], 2)), np.ones((kinematics.shape[0], kinematics.shape[2]-2))], axis=1)
-            one_hot = np.stack([is_muon, is_track], axis=1)
-
-            # Concatenate one-hot encoding to kinematics
-            kinematics = np.concatenate([kinematics, one_hot], axis=1)
 
         # Convert to torch tensors with float32 precision
         kinematics = torch.from_numpy(kinematics.astype(np.float32))
@@ -284,6 +285,7 @@ class LOfData(L.LightningDataModule):
         print("All done with data loading!")
         print("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
         print("We have {} events in total".format(len(self.all_dataset)))
+        print("Kinematics tensor has shape: ", kinematics.shape)
 
 
     # Setup function

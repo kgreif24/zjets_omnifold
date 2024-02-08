@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 # Define a single flag for entering debug mode (simple network, muons only)
 if args.debug:
-    n_devices = 1
+    n_devices = 4
 else:
     n_devices = 4
 
@@ -31,7 +31,8 @@ d_module = LOfData(
     batch_size=256,
     dataloader_workers=1,
     split_seed=args.seed,
-    testing=False
+    testing=False,
+    max_tracks=150
 )
 
 # Login to wandb
@@ -40,7 +41,7 @@ if not args.debug:
 
 # Initialise the wandb logger and callbacks
 if not args.debug:
-    wandb_logger = WandbLogger(project='test-of-project', name='all_tracks_9', save_dir='./checkpoints')
+    wandb_logger = WandbLogger(project='test-of-project', name='jet_index_1', save_dir='./checkpoints')
 else:
     wandb_logger = None
 
@@ -70,17 +71,19 @@ trainer = L.Trainer(
 
 # Build lightning module
 l_module = LOfTransformer(
-    5,
+    10,
     debug=args.debug,
     num_classes=1,
     trim=False,
-    embed_dims=[128, 256, 128],
+    embed_dims=[256, 256, 128],
     fc_params=[(256, 0.0)],
     pair_embed_dims=None,
     cls_block_params={'dropout': 0.0, 'attn_dropout': 0.0, 'activation_dropout': 0.0, 'num_heads': 8},
     num_cls_layers=2,
     block_params={'dropout': 0.05, 'attn_dropout': 0.05, 'activation_dropout': 0.05, 'num_heads': 8},
-    num_layers=5
+    num_layers=5,
+    # Include the seed just so it is logged to W&B
+    seed=args.seed
 )
 
 # Run training
