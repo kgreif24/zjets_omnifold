@@ -14,13 +14,17 @@ import lightning as L
 from lightning_module import *
 import numpy as np
 import argparse
+from sklearn.metrics import roc_auc_score
 
+import plotting_utils as pu
 
 # Parse the command line arguments
 parser = argparse.ArgumentParser(description='Evaluate a model checkpoint over a slice of the OF data')
-parser.add_argument('--model', type=str, help='Path to the model checkpoint')
+predict_or_plot = parser.add_mutually_exclusive_group(required=True)
+predict_or_plot.add_argument('--predictions', type=str, help='Path to the model predictions (if already made)')
+predict_or_plot.add_argument('--model', type=str, help='Path to the model checkpoint')
 parser.add_argument('--save', type=str, help='Path to save the model outputs')
-parser.add_argument('--seed', type=int, help='Random seed for the data module')
+parser.add_argument('--seed', type=int, default=420, help='Random seed for the data module, only needed if using validation set')
 parser.add_argument('--validate', action='store_true', help='Use the validation set instead of the test set')
 args = parser.parse_args()
 
@@ -31,20 +35,47 @@ d_module = LOfData(
     muon_only=False,
     batch_size=256,
     dataloader_workers=1,
-    seed=args.seed,
+    split_seed=args.seed,
     testing=not args.validate
 )
 
-# Load model checkpoint
-model = LOfTransformer.load_from_checkpoint(args.model)
+# Load model checkpoint and run prediction
+if args.model:
+    model = LOfTransformer.load_from_checkpoint(args.model)
 
-# Make lightning trainer
-trainer = L.Trainer(accelerator='gpu', devices=1)
+    # Make lightning trainer
+    trainer = L.Trainer(accelerator='gpu', devices=1)
 
-# Run predictions
-predictions = trainer.predict(model, d_module)
+    # Run predictions
+    predictions = trainer.predict(model, d_module)
 
-# Save predictions
-predictions = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions])
-print("Stored {} predictioons".format(len(predictions)))
-np.save(args.save, predictions)
+    # Save predictions
+    predictions = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions])
+    print("Stored {} predictioons".format(len(predictions)))
+    np.save(args.save, predictions)
+
+# Else load predictions from file
+else:
+    predictions = np.load(args.predictions)
+
+# Pull plotting info from data module
+plotting = d_module.all_dataset[:][4].cpu().numpy()
+labels = d_module.all_dataset[:][1].cpu().numpy().flatten()
+start_weights = d_module.all_dataset[:][3].cpu().numpy().flatten()
+
+# Run plotting
+pu.make_logged_plots(
+    plotting,
+    labels,
+    start_weights,
+    predictions,
+    save_location=args.save,
+    display=False
+)
+
+# Calculate probabilities
+probabilities = 1 / (1 + np.exp(-predictions))
+
+# Calculate AUC
+auc = roc_auc_score(labels, probabilities)
+print("AUC: {}".format(auc))
