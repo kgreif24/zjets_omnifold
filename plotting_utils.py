@@ -140,6 +140,16 @@ define_hists = [
         'key': 'tau3_trackj2',
         'xlabel': r'$\tau_{3,j2}$',
         'bins': np.linspace(0, 0.4, 150)
+    },
+    {
+        'key': 'Ntracks',
+        'xlabel': '# of tracks',
+        'bins': np.arange(0, 256, 1)
+    },
+    {
+        'key': 'NtrackJets20',
+        'xlabel': 'NtrackJets20',
+        'bins': np.arange(0, 15, 1)
     }
 ]
 
@@ -188,8 +198,7 @@ def make_logged_plots(plot_data, labels, start_weights, outputs, definitions=def
     # Make dictionary for return
     return_dict = {}
 
-    # Get numpy array of the plotting data, labels, and starting weights
-    # Indeces of relevant information in dataset are hardcoded here. Beware of changing them!
+    # Calcualate end weights
     end_weights = start_weights * derived_weights
     assert len(plot_data) == len(labels) == len(start_weights) == len(end_weights)
 
