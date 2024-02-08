@@ -26,7 +26,7 @@ common_hist_settings = {
 }
 
 # Individual histogram settings
-define_hists = [
+event_hists = [
     {
         'key': 'pT_l1',
         'xlabel': r'$p_{T,\mu1}$',
@@ -51,13 +51,17 @@ define_hists = [
         'key': 'phi_l1',
         'xlabel': r'$\phi_{\mu1}$',
         'bins': np.linspace(-3.2, 3.2, 150),
-        'rlim': [0.9, 1.1]
+        'rlim': [0.9, 1.1],
+        'linear_scale': True,
+        'ylim': [0, 0.2]
     },
     {
         'key': 'phi_l2',
         'xlabel': r'$\phi_{\mu2}$',
         'bins': np.linspace(-3.2, 3.2, 150),
-        'rlim': [0.9, 1.1]
+        'rlim': [0.9, 1.1],
+        'linear_scale': True,
+        'ylim': [0, 0.2]
     },
     {
         'key': 'pT_ll',
@@ -93,13 +97,17 @@ define_hists = [
         'key': 'phi_trackj1',
         'xlabel': r'$\phi_{j1}$',
         'bins': np.linspace(-3.2, 3.2, 150),
-        'rlim': [0.9, 1.1]
+        'rlim': [0.9, 1.1],
+        'linear_scale': True,
+        'ylim': [0, 0.2]
     },
     {
         'key': 'phi_trackj2',
         'xlabel': r'$\phi_{j2}$',
         'bins': np.linspace(-3.2, 3.2, 150),
-        'rlim': [0.9, 1.1]
+        'rlim': [0.9, 1.1],
+        'linear_scale': True,
+        'ylim': [0, 0.2]
     },
     {
         'key': 'm_trackj1',
@@ -142,6 +150,16 @@ define_hists = [
         'bins': np.linspace(0, 0.4, 150)
     },
     {
+        'key': 'Ntracks_trackj1',
+        'xlabel': r'$N_{tracks,j1}$',
+        'bins': np.arange(0, 80, 1)
+    },
+    {
+        'key': 'Ntracks_trackj2',
+        'xlabel': r'$N_{tracks,j2}$',
+        'bins': np.arange(0, 80, 1)
+    },
+    {
         'key': 'Ntracks',
         'xlabel': '# of tracks',
         'bins': np.arange(0, 256, 1)
@@ -153,16 +171,42 @@ define_hists = [
     }
 ]
 
+track_hists = [
+    {
+        'key': 'alltrack_pt',
+        'xlabel': r'$p_{T, track}$',
+        'bins': np.linspace(0, 1e3, 150)
+    },
+    {
+        'key': 'alltrack_eta',
+        'xlabel': r'$\eta_{track}$',
+        'bins': np.linspace(-3, 3, 150)
+    },
+    {
+        'key': 'alltrack_phi',
+        'xlabel': r'$\phi_{track}$',
+        'bins': np.linspace(-3.2, 3.2, 150),
+        'rlim': [0.9, 1.1],
+        'linear_scale': True,
+        'ylim': [0, 0.2]
+    }
+]
+
 special_hists = []
 
-# Overwrite default settings
-default_settings = []
-for hist_dict in define_hists:
-    copy = common_hist_settings.copy()
-    copy.update(hist_dict)
-    default_settings.append(copy)
+# Overwrite default settings function
+def overwrite(defaults, new_list):
+    return_list = []
+    for hist_dict in new_list:
+        copy = defaults.copy()
+        copy.update(hist_dict)
+        return_list.append(copy)
+    return return_list
 
-default_settings = default_settings + special_hists
+event_hists = overwrite(common_hist_settings, event_hists)
+track_hists = overwrite(common_hist_settings, track_hists)
+
+default_settings = event_hists + special_hists
 
 
 ###############################################################################################
@@ -200,6 +244,7 @@ def make_logged_plots(plot_data, labels, start_weights, outputs, definitions=def
 
     # Calcualate end weights
     end_weights = start_weights * derived_weights
+    effective_events = np.sum(end_weights)**2 / np.sum(end_weights**2)
     assert len(plot_data) == len(labels) == len(start_weights) == len(end_weights)
 
     # Loop over list of dictionaries
@@ -218,6 +263,123 @@ def make_logged_plots(plot_data, labels, start_weights, outputs, definitions=def
             start_weights[labels==0],
             end_weights[labels==0],
             this_data[labels==1], 
+            bins=element['bins'], 
+            xlabel=element['xlabel'], 
+            linear_scale=element['linear_scale'],
+            ylim=element['ylim'],
+            rlim=element['rlim']
+        )
+
+        # Save histogram
+        hist_path = f'{save_location}/{element["key"]}.png'
+        fig.savefig(hist_path, dpi=300)
+        if display:
+            plt.show()
+        plt.close()
+        return_dict[element['key']] = hist_path
+
+    # Also make histograms of the network outputs and derived weights
+    fig = plt.figure()
+    ax = plt.gca()
+    bins = np.linspace(0, 1, 150)
+    ax.hist(probs[labels==0], bins=bins, label='MC', density=True, histtype='step')
+    ax.hist(probs[labels==1], bins=bins, label='Pseudodata', density=True, histtype='step')
+    ax.set_yscale('log')
+    ax.set_xlabel('Network Output')
+    ax.set_ylabel('A.U.')
+    ax.legend()
+    plt.savefig(f'{save_location}/network_output.png', dpi=300)
+    if display:
+        plt.show()
+    plt.close()
+    return_dict['network_output'] = f'{save_location}/network_output.png'
+
+    fig = plt.figure()
+    ax = plt.gca()
+    ax.hist(end_weights[labels==0], bins=150, label='MC', density=True, histtype='step')
+    ax.set_yscale('log')
+    ax.set_xlabel('Derived Weights for MC')
+    ax.set_ylabel('A.U.')
+    # Add stats box
+    add_stats_box(ax, end_weights[labels==0])
+    # Add the number of effective of events as a text box
+    textstr = f'Effective Events: {effective_events:10.0f}'
+    props = dict(boxstyle='round', facecolor='white', alpha=0.5)
+    ax.text(0.95, 0.75, textstr, transform=ax.transAxes, fontsize=12,
+            verticalalignment='top', horizontalalignment='right', bbox=props)
+    plt.savefig(f'{save_location}/derived_weights.png', dpi=300)
+    if display:
+        plt.show()
+    plt.close()
+    return_dict['derived_weights'] = f'{save_location}/derived_weights.png'
+    
+    return return_dict
+
+
+def make_inclusive_track_plots(track_data, labels, start_weights, outputs, definitions=track_hists, save_location='./plot_storage', display=False):
+    """ make_inclusive_track_plots - This function will make plots of the inclusive track kinematics.
+    It will calculate the reweighting given a set of network inputs. Importantly the weights will be extended
+    to the shape of the track input data, and then used to build histograms.
+
+    Arguments:
+    track_data - numpy array of the track kinematics to be plotted, in shape (n_events, 3, n_tracks)
+    labels - numpy array of the labels for the data
+    start_weights - numpy array of the weights used in network training
+    outputs - numpy array of network outputs over the events contained in "plot_data"
+    definitions - list of dictionaries describing each of the histograms to build, default setting is above
+    save_location - location of directory in which to dump plots
+    display - if true, display the plots to the screen
+    """
+
+    # First calculate weights from outputs
+    probs = 1 / (1 + np.exp(-outputs))
+    derived_weights = probs / (1 - probs)
+
+    # Make dictionary for return
+    return_dict = {}
+
+    # Calcualate end weights
+    end_weights = start_weights * derived_weights
+    assert len(track_data) == len(labels) == len(start_weights) == len(end_weights)
+
+    # Expand weights to shape of track data and flatten
+    start_weights = np.repeat(np.expand_dims(start_weights, axis=1), track_data.shape[2], axis=1)
+    start_weights = np.ravel(start_weights[labels==0,:])
+    end_weights = np.repeat(np.expand_dims(end_weights, axis=1), track_data.shape[2], axis=1)
+    end_weights = np.ravel(end_weights[labels==0,:])
+
+    # Loop over pT, eta, phi
+    for i, element in enumerate(definitions):
+
+        # Pull plotting data for this particular histogram
+        this_data = track_data[:,i,:]
+        if i == 0:
+            print(this_data[0,:])
+
+        # Separate MC and pseudodata
+        this_data_mc = np.ravel(this_data[labels==0,:])
+        this_data_pd = np.ravel(this_data[labels==1,:])
+
+        # Drop zero padded entries
+        if i == 0:
+            track_pt_mc = this_data_mc
+            track_pt_pd = this_data_pd
+            start_weights = start_weights[track_pt_mc != 0]
+            end_weights = end_weights[track_pt_mc != 0]
+        this_data_mc = this_data_mc[track_pt_mc != 0]
+        this_data_pd = this_data_pd[track_pt_pd != 0]
+
+        # Take exponential if this is pT
+        if i == 0:
+            this_data_mc = np.exp(this_data_mc)
+            this_data_pd = np.exp(this_data_pd)
+        
+        # Make reweighting plot
+        fig = plot_reweighting(
+            this_data_mc,
+            start_weights,
+            end_weights,
+            this_data_pd, 
             bins=element['bins'], 
             xlabel=element['xlabel'], 
             linear_scale=element['linear_scale'],

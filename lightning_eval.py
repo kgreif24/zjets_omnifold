@@ -59,6 +59,7 @@ else:
     predictions = np.load(args.predictions)
 
 # Pull plotting info from data module
+track_info = d_module.all_dataset[:][0][:,0:3,2:].cpu().numpy()
 plotting = d_module.all_dataset[:][4].cpu().numpy()
 labels = d_module.all_dataset[:][1].cpu().numpy().flatten()
 start_weights = d_module.all_dataset[:][3].cpu().numpy().flatten()
@@ -66,6 +67,16 @@ start_weights = d_module.all_dataset[:][3].cpu().numpy().flatten()
 # Run plotting
 pu.make_logged_plots(
     plotting,
+    labels,
+    start_weights,
+    predictions,
+    save_location=args.save,
+    display=False
+)
+
+# Run inclusive plots
+pu.make_inclusive_track_plots(
+    track_info,
     labels,
     start_weights,
     predictions,
