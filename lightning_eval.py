@@ -10,6 +10,7 @@ Last updated 02/02/2024
 python3
 """
 
+import os
 import lightning as L
 from lightning_module import *
 import numpy as np
@@ -53,6 +54,9 @@ if args.model:
     predictions = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions])
     print("Stored {} predictioons".format(len(predictions)))
     np.save(args.save, predictions)
+
+    # Reset save path to the directory so we save plots in the same place
+    args.save = os.path.dirname(args.save)
 
 # Else load predictions from file
 else:

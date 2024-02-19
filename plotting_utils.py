@@ -353,8 +353,6 @@ def make_inclusive_track_plots(track_data, labels, start_weights, outputs, defin
 
         # Pull plotting data for this particular histogram
         this_data = track_data[:,i,:]
-        if i == 0:
-            print(this_data[0,:])
 
         # Separate MC and pseudodata
         this_data_mc = np.ravel(this_data[labels==0,:])
