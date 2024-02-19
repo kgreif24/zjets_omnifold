@@ -66,19 +66,24 @@ class OfTransformer(nn.Module):
         if cls_block_params is not None:
             cfg_cls_block.update(cls_block_params)
 
+        # Embedding layers
         self.pair_extra_dim = pair_extra_dim
-        print("Batch normalization disabled in embedding!")
+        print("Batch normalization disabled in embeddings!")
         self.embed = Embed(input_dim, embed_dims, activation=activation, normalize_input=False) if len(embed_dims) > 0 else nn.Identity()
-        # self.pair_embed = PairEmbed(
-        #     pair_input_dim, pair_extra_dim, pair_embed_dims + [cfg_block['num_heads']],
-        #     remove_self_pair=remove_self_pair, use_pre_activation_pair=use_pre_activation_pair,
-        #     for_onnx=for_inference) if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
+
+        self.pair_embed = PairEmbed(
+            # The number of heads is added to the pair_embed_dims since we add the pairwise features to the weights for **each** head.
+            # Wouldn't it be nice if we could do this for only some of the heads?
+            pair_input_dim, pair_extra_dim, pair_embed_dims + [cfg_block['num_heads']],
+            remove_self_pair=remove_self_pair, use_pre_activation_pair=use_pre_activation_pair, normalize_input=False,
+            for_onnx=for_inference) if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
+        
+        # Transformer layers
         self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
         self.cls_blocks = nn.ModuleList([Block(**cfg_cls_block) for _ in range(num_cls_layers)])
         self.norm = nn.LayerNorm(embed_dim)
 
-        # self.flatten = nn.Flatten()
-
+        # Fully connected layers
         if fc_params is not None:
             fcs = []
             in_dim = embed_dim
@@ -122,13 +127,13 @@ class OfTransformer(nn.Module):
             x = x.permute(2, 0, 1) # (seq_len, batch, embed_dim)
             mask = mask.permute(2, 0, 1) # (seq_len, batch, 1)
 
-            # attn_mask = None
-            # if (v is not None or uu is not None) and self.pair_embed is not None:
-            #     attn_mask = self.pair_embed(v, uu).view(-1, v.size(-1), v.size(-1))  # (N*n um_heads, P, P)
+            attn_mask = None
+            if (v is not None or uu is not None) and self.pair_embed is not None:
+                attn_mask = self.pair_embed(v, uu).view(-1, v.size(-1), v.size(-1))  # (N*num_heads, P, P)
 
             # transform
             for block in self.blocks:
-                x = block(x, x_cls=None, padding_mask=padding_mask)
+                x = block(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
 
             # extract class token
             cls_tokens = self.cls_token.expand(1, x.size(1), -1)  # (1, batch, embed_dim)

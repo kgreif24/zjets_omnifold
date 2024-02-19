@@ -41,7 +41,7 @@ if not args.debug:
 
 # Initialise the wandb logger and callbacks
 if not args.debug:
-    wandb_logger = WandbLogger(project='test-of-project', name='jet_index_1', save_dir='./checkpoints')
+    wandb_logger = WandbLogger(project='test-of-project', name='pairwise_1', save_dir='./checkpoints')
 else:
     wandb_logger = None
 
@@ -75,7 +75,11 @@ l_module = LOfTransformer(
     debug=args.debug,
     num_classes=1,
     trim=False,
+    remove_self_pair=True,
     embed_dims=[256, 256, 128],
+    pair_input_dim=3,
+    pair_extra_dim=0,
+    pair_embed_dims=[32, 64, 128],
     fc_params=[(256, 0.0)],
     pair_embed_dims=None,
     cls_block_params={'dropout': 0.0, 'attn_dropout': 0.0, 'activation_dropout': 0.0, 'num_heads': 8},

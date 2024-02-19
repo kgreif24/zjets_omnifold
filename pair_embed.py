@@ -26,6 +26,10 @@ class PairEmbed(nn.Module):
             module_list = [nn.BatchNorm1d(input_dim)] if normalize_input else []
             for dim in dims:
                 module_list.extend([
+                    # Why use a convolution here? Shouldn't you use a linear layer?
+                    # No, we want to share weights for each element in the sequence, but not for each pairwise dim
+                    # Conv1d acts as (N, C_in, L) -> (N, C_out, L) where L is the length of the sequence
+                    # The pairwise dims are in the 1st dimension, so this is exactly what we want.
                     nn.Conv1d(input_dim, dim, 1),
                     nn.BatchNorm1d(dim),
                     nn.GELU() if activation == 'gelu' else nn.ReLU(),
@@ -67,10 +71,12 @@ class PairEmbed(nn.Module):
 
     def forward(self, x, uu=None):
         """ forward - Why does the forward pass for pair embedding take two inputs, x and uu?
-        Maybe I can just use uu unused, since I see no reason to include it.
+        Maybe I can just leave uu unused, since I see no reason to include it.
 
         I think it's a way to input features into the network that are not calculated via the
-        "pairwise_lv_fts" function below.
+        "pairwise_lv_fts" function below. Indeed this is definitely correct.
+
+        For my use case I should be able to just use the x input and ignore the uu input.
         """
 
 
@@ -109,7 +115,7 @@ class PairEmbed(nn.Module):
                 if x is None:
                     pair_fts = uu
                 elif uu is None:
-                    pair_fts = x
+                    pair_fts = x  # (batch, pairwise_lv_dim, seq_len*(seq_len-1)/2) <- assuming we remove self pair
                 else:
                     pair_fts = torch.cat((x, uu), dim=1)
 
@@ -123,6 +129,9 @@ class PairEmbed(nn.Module):
             else:
                 elements = self.embed(x) + self.fts_embed(uu)
 
+        # If the features are symmetric, we don't want to waste time calculating the same features
+        # twice, so we just calculate the lower triangular part of the matrix and then fill in the
+        # upper triangular part with the same values.
         if self.is_symmetric and not self.for_onnx:
             y = torch.zeros(batch_size, self.out_dim, seq_len, seq_len, dtype=elements.dtype, device=elements.device)
             y[:, :, i, j] = elements

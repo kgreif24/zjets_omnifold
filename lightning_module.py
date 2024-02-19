@@ -79,7 +79,8 @@ class LOfTransformer(L.LightningModule):
 
     # Forward pass
     def forward(self, inputs, mask):
-        return self.model(inputs, mask=mask)
+        tracks = inputs[:,:3,:]
+        return self.model(inputs, v=tracks, mask=mask)
     
 
     # Training step
