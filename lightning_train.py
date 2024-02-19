@@ -81,7 +81,6 @@ l_module = LOfTransformer(
     pair_extra_dim=0,
     pair_embed_dims=[32, 64, 128],
     fc_params=[(256, 0.0)],
-    pair_embed_dims=None,
     cls_block_params={'dropout': 0.0, 'attn_dropout': 0.0, 'activation_dropout': 0.0, 'num_heads': 8},
     num_cls_layers=2,
     block_params={'dropout': 0.05, 'attn_dropout': 0.05, 'activation_dropout': 0.05, 'num_heads': 8},
