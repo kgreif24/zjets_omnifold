@@ -27,10 +27,39 @@ def to_pt2(x, eps=1e-8):
     return pt2
 
 
-def to_m2(x, eps=1e-8):
-    m2 = x[:, 3:4].square() - x[:, :3].square().sum(dim=1, keepdim=True)
+def to_m2(xi, xj, eps=1e-8):
+    """ to_m2 - This function calculates the invariant mass squared of the sum
+    of the four vectors given by xi and xj. The xi and xj are assumed to have shape
+    (n_events, 3, n_particles) where the 3 dimensions are (log(pT), eta, phi).
+
+    The n_particles in xi will be added elementwise to the n_particles in xj.
+
+    Arguments:
+    xi - The first set of four vectors
+    xj - The second set of four vectors
+    eps - The minimum value for the invariant mass squared. Useful if you
+    are taking the log of the invariant mass squared.
+
+    Returns:
+    m2 - The invariant mass squared of the sum of the four vectors. In shape
+    (n_events, n_particles)
+    """
+
+    # Separate the pT, eta, and phi from the input
+    pti, etai, phii, onehoti = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+    ptj, etaj, phij, onehotj = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+
+    # Remember we take the log of the pTs, so we need to exponentiate them
+    pti = torch.exp(pti)
+    ptj = torch.exp(ptj)
+
+    # Calculate the invariant mass
+    m2 = 2 * pti * ptj * (torch.cosh(etai - etaj) - torch.cos(delta_phi(phii, phij)))
+
+    # Clamp the invariant mass to the minimum value
     if eps is not None:
         m2 = m2.clamp(min=eps)
+
     return m2
 
 
@@ -85,8 +114,7 @@ def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
         outputs = [lnkt, lnz, lndelta]
 
     if num_outputs > 3:
-        xij = xi + xj
-        lnm2 = torch.log(to_m2(xij, eps=eps))
+        lnm2 = torch.log(to_m2(xi, xj, eps=eps))
         outputs.append(lnm2)
 
     if num_outputs > 4:

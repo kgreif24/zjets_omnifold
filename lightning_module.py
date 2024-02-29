@@ -163,8 +163,8 @@ class LOfTransformer(L.LightningModule):
             optimizer,
             first_cycle_steps=1e4,
             warmup_steps=1e3,
-            max_lr=1e-3,
-            min_lr=5e-5,
+            max_lr=1e-4,
+            min_lr=1e-5,
             gamma=0.8
         )
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'frequency': 1}}
@@ -286,7 +286,6 @@ class LOfData(L.LightningDataModule):
         print("All done with data loading!")
         print("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
         print("We have {} events in total".format(len(self.all_dataset)))
-        print("Kinematics tensor has shape: ", kinematics.shape)
 
 
     # Setup function

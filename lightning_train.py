@@ -41,7 +41,7 @@ if not args.debug:
 
 # Initialise the wandb logger and callbacks
 if not args.debug:
-    wandb_logger = WandbLogger(project='test-of-project', name='pairwise_1', save_dir='./checkpoints')
+    wandb_logger = WandbLogger(project='test-of-project', name='pairwise_3', save_dir='./checkpoints')
 else:
     wandb_logger = None
 
@@ -49,7 +49,7 @@ lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
 checkpoints = L.pytorch.callbacks.ModelCheckpoint(
     monitor='val_loss',
     filename='{epoch}-{val_loss:.4f}',
-    save_top_k=3,
+    save_top_k=-1,
     mode='min'
 )
 early_stopping = L.pytorch.callbacks.EarlyStopping(
@@ -77,13 +77,13 @@ l_module = LOfTransformer(
     trim=False,
     remove_self_pair=True,
     embed_dims=[256, 256, 128],
-    pair_input_dim=3,
+    pair_input_dim=4,
     pair_extra_dim=0,
     pair_embed_dims=[32, 64, 128],
     fc_params=[(256, 0.0)],
     cls_block_params={'dropout': 0.0, 'attn_dropout': 0.0, 'activation_dropout': 0.0, 'num_heads': 8},
     num_cls_layers=2,
-    block_params={'dropout': 0.05, 'attn_dropout': 0.05, 'activation_dropout': 0.05, 'num_heads': 8},
+    block_params={'dropout': 0.1, 'attn_dropout': 0.1, 'activation_dropout': 0.1, 'num_heads': 8},
     num_layers=5,
     # Include the seed just so it is logged to W&B
     seed=args.seed
