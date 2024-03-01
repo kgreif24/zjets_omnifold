@@ -24,4 +24,4 @@ export OMP_PROC_BIND=spread
 
 #run the application: 
 # applications may perform better with --gpu-bind=none instead of --gpu-bind=single:1
-srun -n 4 -c 32 --cpu_bind=cores -G 4 --gpu-bind=none python lightning_train.py --seed $((RANDOM)) --debug
+srun -n 4 -c 32 --cpu_bind=cores -G 4 --gpu-bind=none python lightning_train.py --seed $((RANDOM))
