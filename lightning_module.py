@@ -20,6 +20,7 @@ from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 
 from of_transformer import OfTransformer
 from simple_network import DumbNeuralNetwork
+from wasserstein_metric import WassersteinOne
 from data_utils import *
 import plotting_utils as pu
 
@@ -57,20 +58,13 @@ class LOfTransformer(L.LightningModule):
         else:
             self.model = OfTransformer(input_dim, **kwargs)
 
-        # Save validation step information for plotting
-        self.validation_step_outputs = []
-        self.validation_step_labels = []
-        self.validation_step_start_weights = []
-        self.validation_step_plotting = []
-
-        # Performance metrics
+        # Performance metrics, note this also handles plotting and logging to wandb
         self.auc = torchmetrics.classification.AUROC(task='binary')
+        self.wasserstein_train = WassersteinOne()
+        self.wasserstein_val = WassersteinOne(draw_plots=True, save_location=plot_staging)
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=['plot_staging', 'debug'])
-
-        # Plot staging
-        self.plot_staging = plot_staging
 
         # Debug flag and seed value
         self.debug = debug
@@ -80,18 +74,37 @@ class LOfTransformer(L.LightningModule):
     # Forward pass
     def forward(self, inputs, mask):
         tracks = inputs[:,:3,:]
-        return self.model(inputs, v=tracks, mask=mask)
+        if self.debug:
+            return self.model(tracks)
+        else:
+            return self.model(inputs, v=tracks, mask=mask)
     
 
     # Training step
     def training_step(self, batch, batch_idx):
-        inputs, target, mask, weights, _ = batch
+
+        # Separate batch, make forward pass, calculate loss
+        inputs, target, mask, weights, plotting = batch
         output = self(inputs, mask)
         loss = self.criterion(output, target) * weights
         loss = loss.mean()
+
+        # Logging metrics
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)
+        self.wasserstein_train.update(plotting, weights, output, target)
+
         return loss
     
+    # Train epoch end for logging train metrics
+    def on_train_epoch_end(self):
+            
+        # Log wasserstein metric
+        train_wass = self.wasserstein_train.compute()
+        self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=True, sync_dist=True)
+
+        # Reset wasserstein metric
+        self.wasserstein_train.reset()
+
 
     # Validation step
     def validation_step(self, batch, batch_idx):
@@ -109,45 +122,28 @@ class LOfTransformer(L.LightningModule):
         self.auc(output, target)
         self.log('val_auc', self.auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
-        # Store data, labels, and outputs
-        self.validation_step_plotting.append(plotting)
-        self.validation_step_labels.append(target)
-        self.validation_step_start_weights.append(weights)
-        self.validation_step_outputs.append(output)
+        # Update wasserstein metric
+        self.wasserstein_val.update(plotting, weights, output, target)
 
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
 
-        # Skip plotting logic if sanity checking
-        if (not self.trainer.sanity_checking) and (not self.debug):
+        # Don't do anything but reset metric on validation sanity check
+        if not self.trainer.sanity_checking:
 
-            # Gather predictions from across processses and send to numpy
-            predictions = torch.flatten(self.all_gather(torch.cat(self.validation_step_outputs)))
-            labels = torch.flatten(self.all_gather(torch.cat(self.validation_step_labels)))
-            start_weights = torch.flatten(self.all_gather(torch.cat(self.validation_step_start_weights)))
-            plotting = torch.flatten(self.all_gather(torch.cat(self.validation_step_plotting)), end_dim=1)
-            predictions = predictions.cpu().detach().numpy()
-            labels = labels.cpu().detach().numpy()
-            start_weights = start_weights.cpu().detach().numpy()
-            plotting = plotting.cpu().detach().numpy()
+            # Calculate wasserstein metric, and get dictionary of plots to log
+            val_wass, plot_dict = self.wasserstein_val.compute()
 
-            # Make plots if this is the master process
-            plot_dict = {}
-            if self.trainer.global_rank == 0:
-                plot_dict = pu.make_logged_plots(
-                    plotting, labels, start_weights, predictions, save_location=self.plot_staging
-                )
+            # Log wasserstein metric
+            self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=True, sync_dist=True)
 
             # Log plots
             for key, histpath in plot_dict.items():
-                wandb.log({key: wandb.Image(histpath)}, step=self.trainer.global_step)
-
-        # Clear memory
-        self.validation_step_outputs.clear()
-        self.validation_step_labels.clear()
-        self.validation_step_start_weights.clear()
-        self.validation_step_plotting.clear()
+                self.logger.experiment.log({key: wandb.Image(histpath)}, step=self.trainer.global_step)
+            
+        # Reset metric
+        self.wasserstein_val.reset()
 
 
     # Prediction step

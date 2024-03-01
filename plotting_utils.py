@@ -164,11 +164,11 @@ event_hists = [
         'xlabel': '# of tracks',
         'bins': np.arange(0, 256, 1)
     },
-    {
-        'key': 'NtrackJets20',
-        'xlabel': 'NtrackJets20',
-        'bins': np.arange(0, 15, 1)
-    }
+    # {
+    #     'key': 'NtrackJets20',
+    #     'xlabel': 'NtrackJets20',
+    #     'bins': np.arange(0, 15, 1)
+    # }
 ]
 
 track_hists = [

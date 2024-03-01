@@ -36,14 +36,11 @@ d_module = LOfData(
 )
 
 # Login to wandb
-if not args.debug:
-    wandb.login()
+wandb.login()
 
 # Initialise the wandb logger and callbacks
-if not args.debug:
-    wandb_logger = WandbLogger(project='test-of-project', name='pairwise_3', save_dir='./checkpoints')
-else:
-    wandb_logger = None
+wandb_logger = WandbLogger(project='test-of-project', name='track_wass_1', save_dir='./checkpoints')
+
 
 lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
 checkpoints = L.pytorch.callbacks.ModelCheckpoint(
@@ -63,7 +60,7 @@ trainer = L.Trainer(
     accelerator='gpu',
     devices=n_devices,
     logger=wandb_logger,
-    callbacks=[lr_monitor, checkpoints],
+    callbacks=[lr_monitor, checkpoints, early_stopping],
     max_epochs=70,
     log_every_n_steps=50,
     enable_progress_bar=False
@@ -80,11 +77,11 @@ l_module = LOfTransformer(
     pair_input_dim=4,
     pair_extra_dim=0,
     pair_embed_dims=[32, 64, 128],
-    fc_params=[(256, 0.0)],
-    cls_block_params={'dropout': 0.0, 'attn_dropout': 0.0, 'activation_dropout': 0.0, 'num_heads': 8},
-    num_cls_layers=2,
+    fc_params=[(256, 0.05), (256, 0.05)],
+    cls_block_params={'dropout': 0.05, 'attn_dropout': 0.05, 'activation_dropout': 0.05, 'num_heads': 8},
+    num_cls_layers=3,
     block_params={'dropout': 0.1, 'attn_dropout': 0.1, 'activation_dropout': 0.1, 'num_heads': 8},
-    num_layers=5,
+    num_layers=6,
     # Include the seed just so it is logged to W&B
     seed=args.seed
 )
@@ -93,7 +90,6 @@ l_module = LOfTransformer(
 trainer.fit(l_module, d_module)
 
 # Close W&B
-if not args.debug:
-    wandb.finish()
+wandb.finish()
 
 
