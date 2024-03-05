@@ -46,15 +46,29 @@ def to_m2(xi, xj, eps=1e-8):
     """
 
     # Separate the pT, eta, and phi from the input
-    pti, etai, phii, onehoti = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # pT, eta, phi, onehots
-    ptj, etaj, phij, onehotj = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+    pti, etai, phii, _ = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+    ptj, etaj, phij, _ = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # pT, eta, phi, onehots
 
     # Remember we take the log of the pTs, so we need to exponentiate them
     pti = torch.exp(pti)
     ptj = torch.exp(ptj)
 
+    # Fix masses to the pion mass
+    mi = 0.14
+    mj = 0.14
+
+    # Calculate px, py, pz, and E
+    pxi = pti * torch.cos(phii)
+    pxj = ptj * torch.cos(phij)
+    pyi = pti * torch.sin(phii)
+    pyj = ptj * torch.sin(phij)
+    pzi = pti * torch.sinh(etai)
+    pzj = ptj * torch.sinh(etaj)
+    Ei = torch.sqrt((pti * torch.cosh(etai))**2 + mi**2)
+    Ej = torch.sqrt((ptj * torch.cosh(etaj))**2 + mj**2)
+
     # Calculate the invariant mass
-    m2 = 2 * pti * ptj * (torch.cosh(etai - etaj) - torch.cos(delta_phi(phii, phij)))
+    m2 = (Ei + Ej)**2 - (pxi + pxj)**2 - (pyi + pyj)**2 - (pzi + pzj)**2
 
     # Clamp the invariant mass to the minimum value
     if eps is not None:
