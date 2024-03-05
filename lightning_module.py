@@ -325,19 +325,6 @@ class LOfData(L.LightningDataModule):
         """
         assert not self.testing
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
-    
-
-    # # Test dataloader
-    # def test_dataloader(self):
-    #     """ test_dataloader - This method returns a pytorch dataloader
-    #     for the test data.
-
-    #     Returns:
-    #         torch.utils.data.DataLoader -- A pytorch dataloader for the test data.
-    #     """
-    #     assert self.testing
-    #     sampler = torch.utils.data.DistributedSampler(self.all_dataset, shuffle=False, drop_last=True)
-    #     return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
 
 
     # Predict dataloader
