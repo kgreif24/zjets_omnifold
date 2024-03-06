@@ -9,6 +9,7 @@ python3
 
 import argparse
 from cli.of_config import OfConfig
+from omnifold import Omnifolder
 
 if __name__ == '__main__':
 
@@ -19,5 +20,6 @@ if __name__ == '__main__':
     # Make the config object
     config = OfConfig(existing_parser=parser)
 
-    # Check that it works
-    print(config.mc_train_path)
+    # Run Omnifold!
+    of = Omnifolder(config)
+    of.run_of()

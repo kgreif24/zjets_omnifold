@@ -7,6 +7,7 @@ Author: Kevin Greif
 python3
 """
 
+from lightning.pytorch.utilities.types import EVAL_DATALOADERS
 import torch
 import lightning as L
 import torchmetrics
@@ -34,7 +35,13 @@ class LOfTransformer(L.LightningModule):
     """
 
     # Init function 
-    def __init__(self, input_dim=3, plot_staging='./plot_storage', debug=False, seed=420, **kwargs):
+    def __init__(self, 
+                 input_dim=3, 
+                 val_plots='./val_plot_storage', 
+                 test_plots='./test_plot_storage', 
+                 debug=False, 
+                 seed=420, 
+                 **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
         There is one required argument which gives the input dimension for the 
         transformer. This is the # of features per object (usually 3). 
@@ -43,7 +50,8 @@ class LOfTransformer(L.LightningModule):
 
         Arguments:
             input_dim {int} -- The input dimension of the model.
-            plot_staging {str} -- The path to the directory where plots will be stored for logging
+            val_plots {str} -- The path to the directory where validation plots will be stored for logging
+            test_plots {str} -- The path to the directory where testing plots will be stored for logging
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
             seed {int} -- The random seed to use for the train / val split. Only used for logging
             **kwargs {dict} -- A dictionary of keyword arguments to be passed
@@ -59,9 +67,11 @@ class LOfTransformer(L.LightningModule):
             self.model = OfTransformer(input_dim, **kwargs)
 
         # Performance metrics, note this also handles plotting and logging to wandb
-        self.auc = torchmetrics.classification.AUROC(task='binary')
+        self.val_auc = torchmetrics.classification.AUROC(task='binary')
+        self.test_auc = torchmetrics.classification.AUROC(task='binary')
         self.wasserstein_train = WassersteinOne()
-        self.wasserstein_val = WassersteinOne(draw_plots=True, save_location=plot_staging)
+        self.wasserstein_val = WassersteinOne(draw_plots=True, save_location=val_plots)
+        self.wasserstein_test = WassersteinOne(draw_plots=True, save_location=test_plots)
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=['plot_staging', 'debug'])
@@ -119,8 +129,8 @@ class LOfTransformer(L.LightningModule):
         self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
         # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
-        self.auc(output, target)
-        self.log('val_auc', self.auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+        self.val_auc(output, target)
+        self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Update wasserstein metric
         self.wasserstein_val.update(plotting, weights, output, target)
@@ -140,11 +150,45 @@ class LOfTransformer(L.LightningModule):
 
             # Log plots
             for key, histpath in plot_dict.items():
-                self.logger.experiment.log({key: wandb.Image(histpath)}, step=self.trainer.global_step)
+                log_name = 'val_' + key
+                self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
             
         # Reset metric
         self.wasserstein_val.reset()
 
+
+    # Test step
+    def test_step(self, batch, batch_idx):
+
+        # Forward pass
+        inputs, target, mask, weights, plotting = batch
+        output = self(inputs, mask)
+
+        # Calculate and log AUC
+        self.test_auc(output, target)
+        self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=True)
+
+        # Update wasserstein metric
+        self.wasserstein_test.update(plotting, weights, output, target)
+
+
+    # Test epoch end for logging plots and metrics to wandb
+    def on_test_epoch_end(self):
+
+        # Calculate wasserstein metric, and get dictionary of plots to log
+        test_wass, plot_dict = self.wasserstein_test.compute()
+
+        # Log wasserstein metric
+        self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=True)
+
+        # Log plots
+        for key, histpath in plot_dict.items():
+            log_name = 'test_' + key
+            self.logger.experiment.log({log_name: wandb.Image(histpath)})
+
+        # Reset metric
+        self.wasserstein_test.reset()
+        
 
     # Prediction step
     def predict_step(self, batch, batch_idx):
@@ -228,7 +272,6 @@ class LOfData(L.LightningDataModule):
         self.save_hyperparameters()
 
         # Load the data
-        print("Loading data...")
         f_mc = uproot.open(self.mc_file)
         tree_mc = f_mc['OmniTree']
         f_pd = uproot.open(self.data_file)
@@ -279,7 +322,6 @@ class LOfData(L.LightningDataModule):
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
-        print("All done with data loading!")
         print("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
         print("We have {} events in total".format(len(self.all_dataset)))
 
@@ -327,9 +369,21 @@ class LOfData(L.LightningDataModule):
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
 
 
+    # Test dataloader
+    def test_dataloader(self):
+        """ test_dataloader - This method returns a pytorch dataloader for running predictions. It always yeilds the full dataset.
+        Be sure to only use this when testing is set to true.
+
+        Returns:
+            torch.utils.data.DataLoader -- A pytorch dataloader.
+        """
+        assert self.testing
+        return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
+
+
     # Predict dataloader
     def predict_dataloader(self):
-        """ test_dataloader - This method returns a pytorch dataloader for running predictions. Yields either the validation or the 
+        """ predict_dataloader - This method returns a pytorch dataloader for running predictions. Yields either the validation or the 
         full data set depending on whether testing is set to true.
 
         Returns:

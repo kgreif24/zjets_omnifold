@@ -38,7 +38,8 @@ class OfTransformer(nn.Module):
                  num_cls_layers=2,
                  block_params=None,
                  cls_block_params={'dropout': 0, 'attn_dropout': 0, 'activation_dropout': 0},
-                 fc_params=[],
+                 fc_nodes=[],
+                 fc_dropout=0.0,
                  activation='gelu',
                  # misc
                  trim=True,
@@ -84,11 +85,11 @@ class OfTransformer(nn.Module):
         self.norm = nn.LayerNorm(embed_dim)
 
         # Fully connected layers
-        if fc_params is not None:
+        if fc_nodes is not None:
             fcs = []
             in_dim = embed_dim
-            for out_dim, drop_rate in fc_params:
-                fcs.append(nn.Sequential(nn.Linear(in_dim, out_dim), nn.GELU(), nn.Dropout(drop_rate)))
+            for out_dim in fc_nodes:
+                fcs.append(nn.Sequential(nn.Linear(in_dim, out_dim), nn.GELU(), nn.Dropout(fc_dropout)))
                 in_dim = out_dim
             fcs.append(nn.Linear(in_dim, num_classes))
             self.fc = nn.Sequential(*fcs)

@@ -23,6 +23,12 @@ class OfConfig:
         Returns: None
         """
 
+        # General
+        self.parser.add_argument('--debug', action='store_true', help='Run in debug mode (single device, muons only)')
+
+        # Omnifold
+        self.parser.add_argument('--num_iterations', type=int, default=6, help='Number of iterations to run the Omnifold algorithm')
+
         # Data
         self.parser.add_argument(
             '--mc_train_path', 
@@ -42,12 +48,45 @@ class OfConfig:
             default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Jan30_Combined_All.root',
             help='Path for the data'
         )
-        self.parser.add_argument('--muon_only', action='store_true', help='Use only muons in the data')
         self.parser.add_argument('--split_seed', type=int, default=420, help='Seed for the train / validation split')
+        self.parser.add_argument('--max_tracks', type=int, default=150, help='Maximum number of tracks to use in the data')
 
         # Training
-        self.parser.add_argument('--max_tracks', type=int, default=150, help='Maximum number of tracks to use in the data')
         self.parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training')
+        self.parser.add_argument('--max_epochs', type=int, default=70, help='Maximum number of epochs to train for')
+
+        self.parser.add_argument('--top_k_checkpoints', type=int, default=5, help='Number of top checkpoints to save')
+        self.parser.add_argument('--early_stopping_patience', type=int, default=8, help='Number of epochs to wait before stopping training')
+
+        self.parser.add_argument('--num_gpus', type=int, default=4, help='Number of GPUs to use for training')
+
+        # Logging
+        self.parser.add_argument('--project_name', type=str, default='test-of-project', help='Name of the wandb project')
+        self.parser.add_argument('--group_nane', type=str, default='test-of-run', help='Name of the wandb group for all training runs')
+        self.parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints', help='Directory in which save model checkpoints')
+
+        # Model
+        self.parser.add_argument('--input_dim', type=int, default=10, help='Input dimension for the model')
+        self.parser.add_argument('--pair_input_dim', type=int, default=4, help='Pair input dimension for the model')
+        self.parser.add_argument('--remove_self_pair', action='store_true', help='Remove self pair from the model')
+        self.parser.add_argument('--run_trimmer', action='store_true', help='Use the sequence trimmer in training the model')
+        self.parser.add_argument('--embed_dims', type=int, nargs='+', default=[128, 512, 128], help='Embedding dimensions for the model')
+        self.parser.add_argument('--pair_embed_dims', type=int, nargs='+', default=[64, 64, 64], help='Pair embedding dimensions for the model')
+        self.parser.add_argument('--num_heads', type=int, default=8, help='Number of heads for the model')
+
+        self.parser.add_argument('--num_layers', type=int, default=8, help='Number of layers for the model')
+        self.parser.add_argument('--block_dropout', type=float, default=0.0, help='Dropout rate to use in regular attention blocks')
+        self.parser.add_argument('--block_attn_dropout', type=float, default=0.0, help='Attention dropout rate to use in regular attention blocks')
+        self.parser.add_argument('--block_activation_dropout', type=float, default=0.0, help='Activation dropout rate to use in regular attention blocks')
+
+        self.parser.add_argument('--num_cls_layers', type=int, default=2, help='Number of classification layers for the model')
+        self.parser.add_argument('--cls_block_dropout', type=float, default=0.0, help='Dropout rate to use in classification attention blocks')
+        self.parser.add_argument('--cls_block_attn_dropout', type=float, default=0.0, help='Attention dropout rate to use in classification attention blocks')
+        self.parser.add_argument('--cls_block_activation_dropout', type=float, default=0.0, help='Activation dropout rate to use in classification attention blocks')
+
+        self.parser.add_argument('--fc_nodes', type=int, nargs='+', default=[256, 256], help='Fully connected nodes for the model')
+        self.parser.add_argument('--fc_dropout', type=float, default=0.0, help='Dropout rate to use in fully connected layers')
+
 
 
     def __init__(self, existing_parser=None, config_name=None):
@@ -138,7 +177,7 @@ class OfConfig:
         # Write the template to the file
         with open(template_path, 'w') as f:
             f.write("# This is a config file for the Omnifold algorithm\n" + \
-                    f"# It was created on {datetime.now()}\n\n\n")
+                    f"# It was created on {datetime.now()}\n\n")
 
             # Add all of the default arguments to the template, with the help as a comment
             # if we have it
@@ -147,7 +186,7 @@ class OfConfig:
                     continue
                 comment = self.parser._option_string_actions["--"+arg].help
                 if comment is not None:
-                    f.write(f"# {comment}\n")
+                    f.write(f"\n# {comment}\n")
                 f.write(f"{arg}: {getattr(self.args, arg)}\n")
 
         print("Created template file at: ", template_path)
