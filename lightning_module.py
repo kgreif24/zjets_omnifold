@@ -7,9 +7,9 @@ Author: Kevin Greif
 python3
 """
 
-from lightning.pytorch.utilities.types import EVAL_DATALOADERS
 import torch
 import lightning as L
+from pytorch_lightning.utilities.rank_zero import *
 import torchmetrics
 import wandb
 
@@ -58,6 +58,10 @@ class LOfTransformer(L.LightningModule):
                 to the OfTransformer init function.
         """
 
+        # Debug flag and seed value
+        self.debug = debug
+        self.seed = seed
+
         # Initialize model and loss
         super().__init__()
         self.criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
@@ -70,15 +74,11 @@ class LOfTransformer(L.LightningModule):
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
         self.wasserstein_train = WassersteinOne()
-        self.wasserstein_val = WassersteinOne(draw_plots=True, save_location=val_plots)
-        self.wasserstein_test = WassersteinOne(draw_plots=True, save_location=test_plots)
+        self.wasserstein_val = WassersteinOne(draw_plots=not self.debug, save_location=val_plots)
+        self.wasserstein_test = WassersteinOne(draw_plots=not self.debug, save_location=test_plots)
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=['plot_staging', 'debug'])
-
-        # Debug flag and seed value
-        self.debug = debug
-        self.seed = seed
 
 
     # Forward pass
@@ -109,8 +109,8 @@ class LOfTransformer(L.LightningModule):
     def on_train_epoch_end(self):
             
         # Log wasserstein metric
-        train_wass = self.wasserstein_train.compute()
-        self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=True, sync_dist=True)
+        train_wass, _ = self.wasserstein_train.compute()
+        self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
 
         # Reset wasserstein metric
         self.wasserstein_train.reset()
@@ -146,12 +146,13 @@ class LOfTransformer(L.LightningModule):
             val_wass, plot_dict = self.wasserstein_val.compute()
 
             # Log wasserstein metric
-            self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
 
-            # Log plots
-            for key, histpath in plot_dict.items():
-                log_name = 'val_' + key
-                self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
+            # Log plots if this is the rank zero process only!
+            if self.trainer.is_global_zero and not self.debug:
+                for key, histpath in plot_dict.items():
+                    log_name = 'val_' + key
+                    self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
             
         # Reset metric
         self.wasserstein_val.reset()
@@ -166,7 +167,7 @@ class LOfTransformer(L.LightningModule):
 
         # Calculate and log AUC
         self.test_auc(output, target)
-        self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=True)
+        self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
 
         # Update wasserstein metric
         self.wasserstein_test.update(plotting, weights, output, target)
@@ -179,12 +180,13 @@ class LOfTransformer(L.LightningModule):
         test_wass, plot_dict = self.wasserstein_test.compute()
 
         # Log wasserstein metric
-        self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=True)
+        self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)
 
-        # Log plots
-        for key, histpath in plot_dict.items():
-            log_name = 'test_' + key
-            self.logger.experiment.log({log_name: wandb.Image(histpath)})
+        # Log plots if this is the rank zero process only!
+        if self.trainer.is_global_zero and not self.debug:
+            for key, histpath in plot_dict.items():
+                log_name = 'test_' + key
+                self.logger.experiment.log({log_name: wandb.Image(histpath)})
 
         # Reset metric
         self.wasserstein_test.reset()
@@ -268,9 +270,6 @@ class LOfData(L.LightningDataModule):
         self.split_seed = split_seed
         self.testing = testing
 
-        # Logging
-        self.save_hyperparameters()
-
         # Load the data
         f_mc = uproot.open(self.mc_file)
         tree_mc = f_mc['OmniTree']
@@ -279,9 +278,9 @@ class LOfData(L.LightningDataModule):
 
         # Pass 190 flags
         pass190_mc = ak.to_numpy(tree_mc['pass190'].array())
-        print("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
         pass190_pd = ak.to_numpy(tree_pd['pass190'].array())
-        print("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
+        rank_zero_info("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
+        rank_zero_info("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
 
         # Load kinematics
         mc_kinematics, mc_mask = get_kinematics(tree_mc, filter=pass190_mc, max_tracks=self.max_tracks, muon_only=muon_only, one_hot=True, **kwargs)
@@ -322,8 +321,8 @@ class LOfData(L.LightningDataModule):
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
-        print("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
-        print("We have {} events in total".format(len(self.all_dataset)))
+        rank_zero_info("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
+        rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 
     # Setup function

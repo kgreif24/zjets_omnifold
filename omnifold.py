@@ -6,66 +6,52 @@ Last updated 03/06/2024
 python3
 """
 
+import os, sys
+import multiprocessing as mp
+import numpy as np
+
+import torch
 import lightning as L
 from lightning_module import *
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 
-import numpy as np
-import os
-
+from cli.of_config import OfConfig
+import lightning_train as train
+# import lightning_eval as eval
 import plotting_utils as pu
 
 
 class Omnifolder():
-    """ Omnifolder - At the moment I have no idea what I am doing...
+    """ Omnifolder - This class implements the omnifold algorithm.
+    It is responsible for running the omnifold procedure, calculating weights,
+    plotting results, etc.
+
+    It is not responsible for running the training or inference of Omnifold
+    classifiers. This is handled in processes spawned by this class.
     """
 
-    def __init__(self, config):
+    def __init__(self, config_path):
         """ __init__ - This function initializes the omnifolder object.
 
         Arguments:
-        config - An of_config object which contains all the hyperparameters for the omnifold algorithm.
+        config_path - Path to the config file for the omnifold algorithm
 
         Returns:
         None
         """
 
-        print("###################################################")
+        # Print welcome message if rank zero
+        print("\n\n###################################################")
         print("############## Welcome to Omnifold!! ##############")
-        print("###################################################")
+        print("###################################################\n\n")
 
-        # Set config object as an instance variable
-        self.cfg = config
+        # Set config path and config object as instance variables
+        self.config_path = config_path
+        self.cfg = OfConfig(config_name=config_path)
 
         # Set some instance variables for tracking progress through the procedure
         self.current_interation = 0
-
-        # Build lightning data modules. Only want one worker so long as all of the data fits in memory
-        print("Build train / val data modules...")
-        self.d_module_train = LOfData(
-            mc_file=self.cfg.mc_train_path,
-            data_file=self.cfg.data_path,
-            muon_only=self.cfg.debug,
-            batch_size=self.cfg.batch_size,
-            dataloader_workers=1,
-            split_seed=self.cfg.split_seed,
-            testing=False,
-            max_tracks=self.cfg.max_tracks
-        )
-        self.d_module_train.setup(stage='train')
-
-        print("Build test data module...")
-        self.d_module_test = LOfData(
-            mc_file=self.cfg.mc_test_path,
-            data_file=self.cfg.data_path,
-            muon_only=self.cfg.debug,
-            batch_size=self.cfg.batch_size,
-            dataloader_workers=1,
-            split_seed=self.cfg.split_seed,
-            testing=True,
-            max_tracks=self.cfg.max_tracks
-        )
 
         # Lists for keeping track of the weights derived throughout
         self.push_weights_train_hist = []
@@ -75,23 +61,11 @@ class Omnifolder():
         self.pull_weights_val_hist = []
         self.pull_weights_test_hist = []
 
-        # Get starting weights from data modules
-        start_weights_train = self.d_module_train.train_dataset[:][3].cpu().numpy().flatten()
-        start_weights_val = self.d_module_train.val_dataset[:][3].cpu().numpy().flatten()
-        start_weights_test = self.d_module_test.all_dataset[:][3].cpu().numpy().flatten()
-
-        # Set current push weights to start weights for init
-        self.push_weights_train = start_weights_train
-        self.push_weights_val = start_weights_val
-        self.push_weights_test = start_weights_test
-
-        # Set current pull weights to one (will be updated)
-        self.pull_weights_train = np.ones_like(start_weights_train)
-        self.pull_weights_val = np.ones_like(start_weights_val)
-        self.pull_weights_test = np.ones_like(start_weights_test)
-
         # Login to wandb
         wandb.login()
+
+        # Set mp start method to spawn
+        mp.set_start_method('spawn')
 
 
     def run_of(self):
@@ -100,7 +74,7 @@ class Omnifolder():
         Returns: None
         """
 
-        print("############## Running Omnifold ##############")
+        print("\n############## Running Omnifold ##############\n")
 
         for i in range(self.cfg.num_iterations):
             self.current_interation = i
@@ -115,115 +89,76 @@ class Omnifolder():
         Arguments: None
         Returns: None
         """
+        print("Running step one!")
 
-        print("Running step one")
+        # Initialize manager for getting run_id from training process
+        with mp.Manager() as manager:
+
+            # Add dictionary to manager
+            return_dict = manager.dict()
+
+            # Run training as a subprocess
+            p = mp.Process(target=train.run_train, args=(self.config_path, self.current_interation, 1, return_dict))
+            p.start()
+            p.join()
+
+            # Get run_id from training process
+            run_id = return_dict['run_id']
+
+            # Get best model checkpoint path
+            best_model_path = return_dict['best_model_path']
+
+        print("Done with step one, run_id is:", run_id)
+        print("Best model path is:", best_model_path)
+
+        sys.exit()
+
+        # Run evaluation as a subprocess, no need for any return information
 
         # Setup amd run training
         name = f'iteration_{self.current_interation}_step1'
         lightning_module, trainer = self.setup_training(name)
         trainer.fit(lightning_module, self.d_module_train)
 
-        # Recover best checkpoint
-        lightning_module = LOfTransformer.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, debug=self.cfg.debug)
+        # At thisp point only want to use the rank zero process to run testing
+        torch.distributed.destroy_process_group()
+        print(f"I am a rank {trainer.local_rank} process")
+        if trainer.is_global_zero:
 
-        # Run testing
-        trainer.test(lightning_module, self.d_module_test)
+            # Recover best checkpoint
+            lightning_module = LOfTransformer.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, debug=self.cfg.debug)
 
-        # Derive weights
-        derived_weights_train, derived_weights_val, derived_weights_test = self.calc_all_weights(lightning_module, trainer)
+            # Produce a new trainer for testing and predictions
+            test_trainer = L.Trainer(
+                accelerator='gpu',
+                devices=1,
+                logger=False,
+                enable_progress_bar=self.cfg.debug
+            )
 
-        # Update pull weights
-        self.pull_weights_train = self.push_weights_train * derived_weights_train
-        self.pull_weights_val = self.push_weights_val * derived_weights_val
-        self.pull_weights_test = self.push_weights_test * derived_weights_test
-    
-        # Append weights to histories
-        self.pull_weights_train_hist.append(self.pull_weights_train)
-        self.pull_weights_val_hist.append(self.pull_weights_val)
-        self.pull_weights_test_hist.append(self.pull_weights_test)
+            # Run testing
+            test_trainer.test(lightning_module, self.d_module_test)
+
+            # # Derive weights
+            # derived_weights_train, derived_weights_val, derived_weights_test = self.calc_all_weights(lightning_module, test_trainer)
+
+            # # Update pull weights
+            # self.pull_weights_train = self.push_weights_train * derived_weights_train
+            # self.pull_weights_val = self.push_weights_val * derived_weights_val
+            # self.pull_weights_test = self.push_weights_test * derived_weights_test
+
+            # # Append weights to histories
+            # self.pull_weights_train_hist.append(self.pull_weights_train)
+            # self.pull_weights_val_hist.append(self.pull_weights_val)
+            # self.pull_weights_test_hist.append(self.pull_weights_test)
+
+        # If these are not the rank zero process, kill them!
+        else:
+            sys.exit(0)
 
         # Finish wandb
         wandb.finish()
 
-
-    def setup_training(self, name):
-        """ setup_training - This function sets up a single network training. It initializes
-        a wandb logger, training callbacks, trainer object, and lightning module object.
-
-        Arguments:
-        name {string} - The name of this training run for logging to wandb
-        Returns:
-        l_module - A lightning module object
-        trainer - A lightning trainer object
-        """
-
-        # Initialise the wandb logger and callbacks
-        wandb_logger = WandbLogger(project=self.cfg.project_name, group=self.cfg.group_name, name=name, save_dir=self.cfg.checkpoint_dir)
-
-        lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
-        checkpoints = L.pytorch.callbacks.ModelCheckpoint(
-            monitor='val_loss',
-            filename='{epoch}-{val_loss:.4f}',
-            save_top_k=self.cfg.top_k_checkpoints,
-            mode='min'
-        )
-        early_stopping = L.pytorch.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=self.cfg.early_stopping_patience,
-            mode='min'
-        )
-
-        # Setup directory structure for storing plots
-        self.val_plot_store_location = f"{self.cfg.checkpoint_dir}/{self.cfg.project_name}/{wandb_logger.experiment._run_obj.run_id}/val_plots"
-        self.test_plot_store_location = f"{self.cfg.checkpoint_dir}/{self.cfg.project_name}/{wandb_logger.experiment._run_obj.run_id}/test_plots"
-        os.makedirs(self.val_plot_store_location)
-        os.makedirs(self.test_plot_store_location)
-
-        # Build trainer
-        trainer = L.Trainer(
-            accelerator='gpu',
-            devices=self.cfg.num_gpus,
-            logger=wandb_logger,
-            callbacks=[lr_monitor, checkpoints, early_stopping],
-            max_epochs=self.cfg.max_epochs,
-            enable_progress_bar=self.cfg.debug
-        )
-
-        # Build lightning module
-        block_params = {
-            'dropout': self.cfg.block_dropout, 
-            'attn_dropout': self.cfg.block_attn_dropout, 
-            'activation_dropout': self.cfg.block_activation_dropout,
-        }
-        cls_block_params = {
-            'dropout': self.cfg.cls_block_dropout, 
-            'attn_dropout': self.cfg.cls_block_attn_dropout, 
-            'activation_dropout': self.cfg.cls_block_activation_dropout,
-        }
-
-        l_module = LOfTransformer(
-            input_dim=self.cfg.input_dim,
-            val_plots=self.val_plot_store_location, 
-            test_plots=self.test_plot_store_location,
-            debug=self.cfg.debug,
-            seed=self.cfg.split_seed,
-            num_classes=1,
-            trim=self.cfg.run_trimmer,
-            remove_self_pair=self.cfg.remove_self_pair,
-            pair_input_dim=self.cfg.pair_input_dim,
-            pair_extra_dim=0,
-            embed_dims=self.cfg.embed_dims,
-            pair_embed_dims=self.cfg.pair_embed_dims,
-            num_heads=self.cfg.num_heads,
-            num_layers=self.cfg.num_layers,
-            num_cls_layers=self.cfg.num_cls_layers,
-            block_params=block_params,
-            cls_block_params=cls_block_params,
-            fc_nodes=self.cfg.fc_nodes,
-            fc_dropout=self.cfg.fc_dropout
-        )
-
-        return l_module, trainer
 
     def calc_all_weights(self, module, trainer):
         """ calc_all_weights - This function runs prediction over the given lightning module for all of the 
@@ -240,6 +175,9 @@ class Omnifolder():
         predictions_train = trainer.predict(module, self.d_module_train.train_dataloader())
         predictions_val = trainer.predict(module, self.d_module_train.val_dataloader())
         predictions_test = trainer.predict(module, self.d_module_test)
+
+        # Garther predictions from all processes
+
 
         # Send predictions to CPU, convert to numpy, and concatenate
         predictions_train = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_train])

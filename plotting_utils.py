@@ -9,6 +9,8 @@ python3
 import matplotlib.pyplot as plt 
 import matplotlib.gridspec as gs
 
+from pytorch_lightning.utilities.rank_zero import *
+
 import numpy as np
 import sys
 
@@ -211,6 +213,8 @@ default_settings = event_hists + special_hists
 
 ###############################################################################################
 
+# Decorator to ensure that only rank zero process runs the function
+@rank_zero_only
 def make_logged_plots(plot_data, labels, start_weights, outputs, definitions=default_settings, save_location='./plot_storage', display=False):
     """ make_logged_plots - This function will be called by the pytorch lightning module
     at the end of every validation epoch. It will generate histograms showing the quality of the 
@@ -315,7 +319,8 @@ def make_logged_plots(plot_data, labels, start_weights, outputs, definitions=def
     
     return return_dict
 
-
+# Decorator to ensure that only rank zero process runs the function
+@rank_zero_only
 def make_inclusive_track_plots(track_data, labels, start_weights, outputs, definitions=track_hists, save_location='./plot_storage', display=False):
     """ make_inclusive_track_plots - This function will make plots of the inclusive track kinematics.
     It will calculate the reweighting given a set of network inputs. Importantly the weights will be extended

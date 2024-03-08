@@ -15,6 +15,7 @@ python3
 import torchmetrics
 import numpy as np
 import scipy
+from pytorch_lightning.utilities.rank_zero import *
 
 import plotting_utils as pu
 
@@ -56,6 +57,11 @@ class WassersteinOne(torchmetrics.Metric):
     def compute(self):
         """ compute - Actually compute the sum of the wasserstein distances
         over the dimensions used in plotting.
+
+        No arguments
+        Returns: the sum of the wasserstein distances, and a dictionary of plots
+        with form {plot_name: stored location of .png file}. If draw_plots is False,
+        then this dictionary is empty.
         """
 
         # Concatenate list states
@@ -76,6 +82,7 @@ class WassersteinOne(torchmetrics.Metric):
         mc_weight = derived_weights[target == 0]
 
         # If we want to draw plots, do so here
+        plot_dict = {}
         if self.draw_plots:
             plot_dict = pu.make_logged_plots(
                 plotting, target, start_weights, preds, save_location=self.save_location
@@ -100,8 +107,5 @@ class WassersteinOne(torchmetrics.Metric):
             # Append to results list
             results[i] = this_wass
 
-        # Return the sum over all plotting dimensions, and the plot dictionary if we made plots
-        if self.draw_plots:
-            return np.sum(results), plot_dict
-        else:
-            return np.sum(results)
+        # Return the sum over all plotting dimensions, and the plot dictionary
+        return np.sum(results), plot_dict

@@ -10,7 +10,7 @@ import argparse
 import yaml 
 import sys
 from datetime import datetime
-from collections import OrderedDict
+from pytorch_lightning.utilities.rank_zero import *
 
 
 class OfConfig:
@@ -22,6 +22,10 @@ class OfConfig:
         Arguments: None
         Returns: None
         """
+
+        # Dummy argument to prevent error on parsing the command line arg "config_path"
+        ## This is a hack, but I don't want to carry the argparser from the top level "run_omnifold.py" to the "OfConfig" class
+        self.parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
 
         # General
         self.parser.add_argument('--debug', action='store_true', help='Run in debug mode (single device, muons only)')
@@ -62,7 +66,7 @@ class OfConfig:
 
         # Logging
         self.parser.add_argument('--project_name', type=str, default='test-of-project', help='Name of the wandb project')
-        self.parser.add_argument('--group_nane', type=str, default='test-of-run', help='Name of the wandb group for all training runs')
+        self.parser.add_argument('--group_name', type=str, default='test-of-run', help='Name of the wandb group for all training runs')
         self.parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints', help='Directory in which save model checkpoints')
 
         # Model
@@ -116,11 +120,11 @@ class OfConfig:
 
         # If a configuration file is provided, load it
         if config_name is not None:
-            print("Loading configuration from file: ", config_name)
+            rank_zero_info(f"Loading configuration from file: {config_name}")
             with open(config_name, 'r') as f:
                 self.config = yaml.safe_load(f)
         else:
-            print("No config given, using defaults and command line arguments")
+            rank_zero_info("No config given, using defaults and command line arguments")
             self.config = None
 
 

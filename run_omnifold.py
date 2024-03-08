@@ -8,18 +8,21 @@ python3
 """
 
 import argparse
+import numpy as np
 from cli.of_config import OfConfig
 from omnifold import Omnifolder
 
 if __name__ == '__main__':
 
+    # Disable numpy errors
+    np.seterr(all='ignore')
+
     # Parse command line arguments, looking for passed in config file
     parser = argparse.ArgumentParser(description='Run the omnifold algorithm')
-    parser.add_argument('--config', type=str, default=None, help='Path to the configuration file')
-
-    # Make the config object
-    config = OfConfig(existing_parser=parser)
+    parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
+    args = parser.parse_args()
+    print(args.config_path)
 
     # Run Omnifold!
-    of = Omnifolder(config)
+    of = Omnifolder(args.config_path)
     of.run_of()
