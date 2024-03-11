@@ -65,6 +65,7 @@ class OfConfig:
         self.parser.add_argument('--num_gpus', type=int, default=4, help='Number of GPUs to use for training')
 
         # Logging
+        self.parser.add_argument('--wandb', action='store_true', help='Use wandb for logging')
         self.parser.add_argument('--project_name', type=str, default='test-of-project', help='Name of the wandb project')
         self.parser.add_argument('--group_name', type=str, default='test-of-run', help='Name of the wandb group for all training runs')
         self.parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints', help='Directory in which save model checkpoints')

@@ -8,7 +8,7 @@ Last updated 03/08/2024
 python3
 """
 
-import sys
+import os
 
 import lightning as L
 import wandb
@@ -43,10 +43,27 @@ class OfTrain:
         self.iteration = iteration
         self.step = step
 
+        # Get weights for use in training. Define (but do not make!) the weight directory
+        weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/weights"
+
+        # Find the weight file to use for this iteration and step
+        # If this is iteration zero step one, use the weights from the root files
+        if iteration == 0 and step == 1:
+            weight_file = None
+        # If this is step one but iteration > 0, use the weights from the previous step two
+        elif iteration > 0 and step == 1:
+            weight_file = f"{weight_dir}/iteration_{iteration-1}_step_2.npz"
+        # If this is step two, use the weights from step one
+        elif step == 2:
+            weight_file = f"{weight_dir}/iteration_{iteration}_step_1.npz"
+        else:
+            raise ValueError("Invalid iteration and step combination")
+
         # Build data module, since eval is handled by a separate class only need one module
         self.d_module = LOfData(
             mc_file=self.config.mc_train_path,
             data_file=self.config.data_path,
+            weight_path=weight_file,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.config.split_seed,
@@ -55,17 +72,29 @@ class OfTrain:
         )
 
         # Initialise the wandb logger
-        run_name = f"iteration_{self.iteration}_step_{self.step}"
-        self.wandb_logger = WandbLogger(
-            project=self.config.project_name, 
-            group=self.config.group_name,
-            name=run_name, 
-            save_dir=self.config.checkpoint_dir,
-            resume=True
-        )
+        if self.config.wandb:
 
-        # Get run ID
-        self.run_id = self.wandb_logger.experiment.id
+            run_name = f"iteration_{self.iteration}_step_{self.step}"
+            self.wandb_logger = WandbLogger(
+                project=self.config.project_name, 
+                group=self.config.group_name,
+                name=run_name, 
+                save_dir=self.config.checkpoint_dir,
+                resume=True
+            )
+
+            # Get run ID
+            self.run_id = self.wandb_logger.experiment.id
+
+        # Else we use no logger
+        else:
+            self.wandb_logger = None
+            # Set a dummy run ID
+            self.run_id = "test_run"
+
+        # Make directories for saving validation plots
+        val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
+        os.makedirs(val_dir)
 
         # Initialise the callbacks
         self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
@@ -83,11 +112,12 @@ class OfTrain:
 
         # Build trainer
         self.trainer = L.Trainer(
-            accelerator='gpu',
+            accelerator='cpu',
             devices=self.config.num_gpus,
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
+            fast_dev_run=100,
             log_every_n_steps=50,
             enable_progress_bar=self.config.debug
         )
@@ -106,6 +136,7 @@ class OfTrain:
 
         self.l_module = LOfTransformer(
             input_dim=self.config.input_dim,
+            val_plots=val_dir,
             debug=self.config.debug,
             num_classes=1,
             trim=self.config.run_trimmer,
@@ -138,7 +169,8 @@ class OfTrain:
         self.trainer.fit(self.l_module, self.d_module)
 
         # Close W&B
-        wandb.finish()
+        if self.config.wandb:
+            wandb.finish()
 
         # Return the run id and best checkpoint path
         return self.run_id, self.checkpoints.best_model_path

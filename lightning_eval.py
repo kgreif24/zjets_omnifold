@@ -1,96 +1,175 @@
-""" lightning_eval.py - This program will evaluate a model checkpoint
-over a slice of the OF data that depends on the random seed passed to the lightning
-data module. It will save a numpy array of the model outputs at a specified location.
+""" lightning_eval.py - This program defines the OfEval class, which is responsible for
+running evaluation and prediciton for Omnifold classifiers. It produces the weights
+derived from each training, which are written to disk.
 
-Usage:
-python lightning_eval.py --model ./path/to/checkpoint --save ./path/to/save --seed <seed>
+Meant to be run as a subprocesss from the Omnifolder class.
 
 Author: Kevin Greif
-Last updated 02/02/2024
+Last updated 03/08/2024
 python3
 """
 
 import os
-import lightning as L
-from lightning_module import *
 import numpy as np
-import argparse
-from sklearn.metrics import roc_auc_score
+import lightning as L
+from pytorch_lightning.loggers import WandbLogger
 
+from lightning_module import *
 import plotting_utils as pu
+from cli.of_config import OfConfig
 
-# Parse the command line arguments
-parser = argparse.ArgumentParser(description='Evaluate a model checkpoint over a slice of the OF data')
-predict_or_plot = parser.add_mutually_exclusive_group(required=True)
-predict_or_plot.add_argument('--predictions', type=str, help='Path to the model predictions (if already made)')
-predict_or_plot.add_argument('--model', type=str, help='Path to the model checkpoint')
-parser.add_argument('--save', type=str, help='Path to save the model outputs')
-parser.add_argument('--seed', type=int, default=420, help='Random seed for the data module, only needed if using validation set')
-parser.add_argument('--validate', action='store_true', help='Use the validation set instead of the test set')
-args = parser.parse_args()
 
-# Make data module
-d_module = LOfData(
-    mc_file='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test.root',
-    data_file='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Jan30_Combined_All.root',
-    muon_only=False,
-    batch_size=256,
-    dataloader_workers=1,
-    split_seed=args.seed,
-    testing=not args.validate
-)
+class OfEval:
+    """ OfEval - This class handles the evaluation and prediction for an
+    Omnifold classifier. It is run by the driver function below, which
+    is meant to be called as a subprocess from the Omnifolder class.
+    """
 
-# Load model checkpoint and run prediction
-if args.model:
-    model = LOfTransformer.load_from_checkpoint(args.model)
+    def __init__(self, check_path, run_id, config_path, iteration, step):
+        """ __init__ - The init function for this class. It takes the OfConfig object
+        used for this run of Omnifold, plus the iteration and step of this evaluation.
 
-    # Make lightning trainer
-    trainer = L.Trainer(accelerator='gpu', devices=1)
+        Arguments:
+        check_path - The path to the checkpoint to evaluate
+        run_id - The ID of the run for evaluation
+        config_path - The path of the of config file
+        iteration - The iteration number for this training
+        step - The step number for this training
 
-    # Run predictions
-    predictions = trainer.predict(model, d_module)
+        Returns:
+        None
+        """
 
-    # Save predictions
-    predictions = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions])
-    print("Stored {} predictioons".format(len(predictions)))
-    np.save(args.save, predictions)
+        # Store the configuration
+        self.config = OfConfig(config_name=config_path)
+        self.run_id = run_id
+        self.iteration = iteration
+        self.step = step
 
-    # Reset save path to the directory so we save plots in the same place
-    args.save = os.path.dirname(args.save)
+        # Make test plot and weight directories
+        self.test_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/test_plots'
+        os.makedirs(self.test_dir, exist_ok=True)
+        self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/weights'
+        os.makedirs(self.weight_dir, exist_ok=True)
 
-# Else load predictions from file
-else:
-    predictions = np.load(args.predictions)
+        # Find the weight file to use for this iteration and step
+        # If this is iteration zero step one, use the weights from the root files
+        if iteration == 0 and step == 1:
+            weight_file = None
+        # If this is step one but iteration > 0, use the weights from the previous step two
+        elif iteration > 0 and step == 1:
+            weight_file = f"{self.weight_dir}/iteration_{iteration-1}_step_2.npz"
+        # If this is step two, use the weights from step one
+        elif step == 2:
+            weight_file = f"{self.weight_dir}/iteration_{iteration}_step_1.npz"
+        else:
+            raise ValueError("Invalid iteration and step combination")
 
-# Pull plotting info from data module
-track_info = d_module.all_dataset[:][0][:,0:3,2:].cpu().numpy()
-plotting = d_module.all_dataset[:][4].cpu().numpy()
-labels = d_module.all_dataset[:][1].cpu().numpy().flatten()
-start_weights = d_module.all_dataset[:][3].cpu().numpy().flatten()
+        # Build a data module. We want to run predictions on every training event
+        # we have, so need to define two data modules, one for the training / val
+        # set and one for the test set.
+        self.d_module_train = LOfData(
+            mc_file=self.config.mc_train_path,
+            data_file=self.config.data_path,
+            weight_path=weight_file,
+            muon_only=self.config.debug,
+            batch_size=self.config.batch_size,
+            split_seed=self.config.split_seed,
+            testing=False,
+            max_tracks=self.config.max_tracks
+        )
+        self.d_module_test = LOfData(
+            mc_file=self.config.mc_test_path,
+            data_file=self.config.data_path,
+            weight_path=weight_file,
+            muon_only=self.config.debug,
+            batch_size=self.config.batch_size,
+            split_seed=self.config.split_seed,
+            testing=True,
+            max_tracks=self.config.max_tracks
+        )
 
-# Run plotting
-pu.make_logged_plots(
-    plotting,
-    labels,
-    start_weights,
-    predictions,
-    save_location=args.save,
-    display=False
-)
+        # Initialise the wandb logger
+        if self.config.wandb:
 
-# Run inclusive plots
-pu.make_inclusive_track_plots(
-    track_info,
-    labels,
-    start_weights,
-    predictions,
-    save_location=args.save,
-    display=False
-)
+            run_name = f"iteration_{self.iteration}_step_{self.step}"
+            self.wandb_logger = WandbLogger(
+                project=self.config.project_name, 
+                group=self.config.group_name,
+                name=run_name,
+                save_dir=self.config.checkpoint_dir,
+                id=self.run_id,
+                resume="must"
+            )
 
-# Calculate probabilities
-probabilities = 1 / (1 + np.exp(-predictions))
+            # Get run ID
+            self.run_id = self.wandb_logger.experiment.id
 
-# Calculate AUC
-auc = roc_auc_score(labels, probabilities)
-print("AUC: {}".format(auc))
+        # Load model checkpoint
+        self.model = LOfTransformer.load_from_checkpoint(check_path, test_plots=self.test_dir)
+
+        # Make lightning trainer for testing
+        self.trainer = L.Trainer(
+            accelerator='cpu', 
+            devices=1,
+            fast_dev_run=100,
+            enable_progress_bar=self.config.debug
+        )
+
+    
+    def run_testing(self):
+        """ run_testing - Run testing over the test data module.
+        The point here is to get performance metrics (AUC and test loss)
+
+        No arguments or returns
+        """
+
+        self.trainer.test(self.model, self.d_module_test)
+
+
+    def run_prediction(self):
+        """ run_prediction - Run predictions over every data point.
+        Then we calculate the derived weights, and write weights to a
+        .npz file.
+
+        No arguments or returns
+        """
+
+        # Run predictions
+        predictions_train = self.trainer.predict(self.model, self.d_module_train)
+        predictions_test = self.trainer.predict(self.model, self.d_module_test)
+
+        # Send predictions to CPU, convert to numpy, and concatenate
+        predictions_train = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_train])
+        predictions_test = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_test])
+
+        # Calculate derived weights
+        probs_train = 1 / (1 + np.exp(-predictions_train))
+        probs_test = 1 / (1 + np.exp(-predictions_test))
+        derived_weights_train = probs_train / (1 - probs_train)
+        derived_weights_test = probs_test / (1 - probs_test)
+
+        # Get starting weights from the data modules
+        start_weights_train = self.d_module_train.get_mc_weights()
+        start_weights_test = self.d_module_test.get_mc_weights()
+
+        # Update weights
+        new_weights_train = start_weights_train * derived_weights_train
+        new_weights_test = start_weights_test * derived_weights_test
+
+        # Save new weights for future use
+        np.savez(
+            f"{self.weight_dir}/iteration_{self.iteration}_step_{self.step}.npz",
+            train=new_weights_train,
+            test=new_weights_test
+        )
+
+
+    def run(self):
+        """ run - This function runs the evaluation routine for an omnifold classifier
+
+        No Arguments or Returns
+        """
+
+        self.run_testing()
+        self.run_predictions()

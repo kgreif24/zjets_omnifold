@@ -9,7 +9,6 @@ python3
 
 import torch
 import lightning as L
-from pytorch_lightning.utilities.rank_zero import *
 import torchmetrics
 import wandb
 
@@ -73,9 +72,10 @@ class LOfTransformer(L.LightningModule):
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
-        self.wasserstein_train = WassersteinOne()
-        self.wasserstein_val = WassersteinOne(draw_plots=not self.debug, save_location=val_plots)
-        self.wasserstein_test = WassersteinOne(draw_plots=not self.debug, save_location=test_plots)
+        if not self.debug:
+            self.wasserstein_train = WassersteinOne(draw_plots=not self.debug)
+            self.wasserstein_val = WassersteinOne(draw_plots=not self.debug, save_location=val_plots)
+            self.wasserstein_test = WassersteinOne(draw_plots=not self.debug, save_location=test_plots)
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=['plot_staging', 'debug'])
@@ -101,7 +101,8 @@ class LOfTransformer(L.LightningModule):
 
         # Logging metrics
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)
-        self.wasserstein_train.update(plotting, weights, output, target)
+        if not self.debug:
+            self.wasserstein_train.update(plotting, weights, output, target)
 
         return loss
     
@@ -109,11 +110,12 @@ class LOfTransformer(L.LightningModule):
     def on_train_epoch_end(self):
             
         # Log wasserstein metric
-        train_wass, _ = self.wasserstein_train.compute()
-        self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
+        if not self.debug:
+            train_wass, _ = self.wasserstein_train.compute()
+            self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
 
-        # Reset wasserstein metric
-        self.wasserstein_train.reset()
+            # Reset wasserstein metric
+            self.wasserstein_train.reset()
 
 
     # Validation step
@@ -133,11 +135,16 @@ class LOfTransformer(L.LightningModule):
         self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Update wasserstein metric
-        self.wasserstein_val.update(plotting, weights, output, target)
+        if not self.debug:
+            self.wasserstein_val.update(plotting, weights, output, target)
 
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
+
+        # Just return if in debug mode
+        if self.debug:
+            return
 
         # Don't do anything but reset metric on validation sanity check
         if not self.trainer.sanity_checking:
@@ -170,11 +177,16 @@ class LOfTransformer(L.LightningModule):
         self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
 
         # Update wasserstein metric
-        self.wasserstein_test.update(plotting, weights, output, target)
+        if not self.debug:
+            self.wasserstein_test.update(plotting, weights, output, target)
 
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
+
+        # Just return if in debug mode
+        if self.debug:
+            return
 
         # Calculate wasserstein metric, and get dictionary of plots to log
         test_wass, plot_dict = self.wasserstein_test.compute()
@@ -236,6 +248,7 @@ class LOfData(L.LightningDataModule):
         mc_file=None,
         data_file=None,
         max_tracks=None,
+        weight_path=None,
         muon_only=False,
         batch_size=256,
         dataloader_workers=0,
@@ -251,6 +264,8 @@ class LOfData(L.LightningDataModule):
             data_file {str} -- The path to the data file.
             max_tracks {int} -- The maximum number of tracks to consider.
                 Defaults to None, which means all tracks are considered.
+            weight_path {string} -- Path to the weights .npy file to use. Defaults to None,
+                in which case the weights in the root file are used.
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
@@ -265,6 +280,7 @@ class LOfData(L.LightningDataModule):
         self.mc_file = mc_file
         self.data_file = data_file
         self.max_tracks = max_tracks
+        self.weight_path = weight_path
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
         self.split_seed = split_seed
@@ -279,21 +295,32 @@ class LOfData(L.LightningDataModule):
         # Pass 190 flags
         pass190_mc = ak.to_numpy(tree_mc['pass190'].array())
         pass190_pd = ak.to_numpy(tree_pd['pass190'].array())
-        rank_zero_info("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
-        rank_zero_info("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
+        print("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
+        print("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
 
         # Load kinematics
         mc_kinematics, mc_mask = get_kinematics(tree_mc, filter=pass190_mc, max_tracks=self.max_tracks, muon_only=muon_only, one_hot=True, **kwargs)
         # pseudo data kinematics will take the maximum # of tracks from MC
         pd_kinematics, pd_mask = get_kinematics(tree_pd, filter=pass190_pd, max_tracks=mc_kinematics.shape[2]-2, muon_only=muon_only, one_hot=True, **kwargs)
 
-        # Weights
-        mc_weights = ak.to_numpy(tree_mc['weight'].array())
-        mc_weights = np.expand_dims(mc_weights[pass190_mc == 1], axis=1)
+        # Get MC weights
+        if self.weight_path is not None:
+            # Note this assumes we only store weights for events which pass reco level cuts
+            mc_weight_file = np.load(self.weight_path)
+            if self.testing:
+                mc_weights = mc_weight_file['test']
+            else:
+                mc_weights = mc_weight_file['train']
+        # Default to using weights from the root file
+        else:
+            mc_weights = ak.to_numpy(tree_mc['weight'].array())
+            mc_weights = np.expand_dims(mc_weights[pass190_mc == 1], axis=1)
+        self.mc_weights = mc_weights
+
+        # Pseudo data weights are always 1, but load them from file for generality
         pd_weights = ak.to_numpy(tree_pd['weight'].array())
         pd_weights = np.expand_dims(pd_weights[pass190_pd == 1], axis=1)
-
-        # Drop 11k weights at the end since we don't have tracks for those events
+        # Drop 11k weights at the end of pseudodata since we don't have tracks for those events
         pd_weights = pd_weights[:pd_kinematics.shape[0]]
 
         # Labels
@@ -321,8 +348,13 @@ class LOfData(L.LightningDataModule):
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
-        rank_zero_info("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
-        rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
+        print("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
+        print("We have {} events in total".format(len(self.all_dataset)))
+
+
+    # Method for getting MC weights
+    def get_mc_weights(self):
+        return self.mc_weights
 
 
     # Setup function
