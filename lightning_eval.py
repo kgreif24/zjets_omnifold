@@ -10,6 +10,7 @@ python3
 """
 
 import os
+import argparse
 import numpy as np
 import lightning as L
 from pytorch_lightning.loggers import WandbLogger
@@ -67,7 +68,7 @@ class OfEval:
 
         # Build a data module. We want to run predictions on every training event
         # we have, so need to define two data modules, one for the training / val
-        # set and one for the test set.
+        # set and one for the test set. Both of these will be in testing mode
         self.d_module_train = LOfData(
             mc_file=self.config.mc_train_path,
             data_file=self.config.data_path,
@@ -75,7 +76,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.config.split_seed,
-            testing=False,
+            testing=True,
             max_tracks=self.config.max_tracks
         )
         self.d_module_test = LOfData(
@@ -106,14 +107,17 @@ class OfEval:
             self.run_id = self.wandb_logger.experiment.id
 
         # Load model checkpoint
-        self.model = LOfTransformer.load_from_checkpoint(check_path, test_plots=self.test_dir)
+        self.model = LOfTransformer.load_from_checkpoint(
+            check_path,
+            test_plots=self.test_dir,
+            debug=self.config.debug
+        )
 
         # Make lightning trainer for testing
         self.trainer = L.Trainer(
-            accelerator='cpu', 
+            accelerator='gpu', 
             devices=1,
-            fast_dev_run=100,
-            enable_progress_bar=self.config.debug
+            enable_progress_bar=False
         )
 
     
@@ -163,6 +167,7 @@ class OfEval:
             train=new_weights_train,
             test=new_weights_test
         )
+        print("Saved weight files!")
 
 
     def run(self):
@@ -171,5 +176,32 @@ class OfEval:
         No Arguments or Returns
         """
 
+        print("Run testing")
         self.run_testing()
-        self.run_predictions()
+        print("Run predictions")
+        self.run_prediction()
+
+
+############## MAIN FUNCTION ##############
+        
+# This function will be called as a subprocess from the Omnifolder class
+if __name__ == '__main__':
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run the omnifold evaluation')
+    parser.add_argument('--check_path', type=str, default=None, help='Path to the checkpoint to evaluate')
+    parser.add_argument('--run_id', type=str, default=None, help='ID of the run for evaluation')
+    parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
+    parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
+    parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
+    args, _ = parser.parse_known_args()
+
+    # Run the evaluation
+    evaluator = OfEval(
+        check_path=args.check_path, 
+        run_id=args.run_id, 
+        config_path=args.config_path, 
+        iteration=args.iteration, 
+        step=args.step
+    )
+    evaluator.run()

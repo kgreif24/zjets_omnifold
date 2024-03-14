@@ -113,7 +113,7 @@ class OfConfig:
 
         # Load and parse command line args
         self.add_default_arguments()
-        self.args = self.parser.parse_args()
+        self.args, unknown = self.parser.parse_known_args()
 
         # Pull config name from the existing args if it exists
         if (config_name is None) and (hasattr(self.args, 'config')):

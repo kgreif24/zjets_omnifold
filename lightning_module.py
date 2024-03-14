@@ -11,6 +11,7 @@ import torch
 import lightning as L
 import torchmetrics
 import wandb
+from pytorch_lightning.utilities.rank_zero import *
 
 import numpy as np
 import uproot
@@ -156,7 +157,7 @@ class LOfTransformer(L.LightningModule):
             self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
 
             # Log plots if this is the rank zero process only!
-            if self.trainer.is_global_zero and not self.debug:
+            if self.trainer.is_global_zero:
                 for key, histpath in plot_dict.items():
                     log_name = 'val_' + key
                     self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
@@ -195,7 +196,7 @@ class LOfTransformer(L.LightningModule):
         self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)
 
         # Log plots if this is the rank zero process only!
-        if self.trainer.is_global_zero and not self.debug:
+        if self.trainer.is_global_zero:
             for key, histpath in plot_dict.items():
                 log_name = 'test_' + key
                 self.logger.experiment.log({log_name: wandb.Image(histpath)})
@@ -295,8 +296,8 @@ class LOfData(L.LightningDataModule):
         # Pass 190 flags
         pass190_mc = ak.to_numpy(tree_mc['pass190'].array())
         pass190_pd = ak.to_numpy(tree_pd['pass190'].array())
-        print("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
-        print("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
+        rank_zero_info("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
+        rank_zero_info("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
 
         # Load kinematics
         mc_kinematics, mc_mask = get_kinematics(tree_mc, filter=pass190_mc, max_tracks=self.max_tracks, muon_only=muon_only, one_hot=True, **kwargs)
@@ -348,13 +349,13 @@ class LOfData(L.LightningDataModule):
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
-        print("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
-        print("We have {} events in total".format(len(self.all_dataset)))
+        rank_zero_info("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
+        rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 
     # Method for getting MC weights
     def get_mc_weights(self):
-        return self.mc_weights
+        return self.mc_weights.flatten()
 
 
     # Setup function

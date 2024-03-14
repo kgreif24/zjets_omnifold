@@ -9,10 +9,13 @@ python3
 """
 
 import os
+import argparse
 
+import numpy as np
 import lightning as L
 import wandb
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.utilities.rank_zero import *
 
 from cli.of_config import OfConfig
 from lightning_module import *
@@ -94,7 +97,7 @@ class OfTrain:
 
         # Make directories for saving validation plots
         val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
-        os.makedirs(val_dir)
+        os.makedirs(val_dir, exist_ok=True)
 
         # Initialise the callbacks
         self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
@@ -112,14 +115,13 @@ class OfTrain:
 
         # Build trainer
         self.trainer = L.Trainer(
-            accelerator='cpu',
+            accelerator='gpu',
             devices=self.config.num_gpus,
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
-            fast_dev_run=100,
             log_every_n_steps=50,
-            enable_progress_bar=self.config.debug
+            enable_progress_bar=False
         )
 
         # Build lightning module
@@ -181,27 +183,19 @@ class OfTrain:
         
 # This function will be called as a subprocess from the Omnifolder class
 
-def run_train(config_path, iteration, step, return_dict):
-    """ run_train - This function is the main entry point for training an
-    Omnifold classifier. It is meant to be run as a multiprocess from the Omnifolder
-    class functions.
+if __name__ == '__main__':
 
-    Arguments:
-    config - The path to the configuration file
-    iteration - The iteration number for this training run
-    step - The step number for this training run
-    return_dict - A dictionary for returning information to the main process
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run the omnifold algorithm')
+    parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
+    parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
+    parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
+    args, unknown = parser.parse_known_args()
 
-    Returns:
-    None
-    """
-
-    # Train the classifier
-    trainer = OfTrain(config_path, iteration, step)
+    # Run the training
+    trainer = OfTrain(args.config_path, args.iteration, args.step)
     run_id, best_path = trainer.run()
 
-    # Update the return dictionary
-    return_dict['run_id'] = run_id
-    return_dict['best_model_path'] = best_path
-
-
+    # Print the run id and best model path
+    rank_zero_info(f"\n###RUN ID###\n{run_id}")
+    rank_zero_info(f"\n###BEST MODEL PATH###\n{best_path}")

@@ -7,19 +7,21 @@ python3
 """
 
 import os, sys
-import multiprocessing as mp
+import subprocess
 import numpy as np
 
 import torch
 import lightning as L
 from lightning_module import *
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.utilities.rank_zero import *
 import wandb
 
 from cli.of_config import OfConfig
 import lightning_train as train
 import lightning_eval as eval
 import plotting_utils as pu
+from subprocess_utils import capture_subprocess_output
 
 
 class Omnifolder():
@@ -57,9 +59,6 @@ class Omnifolder():
         if self.cfg.wandb:
             wandb.login()
 
-        # Set mp start method to spawn
-        mp.set_start_method('spawn')
-
 
     def run_of(self):
         """ run_of - Run the whole Omnifold procedure from start to finish.
@@ -82,39 +81,52 @@ class Omnifolder():
         Arguments: None
         Returns: None
         """
+
         print("Running step one!")
 
-        # Initialize manager for getting run_id from training process
-        with mp.Manager() as manager:
+        # Run training as a subprocess
+        train_args = [
+            "python", 
+            "lightning_train.py", 
+            "--config_path", 
+            self.config_path, 
+            "--iteration", 
+            str(self.current_interation), 
+            "--step", 
+            "1"
+        ]
+        train_code, output = capture_subprocess_output(train_args)
 
-            # Add dictionary to manager
-            return_dict = manager.dict()
+        # Reverse search output for run_id and best model path
+        lines = output.split("\n")
+        found_id = False
+        found_path = False
+        for i in reversed(range(len(lines))):
+            if "###RUN ID###" in lines[i] and i+1 < len(lines):
+                run_id = lines[i + 1]
+                found_id = True
+            if "###BEST MODEL PATH###" in lines[i] and i+1 < len(lines):
+                best_model_path = lines[i + 1]
+                found_path = True
+            if found_id and found_path:
+                break
 
-            # Run training as a subprocess
-            p = mp.Process(
-                target=train.run_train, 
-                args=(self.config_path, self.current_interation, 1, return_dict)
-            )
-            p.start()
-            p.join()
-
-            # Get run_id from training process
-            run_id = return_dict['run_id']
-
-            # Get best model checkpoint path
-            best_model_path = return_dict['best_model_path']
-
-        print("Done with step one, run_id was:", run_id)
-        print("Best model path is:", best_model_path)
-
-        # Run evaluation as a subprocess, no need for any return information as weight outputs
-        # will be written to disk
-        p = mp.Process(
-            target=eval.run_eval, 
-            args=(best_model_path, run_id, self.config_path, self.current_interation, 1)
-        )
-        p.start()
-        p.join()
+        # Run evaluation as a subprocess, no need to keep output
+        eval_args = [
+            "python", 
+            "lightning_eval.py",
+            "--check_path",
+            best_model_path,
+            "--run_id",
+            run_id,
+            "--config_path", 
+            self.config_path, 
+            "--iteration", 
+            str(self.current_interation), 
+            "--step", 
+            "1"
+        ]
+        subprocess.run(eval_args, check=True)
 
         print("Finished step one!!")
         sys.exit()
