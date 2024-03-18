@@ -57,6 +57,7 @@ class OfConfig:
 
         # Training
         self.parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training')
+        self.parser.add_argument('--test_bath_size', type=int, default=1024, help='Batch size for testing')
         self.parser.add_argument('--max_epochs', type=int, default=70, help='Maximum number of epochs to train for')
 
         self.parser.add_argument('--top_k_checkpoints', type=int, default=5, help='Number of top checkpoints to save')

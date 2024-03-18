@@ -74,7 +74,7 @@ class OfEval:
             data_file=self.config.data_path,
             weight_path=weight_file,
             muon_only=self.config.debug,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             testing=True,
             max_tracks=self.config.max_tracks
@@ -84,7 +84,7 @@ class OfEval:
             data_file=self.config.data_path,
             weight_path=weight_file,
             muon_only=self.config.debug,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             testing=True,
             max_tracks=self.config.max_tracks
