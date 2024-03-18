@@ -96,6 +96,9 @@ class Omnifolder():
             "1"
         ]
         train_code, output = capture_subprocess_output(train_args)
+        if train_code != 0:
+            print("Error running training subprocess!")
+            sys.exit(train_code)
 
         # Reverse search output for run_id and best model path
         lines = output.split("\n")
@@ -126,7 +129,10 @@ class Omnifolder():
             "--step", 
             "1"
         ]
-        subprocess.run(eval_args, check=True)
+        process = subprocess.run(eval_args, check=True)
+        if process.returncode != 0:
+            print("Error running evaluation subprocess!")
+            sys.exit(process.returncode)
 
         print("Finished step one!!")
         sys.exit()

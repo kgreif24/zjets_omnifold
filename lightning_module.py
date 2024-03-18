@@ -337,14 +337,14 @@ class LOfData(L.LightningDataModule):
         kinematics = np.concatenate([mc_kinematics, pd_kinematics], axis=0)
         mask = np.concatenate([mc_mask, pd_mask], axis=0)
         weights = np.concatenate([mc_weights, pd_weights], axis=0)
-        labels = np.concatenate([mc_labels, pd_labels], axis=0)
+        self.labels = np.concatenate([mc_labels, pd_labels], axis=0)  # Make instance variable for getting labels in eval script
         plotting = np.concatenate([mc_plotting, pd_plotting], axis=0)
 
         # Convert to torch tensors with float32 precision
         kinematics = torch.from_numpy(kinematics.astype(np.float32))
         mask = torch.from_numpy(mask.astype(np.float32))
         weights = torch.from_numpy(weights.astype(np.float32))
-        labels = torch.from_numpy(labels.astype(np.float32))
+        labels = torch.from_numpy(self.labels.astype(np.float32))
         plotting = torch.from_numpy(plotting.astype(np.float32))
 
         # Build pytorch datasets
@@ -356,6 +356,11 @@ class LOfData(L.LightningDataModule):
     # Method for getting MC weights
     def get_mc_weights(self):
         return self.mc_weights.flatten()
+
+    
+    # Method for getting the labels
+    def get_labels(self):
+        return self.labels.flatten()
 
 
     # Setup function

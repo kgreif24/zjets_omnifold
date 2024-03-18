@@ -47,7 +47,7 @@ class OfTrain:
         self.step = step
 
         # Get weights for use in training. Define (but do not make!) the weight directory
-        weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/weights"
+        weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
 
         # Find the weight file to use for this iteration and step
         # If this is iteration zero step one, use the weights from the root files
@@ -95,10 +95,6 @@ class OfTrain:
             # Set a dummy run ID
             self.run_id = "test_run"
 
-        # Make directories for saving validation plots
-        val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
-        os.makedirs(val_dir, exist_ok=True)
-
         # Initialise the callbacks
         self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
         self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
@@ -123,6 +119,13 @@ class OfTrain:
             log_every_n_steps=50,
             enable_progress_bar=False
         )
+
+        # Make directories for saving validation plots in the rank zero process
+        if self.trainer.global_rank == 0:
+            val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
+            os.makedirs(val_dir, exist_ok=True)
+        else:
+            val_dir = None
 
         # Build lightning module
         block_params = {

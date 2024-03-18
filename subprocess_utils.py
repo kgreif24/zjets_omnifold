@@ -42,10 +42,8 @@ def capture_subprocess_output(subprocess_args):
     return_code = process.wait()
     selector.close()
 
-    success = (return_code == 0)
-
     # Store buffered output
     output = buf.getvalue()
     buf.close()
 
-    return (success, output)
+    return (return_code, output)
