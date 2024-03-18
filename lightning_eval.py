@@ -106,6 +106,12 @@ class OfEval:
             # Get run ID
             self.run_id = self.wandb_logger.experiment.id
 
+        # Else we use no logger
+        else:
+            self.wandb_logger = None
+            # Set a dummy run ID
+            self.run_id = "test_run"
+
         # Load model checkpoint
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
@@ -117,6 +123,7 @@ class OfEval:
         self.trainer = L.Trainer(
             accelerator='gpu', 
             devices=1,
+            logger=self.wandb_logger,
             enable_progress_bar=False
         )
 
