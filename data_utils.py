@@ -80,7 +80,7 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     return np.stack(one_hots, axis=1)
 
 
-def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=True, **kwargs):
+def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=True, get_truth=False, **kwargs):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenatd as a single numpy array. An optional "filter"
     argument will allow the user to filter events with a boolean array.
@@ -94,6 +94,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     muon_only - boolean to return only muon kinematics, optional
     one_hot - boolean to include one-hot encoded labels of muon, track jet 1-5,
         and everything else, optional
+    get_truth - If true, get the truth level data instead of reco, optional
     **kwargs - keyword arguments to pass to the "pad_kinematics" function
 
     Returns:
@@ -101,12 +102,15 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     """
 
     # Muon information
-    m1_pt = ak.to_numpy(tree['pT_l1'].array())
-    m1_eta = ak.to_numpy(tree['eta_l1'].array())
-    m1_phi = ak.to_numpy(tree['phi_l1'].array())
-    m2_pt = ak.to_numpy(tree['pT_l2'].array())
-    m2_eta = ak.to_numpy(tree['eta_l2'].array())
-    m2_phi = ak.to_numpy(tree['phi_l2'].array())
+    prekey = ""
+    if get_truth:
+        prekey = "truth_"
+    m1_pt = np.log(ak.to_numpy(tree[prekey+'pT_l1'].array()))
+    m1_eta = ak.to_numpy(tree[prekey+'eta_l1'].array())
+    m1_phi = ak.to_numpy(tree[prekey+'phi_l1'].array())
+    m2_pt = np.log(ak.to_numpy(tree[prekey+'pT_l2'].array()))
+    m2_eta = ak.to_numpy(tree[prekey+'eta_l2'].array())
+    m2_phi = ak.to_numpy(tree[prekey+'phi_l2'].array())
 
     m1_kinematics = np.stack([m1_pt, m1_eta, m1_phi], axis=1)
     m2_kinematics = np.stack([m2_pt, m2_eta, m2_phi], axis=1)
@@ -116,9 +120,9 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     if not muon_only:
 
         # Pull info, note taking log of track pT values here
-        track_pt = np.log(tree['pT_tracks'].array())
-        track_eta = tree['eta_tracks'].array()
-        track_phi = tree['phi_tracks'].array()
+        track_pt = np.log(tree[prekey+'pT_tracks'].array())
+        track_eta = tree[prekey+'eta_tracks'].array()
+        track_phi = tree[prekey+'phi_tracks'].array()
 
         # Run padding function
         pad_pt = pad_kinematics(track_pt, **kwargs)
@@ -164,7 +168,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
         return kinematics
 
 
-def get_plotting(tree, vars=[], filter=None, muon_only=False, **kwargs):
+def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, **kwargs):
     """ get_plotting - This function will accept an uproot TTree object, and return the
     requested branches as numpy arrays. Branches are passed in as a list of strings to the
     "vars" keyword argument.
@@ -175,6 +179,7 @@ def get_plotting(tree, vars=[], filter=None, muon_only=False, **kwargs):
     filter - boolean array to filter events, optional
     muon_only - boolean to return only muon kinematics, in practice just does not
     truncate away the 11k events with missing track information
+    get_truth - If true, get the truth level data instead of reco
 
     Returns:
     plotting - numpy array of requested branches, stacked along the second axis
@@ -184,15 +189,22 @@ def get_plotting(tree, vars=[], filter=None, muon_only=False, **kwargs):
     plotting = []
 
     # Look at track pT information if we need to truncate away 11k events with missing tracks
+    # If we are not muon only, use the track pT to find the # of good events
     if not muon_only:
-        track_pts = tree['pT_tracks'].array()
+        track_pt_key = 'pT_tracks'
+        if get_truth:
+            track_pt_key = 'truth_pT_tracks'
+        track_pts = tree[track_pt_key].array()
         num_good_events = len(track_pts)
+    # Else look at the leading muon pT to find the # of good events
     else:
         muon_pts = tree['pT_l1'].array()
         num_good_events = len(muon_pts)
 
     # Loop over requested branches
     for var in vars:
+        if get_truth:
+            var = "truth_" + var
         plotting.append(ak.to_numpy(tree[var].array())[:num_good_events])
 
     # Stack requested branches
