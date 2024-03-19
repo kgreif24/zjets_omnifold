@@ -71,18 +71,24 @@ class Omnifolder():
         for i in range(self.cfg.num_iterations):
             self.current_interation = i
             print(f"\n\n ##### Running iteration {i+1} of {self.cfg.num_iterations} #####")
-            self.step_one()
-            break
-            # self.step_two()
+            self.run_step(1)
+            self.run_step(2)
 
 
-    def step_one(self):
-        """ step_one - This function runs the first step of the omnifold algorithm.
-        Arguments: None
+    def run_step(self, step):
+        """ step_one - This function runs a step of the omnifold algorithm.
+        Which step it runs is controlled by the step argument.
+
+        Arguments:
+            step - The step of the omnifold algorithm to run. 1 or 2.
         Returns: None
         """
 
-        print("Running step one!")
+        # Raise a value error if step is not 1 or 2
+        if step not in [1, 2]:
+            raise ValueError("Step must be 1 or 2!")
+
+        print(f"Running step {step}!")
 
         # Run training as a subprocess
         train_args = [
@@ -93,7 +99,7 @@ class Omnifolder():
             "--iteration", 
             str(self.current_interation), 
             "--step", 
-            "1"
+            str(step)
         ]
         train_code, output = capture_subprocess_output(train_args)
         if train_code != 0:
@@ -127,12 +133,8 @@ class Omnifolder():
             "--iteration", 
             str(self.current_interation), 
             "--step", 
-            "1"
+            str(step)
         ]
         process = subprocess.run(eval_args, check=True)
-        if process.returncode != 0:
-            print("Error running evaluation subprocess!")
-            sys.exit(process.returncode)
 
-        print("Finished step one!!")
-        sys.exit()
+        print(f"Finished step {step}!!")

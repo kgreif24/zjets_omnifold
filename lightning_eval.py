@@ -50,44 +50,72 @@ class OfEval:
         # Make test plot and weight directories
         self.test_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/test_plots'
         os.makedirs(self.test_dir, exist_ok=True)
-        self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/weights'
+        self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
 
-        # Find the weight file to use for this iteration and step
-        # If this is iteration zero step one, use the weights from the root files
-        if iteration == 0 and step == 1:
-            weight_file = None
-        # If this is step one but iteration > 0, use the weights from the previous step two
-        elif iteration > 0 and step == 1:
-            weight_file = f"{self.weight_dir}/iteration_{iteration-1}_step_2.npz"
-        # If this is step two, use the weights from step one
-        elif step == 2:
-            weight_file = f"{self.weight_dir}/iteration_{iteration}_step_1.npz"
-        else:
-            raise ValueError("Invalid iteration and step combination")
+        # Find the data and weight files to use for this iteration and step
+        # For step one:
+        if self.step == 1:
+            use_truth = False
+            train_source_file = self.config.mc_train_path
+            test_source_file = self.config.mc_test_path
+            train_target_file = self.config.data_path
+            test_target_file = self.config.data_path
+            # If this is the first iteration, use the weights from the root file for source 
+            # and no weights for the target
+            if self.iteration == 0:
+                source_weight_file = 'root'
+                target_weight_file = None
+            # Otherwise use the weights from the previous step two for the source, and no
+            # weights for the target
+            else:
+                source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                target_weight_file = None
+        # For step two:
+        if self.step == 2:
+            use_truth = True
+            train_source_file = self.config.mc_train_path
+            test_source_file = self.config.mc_test_path
+            train_target_file = self.config.mc_train_path
+            test_target_file = self.config.mc_test_path
+            # If this is the first iteration, use the weights from step one for target, and the
+            # weights from the root file as source.
+            if self.iteration == 0:
+                source_weight_file = 'root'
+                target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
+            # Otherwise use the weights from the previous step two for source, and the weights
+            # from the previous step one for target
+            else:
+                source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
 
-        # Build a data module. We want to run predictions on every training event
+
+        # Build a data module. We want to run prediction on every event
         # we have, so need to define two data modules, one for the training / val
         # set and one for the test set. Both of these will be in testing mode
         self.d_module_train = LOfData(
-            mc_file=self.config.mc_train_path,
-            data_file=self.config.data_path,
-            weight_path=weight_file,
+            source_file=train_source_file,
+            target_file=train_target_file,
+            source_weight_path=source_weight_file,
+            target_weight_path=target_weight_file,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             testing=True,
-            max_tracks=self.config.max_tracks
+            max_tracks=self.config.max_tracks,
+            use_truth=use_truth
         )
         self.d_module_test = LOfData(
-            mc_file=self.config.mc_test_path,
-            data_file=self.config.data_path,
-            weight_path=weight_file,
+            mc_file=test_source_file,
+            data_file=test_target_file,
+            source_weight_path=source_weight_file,
+            target_weight_path=target_weight_file,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             testing=True,
-            max_tracks=self.config.max_tracks
+            max_tracks=self.config.max_tracks,
+            use_truth=use_truth
         )
 
         # Initialise the wandb logger

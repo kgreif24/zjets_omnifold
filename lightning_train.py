@@ -49,29 +49,50 @@ class OfTrain:
         # Get weights for use in training. Define (but do not make!) the weight directory
         weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
 
-        # Find the weight file to use for this iteration and step
-        # If this is iteration zero step one, use the weights from the root files
-        if iteration == 0 and step == 1:
-            weight_file = None
-        # If this is step one but iteration > 0, use the weights from the previous step two
-        elif iteration > 0 and step == 1:
-            weight_file = f"{weight_dir}/iteration_{iteration-1}_step_2.npz"
-        # If this is step two, use the weights from step one
-        elif step == 2:
-            weight_file = f"{weight_dir}/iteration_{iteration}_step_1.npz"
-        else:
-            raise ValueError("Invalid iteration and step combination")
+        # Find the data and weight files to use for this iteration and step
+        # For step one:
+        if self.step == 1:
+            use_truth = False
+            source_file = self.config.mc_train_path
+            target_file = self.config.data_path
+            # If this is the first iteration, use the weights from the root file for source 
+            # and no weights for the target
+            if self.iteration == 0:
+                source_weight_file = 'root'
+                target_weight_file = None
+            # Otherwise use the weights from the previous step two for the source, and no
+            # weights for the target
+            else:
+                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                target_weight_file = None
+        # For step two:
+        if self.step == 2:
+            use_truth = True
+            source_file = self.config.mc_train_path
+            target_file = self.config.mc_train_path
+            # If this is the first iteration, use the weights from step one for target, and the
+            # weights from the root file as source.
+            if self.iteration == 0:
+                source_weight_file = 'root'
+                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+            # Otherwise use the weights from the previous step two for source, and the weights
+            # from the previous step one for target
+            else:
+                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
 
-        # Build data module, since eval is handled by a separate class only need one module
+        # Build the data module
         self.d_module = LOfData(
-            mc_file=self.config.mc_train_path,
-            data_file=self.config.data_path,
-            weight_path=weight_file,
+            source_file=source_file,
+            target_file=target_file,
+            source_weight_path=source_weight_file,
+            target_weight_path=target_weight_file,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.config.split_seed,
             testing=False,
-            max_tracks=self.config.max_tracks
+            max_tracks=self.config.max_tracks,
+            use_truth=use_truth
         )
 
         # Initialise the wandb logger
@@ -116,7 +137,6 @@ class OfTrain:
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
-            log_every_n_steps=50,
             enable_progress_bar=False
         )
 
@@ -192,7 +212,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the omnifold algorithm')
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
-    parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
+    parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
     args, unknown = parser.parse_known_args()
 
     # Run the training

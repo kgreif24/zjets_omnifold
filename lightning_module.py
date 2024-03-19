@@ -229,8 +229,7 @@ class LOfData(L.LightningDataModule):
     """ LOfData - This class handles all of the data processing for training
     and Omnifold classifier. It subclasses the LightningDataModule class.
 
-    Init function takes the path to the data files as arguments, along with the
-    max number of tracks we want to consider, and the batch size for the data loaders.
+    Init function takes the path to the data files as arguments.
     It then goes through the process of loading data from disk using uproot, and applying
     the relevant preprocessing. The data is stored in the class as attributes, in the form 
     of pytorch datasets.
@@ -246,27 +245,29 @@ class LOfData(L.LightningDataModule):
     # Init function
     def __init__(
         self,
-        mc_file=None,
-        data_file=None,
+        source_file=None,
+        target_file=None,
         max_tracks=None,
-        weight_path=None,
+        source_weight_path=None,
+        target_weight_path=None,
         muon_only=False,
         batch_size=256,
         dataloader_workers=0,
         split_seed=420,
         testing=False,
+        use_truth=False,
         **kwargs
     ):
         """ __init__ - This method initializes the LOfData class. It takes
         the path to the Monte Carlo and data files as arguments.
 
         Arguments:
-            mc_file {str} -- The path to the Monte Carlo file.
-            data_file {str} -- The path to the data file.
+            source_file {str} -- The path to the file containing the source data.
+            target_file {str} -- The path to the file containing the target data.
             max_tracks {int} -- The maximum number of tracks to consider.
                 Defaults to None, which means all tracks are considered.
-            weight_path {string} -- Path to the weights .npy file to use. Defaults to None,
-                in which case the weights in the root file are used.
+            source_weight_path {string} -- Path to a .npz file containing weights for the source data
+            target_weight_path {string} -- Path to a .npz file containing weights for the target data
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
@@ -274,71 +275,110 @@ class LOfData(L.LightningDataModule):
             split_seed {int} - The random seed to use in making train / val split,
                 ensure this is common between all processes
             testing {bool} - Set to true if this data module is for testing
+            use_truth {bool} - Set to true if we want to use truth level information
+                for the data module. Defaults to false.
         """
 
         # Set class attributes
         super().__init__()
-        self.mc_file = mc_file
-        self.data_file = data_file
+        self.source_file = source_file
+        self.target_file = target_file
         self.max_tracks = max_tracks
-        self.weight_path = weight_path
+        self.source_weight_path = source_weight_path
+        self.target_weight_path = target_weight_path
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
         self.split_seed = split_seed
         self.testing = testing
+        self.use_truth = use_truth
 
         # Load the data
-        f_mc = uproot.open(self.mc_file)
-        tree_mc = f_mc['OmniTree']
-        f_pd = uproot.open(self.data_file)
-        tree_pd = f_pd['OmniTree']
+        f_source = uproot.open(self.source_file)
+        tree_source = f_source['OmniTree']
+        f_target = uproot.open(self.target_file)
+        tree_target = f_target['OmniTree']
+
+        # Set prefix for keys
+        prekey = ""
+        if self.use_truth:
+            prekey = "truth_"
 
         # Pass 190 flags
-        pass190_mc = ak.to_numpy(tree_mc['pass190'].array())
-        pass190_pd = ak.to_numpy(tree_pd['pass190'].array())
-        rank_zero_info("We have a fracion {} of good events in mc".format(np.sum(pass190_mc) / len(pass190_mc)))
-        rank_zero_info("We have a fracion {} of good events in pseudodata".format(np.sum(pass190_pd) / len(pass190_pd)))
+        pass190_source = ak.to_numpy(tree_source[prekey+'pass190'].array())
+        pass190_target = ak.to_numpy(tree_target[prekey+'pass190'].array())
+        rank_zero_info("We have a fracion {} of good events in source".format(np.sum(pass190_source) / len(pass190_source)))
+        rank_zero_info("We have a fracion {} of good events in target".format(np.sum(pass190_target) / len(pass190_target)))
 
         # Load kinematics
-        mc_kinematics, mc_mask = get_kinematics(tree_mc, filter=pass190_mc, max_tracks=self.max_tracks, muon_only=muon_only, one_hot=True, **kwargs)
-        # pseudo data kinematics will take the maximum # of tracks from MC
-        pd_kinematics, pd_mask = get_kinematics(tree_pd, filter=pass190_pd, max_tracks=mc_kinematics.shape[2]-2, muon_only=muon_only, one_hot=True, **kwargs)
+        source_kinematics, source_mask = get_kinematics(
+            tree_source, 
+            filter=pass190_source,
+            max_tracks=self.max_tracks,
+            muon_only=muon_only,
+            one_hot=True,
+            get_truth=self.use_truth,
+            **kwargs
+        )
+        # Target kinematics will take the maximum # of tracks from source
+        target_kinematics, target_mask = get_kinematics(
+            tree_target,
+            filter=pass190_target,
+            max_tracks=source_kinematics.shape[2]-2,
+            muon_only=muon_only,
+            one_hot=True,
+            get_truth=self.use_truth,
+            **kwargs
+        )
 
-        # Get MC weights
-        if self.weight_path is not None:
-            # Note this assumes we only store weights for events which pass reco level cuts
-            mc_weight_file = np.load(self.weight_path)
+        ## TODO: Refactor this into a function!
+        # Get source weights. Options are:
+        # 1. Load weights from root file
+        # 2. Use weights from a saved .npz file
+        # 3. Just use a vector of ones
+        if self.source_weight_path == 'root':
+            source_weights = ak.to_numpy(tree_source['weight'].array())
+            source_weights = np.expand_dims(source_weights[pass190_source == 1], axis=1)
+        elif self.source_weight_path is not None:
+            # Note this assumes we only store weights for events which pass reco or truth level cuts
+            source_weight_file = np.load(self.source_weight_path)
             if self.testing:
-                mc_weights = mc_weight_file['test']
+                source_weights = source_weight_file['test']
             else:
-                mc_weights = mc_weight_file['train']
-        # Default to using weights from the root file
+                source_weights = source_weight_file['train']
         else:
-            mc_weights = ak.to_numpy(tree_mc['weight'].array())
-            mc_weights = np.expand_dims(mc_weights[pass190_mc == 1], axis=1)
-        self.mc_weights = mc_weights
+            source_weights = np.ones((source_kinematics.shape[0], 1), dtype=np.float32)
+        self.source_weights = source_weights
 
-        # Pseudo data weights are always 1, but load them from file for generality
-        pd_weights = ak.to_numpy(tree_pd['weight'].array())
-        pd_weights = np.expand_dims(pd_weights[pass190_pd == 1], axis=1)
-        # Drop 11k weights at the end of pseudodata since we don't have tracks for those events
-        pd_weights = pd_weights[:pd_kinematics.shape[0]]
+        # Get target weights. Procedure is the same for source
+        if self.target_weight_path == 'root':
+            target_weights = ak.to_numpy(tree_target['weight'].array())
+            target_weights = np.expand_dims(target_weights[pass190_target == 1], axis=1)
+        elif self.target_weight_path is not None:
+            # Note this assumes we only store weights for events which pass reco or truth level cuts
+            target_weight_file = np.load(self.target_weight_path)
+            if self.testing:
+                target_weights = target_weight_file['test']
+            else:
+                target_weights = target_weight_file['train']
+        else:
+            target_weights = np.ones((source_kinematics.shape[0], 1), dtype=np.float32)
+        self.target_weights = target_weights
 
         # Labels
-        mc_labels = np.zeros((mc_kinematics.shape[0], 1), dtype=np.float32)
-        pd_labels = np.ones((pd_kinematics.shape[0], 1), dtype=np.float32)
+        source_labels = np.zeros((source_kinematics.shape[0], 1), dtype=np.float32)
+        target_labels = np.ones((target_kinematics.shape[0], 1), dtype=np.float32)
 
         # Load plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings]
-        mc_plotting = get_plotting(tree_mc, vars=plotting_variables, filter=pass190_mc, muon_only=muon_only, **kwargs)
-        pd_plotting = get_plotting(tree_pd, vars=plotting_variables, filter=pass190_pd, muon_only=muon_only, **kwargs)
+        source_plotting = get_plotting(tree_source, vars=plotting_variables, filter=pass190_source, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
+        target_plotting = get_plotting(tree_target, vars=plotting_variables, filter=pass190_target, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
 
-        # Concatenate MC and pseudodata together
-        kinematics = np.concatenate([mc_kinematics, pd_kinematics], axis=0)
-        mask = np.concatenate([mc_mask, pd_mask], axis=0)
-        weights = np.concatenate([mc_weights, pd_weights], axis=0)
-        self.labels = np.concatenate([mc_labels, pd_labels], axis=0)  # Make instance variable for getting labels in eval script
-        plotting = np.concatenate([mc_plotting, pd_plotting], axis=0)
+        # Concatenate source and pseudodata together
+        kinematics = np.concatenate([source_kinematics, target_kinematics], axis=0)
+        mask = np.concatenate([source_mask, target_mask], axis=0)
+        weights = np.concatenate([source_weights, target_weights], axis=0)
+        self.labels = np.concatenate([source_labels, target_labels], axis=0)  # Make instance variable for getting labels in eval script
+        plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
         # Convert to torch tensors with float32 precision
         kinematics = torch.from_numpy(kinematics.astype(np.float32))
@@ -349,13 +389,13 @@ class LOfData(L.LightningDataModule):
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
-        rank_zero_info("We have {} MC events and {} pseudo data events".format(len(mc_kinematics), len(pd_kinematics)))
+        rank_zero_info("We have {} source events and {} pseudo data events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 
-    # Method for getting MC weights
-    def get_mc_weights(self):
-        return self.mc_weights.flatten()
+    # Method for getting source weights
+    def get_source_weights(self):
+        return self.source_weights.flatten()
 
     
     # Method for getting the labels
