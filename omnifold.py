@@ -74,6 +74,10 @@ class Omnifolder():
             self.run_step(1)
             self.run_step(2)
 
+        print("\n############## Omnifold Finished!! ##############\n")
+
+        self.run_finish()
+
 
     def run_step(self, step):
         """ step_one - This function runs a step of the omnifold algorithm.
@@ -138,3 +142,9 @@ class Omnifolder():
         process = subprocess.run(eval_args, check=True)
 
         print(f"Finished step {step}!!")
+
+
+    def run_finish(self):
+        """ run_finish - This function runs the plotting to evaluate the performance
+        of this Omnifold run.
+        """

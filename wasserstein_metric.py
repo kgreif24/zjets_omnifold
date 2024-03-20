@@ -25,7 +25,7 @@ class WassersteinOne(torchmetrics.Metric):
     based performance metrics for omnifold classifiers.
     """
 
-    def __init__(self, draw_plots=False, save_location=None, **kwargs):
+    def __init__(self, draw_plots=False, save_location=None, from_outputs=True, **kwargs):
         """ __init__ - Init function for the class. Both definees the state of the
         metric, and accepts some keyword arguments to control plot drawing if enabled.
 
@@ -39,19 +39,19 @@ class WassersteinOne(torchmetrics.Metric):
         super().__init__(**kwargs)
         self.add_state("plotting", default=[], dist_reduce_fx="cat")
         self.add_state("start_weights", default=[], dist_reduce_fx="cat")
-        self.add_state("preds", default=[], dist_reduce_fx="cat")
+        self.add_state("end_weights", default=[], dist_reduce_fx="cat")
         self.add_state("target", default=[], dist_reduce_fx="cat")
 
         self.draw_plots = draw_plots
         self.save_location = save_location
 
 
-    def update(self, plotting, start_weights, preds, target):
+    def update(self, plotting, start_weights, end_weights, labels):
         """ update - Function to update the metric state on each batch."""
         self.plotting.append(plotting)
         self.start_weights.append(start_weights)
-        self.preds.append(preds)
-        self.target.append(target)
+        self.end_weights.append(end_weights)
+        self.target.append(labels)
 
 
     def compute(self):
@@ -67,25 +67,24 @@ class WassersteinOne(torchmetrics.Metric):
         # Concatenate list states
         plotting = torchmetrics.utilities.dim_zero_cat(self.plotting)
         start_weights = torchmetrics.utilities.dim_zero_cat(self.start_weights)
-        preds = torchmetrics.utilities.dim_zero_cat(self.preds)
+        end_weights = torchmetrics.utilities.dim_zero_cat(self.end_weights)
         target = torchmetrics.utilities.dim_zero_cat(self.target)
 
         # To numpy
         plotting = plotting.cpu().detach().numpy()
         start_weights = start_weights.cpu().detach().numpy().flatten()
-        preds = preds.cpu().detach().numpy().flatten()
+        end_weights = end_weights.cpu().detach().numpy().flatten()
         target = target.cpu().detach().numpy().flatten()
 
-        # Calculate weights
-        probs = 1 / (1 + np.exp(-preds))
-        derived_weights = probs / (1 - probs)
-        mc_weight = derived_weights[target == 0]
+        # Isolate source and target weights
+        source_weight = end_weights[target == 0]
+        target_weight = end_weights[target == 1]
 
         # If we want to draw plots, do so here
         plot_dict = {}
         if self.draw_plots:
             plot_dict = pu.make_logged_plots(
-                plotting, target, start_weights, preds, save_location=self.save_location
+                plotting, target, start_weights, end_weights, save_location=self.save_location
             )
 
         # Results list
@@ -97,12 +96,12 @@ class WassersteinOne(torchmetrics.Metric):
             # Slice this dimension
             this_dim = plotting[:,i]
 
-            # Separate into data / MC
-            mc_dist = this_dim[target == 0]
-            data_dist = this_dim[target == 1]
+            # Separate into source / target
+            source_dist = this_dim[target == 0]
+            target_dist = this_dim[target == 1]
 
             # Calculate 1D wasserstein distance
-            this_wass = scipy.stats.wasserstein_distance(mc_dist, data_dist, u_weights=mc_weight)
+            this_wass = scipy.stats.wasserstein_distance(source_dist, target_dist, u_weights=source_weight, v_weights=target_weight)
 
             # Append to results list
             results[i] = this_wass

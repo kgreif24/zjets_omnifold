@@ -74,7 +74,7 @@ class LOfTransformer(L.LightningModule):
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
         if not self.debug:
-            self.wasserstein_train = WassersteinOne(draw_plots=not self.debug)
+            self.wasserstein_train = WassersteinOne(draw_plots=False)
             self.wasserstein_val = WassersteinOne(draw_plots=not self.debug, save_location=val_plots)
             self.wasserstein_test = WassersteinOne(draw_plots=not self.debug, save_location=test_plots)
 
@@ -123,11 +123,16 @@ class LOfTransformer(L.LightningModule):
     def validation_step(self, batch, batch_idx):
 
         # Forward pass
-        inputs, target, mask, weights, plotting = batch
+        inputs, target, mask, start_weights, plotting = batch
         output = self(inputs, mask)
 
+        # Calculate new weights
+        probs = 1 / (1 + torch.exp(-output))
+        derived_weights = probs / (1 - probs)
+        end_weights = derived_weights * start_weights
+
         # Calculate and log loss
-        loss = self.criterion(output, target) * weights
+        loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
         self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
@@ -137,7 +142,7 @@ class LOfTransformer(L.LightningModule):
 
         # Update wasserstein metric
         if not self.debug:
-            self.wasserstein_val.update(plotting, weights, output, target)
+            self.wasserstein_val.update(plotting, start_weights, end_weights, target)
 
 
     # Validation step end for logging reweighting plots to wandb
@@ -170,8 +175,13 @@ class LOfTransformer(L.LightningModule):
     def test_step(self, batch, batch_idx):
 
         # Forward pass
-        inputs, target, mask, weights, plotting = batch
+        inputs, target, mask, start_weights, plotting = batch
         output = self(inputs, mask)
+
+        # Calculate new weights
+        probs = 1 / (1 + torch.exp(-output))
+        derived_weights = probs / (1 - probs)
+        end_weights = derived_weights * start_weights
 
         # Calculate and log AUC
         self.test_auc(output, target)
@@ -179,7 +189,7 @@ class LOfTransformer(L.LightningModule):
 
         # Update wasserstein metric
         if not self.debug:
-            self.wasserstein_test.update(plotting, weights, output, target)
+            self.wasserstein_test.update(plotting, start_weights, end_weights, target)
 
 
     # Test epoch end for logging plots and metrics to wandb
@@ -335,9 +345,10 @@ class LOfData(L.LightningDataModule):
         # 1. Load weights from root file
         # 2. Use weights from a saved .npz file
         # 3. Just use a vector of ones
+        source_root_weights = ak.to_numpy(tree_source['weight'].array())  # For use in deriving final comparison plots
+        self.source_root_weights = source_root_weights[pass190_source == 1]
         if self.source_weight_path == 'root':
-            source_weights = ak.to_numpy(tree_source['weight'].array())
-            source_weights = np.expand_dims(source_weights[pass190_source == 1], axis=1)
+            source_weights = np.expand_dims(self.source_root_weights, axis=1)
         elif self.source_weight_path is not None:
             # Note this assumes we only store weights for events which pass reco or truth level cuts
             source_weight_file = np.load(self.source_weight_path)
@@ -374,11 +385,11 @@ class LOfData(L.LightningDataModule):
         target_plotting = get_plotting(tree_target, vars=plotting_variables, filter=pass190_target, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
 
         # Concatenate source and pseudodata together
-        kinematics = np.concatenate([source_kinematics, target_kinematics], axis=0)
+        self.kinematics = np.concatenate([source_kinematics, target_kinematics], axis=0)
         mask = np.concatenate([source_mask, target_mask], axis=0)
         weights = np.concatenate([source_weights, target_weights], axis=0)
         self.labels = np.concatenate([source_labels, target_labels], axis=0)  # Make instance variable for getting labels in eval script
-        plotting = np.concatenate([source_plotting, target_plotting], axis=0)
+        self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
         # Convert to torch tensors with float32 precision
         kinematics = torch.from_numpy(kinematics.astype(np.float32))
@@ -396,11 +407,22 @@ class LOfData(L.LightningDataModule):
     # Method for getting source weights
     def get_source_weights(self):
         return self.source_weights.flatten()
-
     
     # Method for getting the labels
     def get_labels(self):
         return self.labels.flatten()
+
+    # Method for getting track kinematics
+    def get_track_kinematics(self):
+        return self.kinematics[:,:3,2:]  # Gets pT, eta, phi, for all tracks (not muons)
+
+    # Method for getting plotting data
+    def get_plotting(self):
+        return self.plotting
+
+    # Method for getting source root weights
+    def get_source_root_weights(self):
+        return self.source_root_weights
 
 
     # Setup function
