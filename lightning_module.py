@@ -353,9 +353,9 @@ class LOfData(L.LightningDataModule):
             # Note this assumes we only store weights for events which pass reco or truth level cuts
             source_weight_file = np.load(self.source_weight_path)
             if self.testing:
-                source_weights = source_weight_file['test']
+                source_weights = np.expand_dims(source_weight_file['test'], 1)
             else:
-                source_weights = source_weight_file['train']
+                source_weights = np.expand_dims(source_weight_file['train'], 1)
         else:
             source_weights = np.ones((source_kinematics.shape[0], 1), dtype=np.float32)
         self.source_weights = source_weights
@@ -368,11 +368,11 @@ class LOfData(L.LightningDataModule):
             # Note this assumes we only store weights for events which pass reco or truth level cuts
             target_weight_file = np.load(self.target_weight_path)
             if self.testing:
-                target_weights = target_weight_file['test']
+                target_weights = np.expand_dims(target_weight_file['test'], 1)
             else:
-                target_weights = target_weight_file['train']
+                target_weights = np.expand_dims(target_weight_file['train'], 1)
         else:
-            target_weights = np.ones((source_kinematics.shape[0], 1), dtype=np.float32)
+            target_weights = np.ones((target_kinematics.shape[0], 1), dtype=np.float32)
         self.target_weights = target_weights
 
         # Labels
@@ -380,7 +380,7 @@ class LOfData(L.LightningDataModule):
         target_labels = np.ones((target_kinematics.shape[0], 1), dtype=np.float32)
 
         # Load plotting data
-        plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings]
+        plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
         source_plotting = get_plotting(tree_source, vars=plotting_variables, filter=pass190_source, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
         target_plotting = get_plotting(tree_target, vars=plotting_variables, filter=pass190_target, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
 
@@ -392,11 +392,17 @@ class LOfData(L.LightningDataModule):
         self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
         # Convert to torch tensors with float32 precision
-        kinematics = torch.from_numpy(kinematics.astype(np.float32))
+        kinematics = torch.from_numpy(self.kinematics.astype(np.float32))
         mask = torch.from_numpy(mask.astype(np.float32))
         weights = torch.from_numpy(weights.astype(np.float32))
         labels = torch.from_numpy(self.labels.astype(np.float32))
-        plotting = torch.from_numpy(plotting.astype(np.float32))
+        plotting = torch.from_numpy(self.plotting.astype(np.float32))
+
+        print(kinematics.shape)
+        print(mask.shape)
+        print(weights.shape)
+        print(labels.shape)
+        print(plotting.shape)
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)

@@ -112,8 +112,8 @@ class OfEval:
             use_truth=use_truth
         )
         self.d_module_test = LOfData(
-            mc_file=test_source_file,
-            data_file=test_target_file,
+            source_file=test_source_file,
+            target_file=test_target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
             muon_only=self.config.debug,
@@ -207,8 +207,8 @@ class OfEval:
         derived_weights_test = probs_test / (1 - probs_test)
 
         # Get starting weights from the data modules
-        start_weights_train = self.d_module_train.get_mc_weights()
-        start_weights_test = self.d_module_test.get_mc_weights()
+        start_weights_train = self.d_module_train.get_source_weights()
+        start_weights_test = self.d_module_test.get_source_weights()
 
         # Update weights
         self.new_weights_train = start_weights_train * derived_weights_train

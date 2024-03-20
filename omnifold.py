@@ -71,12 +71,13 @@ class Omnifolder():
         for i in range(self.cfg.num_iterations):
             self.current_interation = i
             print(f"\n\n ##### Running iteration {i+1} of {self.cfg.num_iterations} #####")
-            self.run_step(1)
+            print("DEBUG!!! Skipping step 1")
+            # self.run_step(1)
             self.run_step(2)
 
         print("\n############## Omnifold Finished!! ##############\n")
 
-        self.run_finish()
+        # self.run_finish()
 
 
     def run_step(self, step):
@@ -92,7 +93,7 @@ class Omnifolder():
         if step not in [1, 2]:
             raise ValueError("Step must be 1 or 2!")
 
-        print(f"Running step {step}!")
+        print(f"\n########## Step {step} Training ##########\n")
 
         # Run training as a subprocess
         train_args = [
@@ -124,6 +125,8 @@ class Omnifolder():
             if found_id and found_path:
                 break
 
+        print(f"\n########## Step {step} Evaluating ##########\n")
+
         # Run evaluation as a subprocess, no need to keep output
         eval_args = [
             "python", 
@@ -144,7 +147,7 @@ class Omnifolder():
         print(f"Finished step {step}!!")
 
 
-    def run_finish(self):
-        """ run_finish - This function runs the plotting to evaluate the performance
-        of this Omnifold run.
-        """
+    # def run_finish(self):
+    #     """ run_finish - This function runs the plotting to evaluate the performance
+    #     of this Omnifold run.
+    #     """
