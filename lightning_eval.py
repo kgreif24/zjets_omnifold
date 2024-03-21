@@ -98,7 +98,9 @@ class OfEval:
 
         # Build a data module. We want to run prediction on every event
         # we have, so need to define two data modules, one for the training / val
-        # set and one for the test set. Both of these will be in testing mode
+        # set and one for the test set. Both of these will be in testing mode.
+        # Note the data modules filter data by the relevant pass 190 flag. Need to add in weights for 
+        # events which fail these flags after prediction.
         self.d_module_train = LOfData(
             source_file=train_source_file,
             target_file=train_target_file,
@@ -107,7 +109,8 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            testing=True,
+            load_all=True,
+            testing=False,
             max_tracks=self.config.max_tracks,
             use_truth=use_truth
         )
@@ -119,6 +122,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
+            load_all=True,
             testing=True,
             max_tracks=self.config.max_tracks,
             use_truth=use_truth
@@ -177,9 +181,12 @@ class OfEval:
 
 
     def run_prediction(self):
-        """ run_prediction - Run predictions over every data point.
-        Then we calculate the derived weights, and write weights to a
-        .npz file.
+        """ run_prediction - Run predictions over every data point in the train / test datamodules.
+        Then calculate the updated weights. Also need to think about how to handle the events
+        which do not pass the pass190 flags. For now just assign the starting weight to these events,
+        using the "get_source_all_weights" method of the data modules.
+        
+        Then save the updated weights as .npz files
 
         No arguments or returns
         """
@@ -196,13 +203,13 @@ class OfEval:
         labels_train = self.d_module_train.get_labels()
         labels_test = self.d_module_test.get_labels()
 
-        # Drop data predictions
-        mc_predictions_train = predictions_train[labels_train == 0]
-        mc_predictions_test = predictions_test[labels_test == 0]
+        # Drop target predictions
+        source_predictions_train = predictions_train[labels_train == 0]
+        source_predictions_test = predictions_test[labels_test == 0]
 
         # Calculate derived weights
-        probs_train = 1 / (1 + np.exp(-mc_predictions_train))
-        probs_test = 1 / (1 + np.exp(-mc_predictions_test))
+        probs_train = 1 / (1 + np.exp(-source_predictions_train))
+        probs_test = 1 / (1 + np.exp(-source_predictions_test))
         derived_weights_train = probs_train / (1 - probs_train)
         derived_weights_test = probs_test / (1 - probs_test)
 
@@ -210,15 +217,28 @@ class OfEval:
         start_weights_train = self.d_module_train.get_source_weights()
         start_weights_test = self.d_module_test.get_source_weights()
 
-        # Update weights
+        # Calculate updated weights
         self.new_weights_train = start_weights_train * derived_weights_train
         self.new_weights_test = start_weights_test * derived_weights_test
+
+        # Now we need to handle the events which do not pass the pass190 flags.
+        # Get the starting weights for every event
+        all_weights_train = self.d_module_train.get_source_all_weights()
+        all_weights_test = self.d_module_test.get_source_all_weights()
+
+        # Get the filters
+        pass190_train = self.d_module_train.get_source_pass190()
+        pass190_test = self.d_module_test.get_source_pass190()
+
+        # Update the all weights vectors with the new weights
+        all_weights_train[pass190_train == 1] = self.new_weights_train
+        all_weights_test[pass190_test == 1] = self.new_weights_test
 
         # Save new weights for future use
         np.savez(
             f"{self.weight_dir}/iteration_{self.iteration}_step_{self.step}.npz",
-            train=self.new_weights_train,
-            test=self.new_weights_test
+            train=all_weights_train,
+            test=all_weights_test
         )
 
         # Evaluate difference between reweighted truth MC and truth data if this is step 2
@@ -233,26 +253,25 @@ class OfEval:
         No arguments or returns
         """
 
-        # Since this is step 2, we already have truth level MC in train data loader.
-        # We still need to load the truth level pseudodata
+        # Load truth level MC and pseudodata from scratch
+        f_mc = uproot.open(self.config.mc_train_path)
+        tree_mc = f_mc["OmniTree"]
         f_pd = uproot.open(self.config.data_path)
         tree_pd = f_pd["OmniTree"]
 
-        # Get the truth level pseudodata cuts
-        filter_pd = ak.to_numpy(tree_pd["pass190"].array())
+        # Get the truth level pass190 filters
+        filter_mc = ak.to_numpy(tree_mc["truth_pass190"].array())
+        filter_pd = ak.to_numpy(tree_pd["truth_pass190"].array())
 
         # Get the plot data
+        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), filter=filter_mc, get_truth=True)
         plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), filter=filter_pd, get_truth=True)
 
         # Get the track kinematics
+        kinematics_mc = du.get_kinematics(tree_mc, filter=filter_mc, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks)
+        kinematics_mc = kinematics_mc[:,:3,2:]
         kinematics_pd = du.get_kinematics(tree_pd, filter=filter_pd, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks)
-        
-        # Get the same quantities for the truth level MC from data module
-        plotting_train = self.d_module_train.get_plotting()
-        kinematics_train = self.d_module_train.get_track_kinematics()
-        labels_train = self.d_module_train.get_labels()
-        plotting_mc = plotting_train[labels_train == 0,...]
-        kinematics_mc = kinematics_train[labels_train == 0,...]
+        kinematics_pd = kinematics_pd[:,:3,2:]
 
         # Concatenate the truth level MC and truth level pseudodata
         plotting = np.concatenate([plotting_mc, plotting_pd], axis=0)
@@ -263,8 +282,9 @@ class OfEval:
         labels_pd = np.ones(plotting_pd.shape[0])
         labels = np.concatenate([labels_mc, labels_pd], axis=0)
 
-        # Make start weights
-        root_weights_mc = self.d_module_train.get_source_root_weights()
+        # Get start weights
+        root_weights_mc = ak.to_numpy(tree_mc['weight'].array())
+        root_weights_mc = root_weights_mc[filter_mc == 1]
         weights_pd = np.ones(plotting_pd.shape[0])
         start_weights = np.concatenate([root_weights_mc, weights_pd], axis=0)
 
@@ -273,12 +293,14 @@ class OfEval:
 
         # Update and compute metric
         self.wasserstein.update(plotting, start_weights, end_weights, labels)
-        comp_wass, plot_dict = self.wasserstein.compute()
+        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False)
         print("Reweighted truth MC to truth PD Wasserstein metric:", comp_wass)
 
         # Log wasserstein metric and plots if we are using wandb
         if self.config.wandb:
             self.wandb_logger.experiment.log({"comp_wasserstein": comp_wass})
+            track_dict = pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, save_location=self.comp_dir)
+            plot_dict = {**plot_dict, **track_dict}
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
                 self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})

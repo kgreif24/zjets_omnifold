@@ -95,15 +95,20 @@ class LOfTransformer(L.LightningModule):
     def training_step(self, batch, batch_idx):
 
         # Separate batch, make forward pass, calculate loss
-        inputs, target, mask, weights, plotting = batch
+        inputs, target, mask, start_weights, plotting = batch
         output = self(inputs, mask)
-        loss = self.criterion(output, target) * weights
+        loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
+
+        # Calculate new weights
+        probs = 1 / (1 + torch.exp(-output))
+        derived_weights = probs / (1 - probs)
+        end_weights = derived_weights * start_weights
 
         # Logging metrics
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)
         if not self.debug:
-            self.wasserstein_train.update(plotting, weights, output, target)
+            self.wasserstein_train.update(plotting, start_weights, end_weights, target)
 
         return loss
     
@@ -264,6 +269,7 @@ class LOfData(L.LightningDataModule):
         batch_size=256,
         dataloader_workers=0,
         split_seed=420,
+        load_all=False,
         testing=False,
         use_truth=False,
         **kwargs
@@ -284,7 +290,8 @@ class LOfData(L.LightningDataModule):
             dataloader_workers {int} -- The number of workers for the data loaders.
             split_seed {int} - The random seed to use in making train / val split,
                 ensure this is common between all processes
-            testing {bool} - Set to true if this data module is for testing
+            load_all {bool} - Set to true if data loader should load all data, if false it produces train / val split
+            testing {bool} - Set to true for data module to load testing weights (not training)
             use_truth {bool} - Set to true if we want to use truth level information
                 for the data module. Defaults to false.
         """
@@ -299,6 +306,7 @@ class LOfData(L.LightningDataModule):
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
         self.split_seed = split_seed
+        self.load_all = load_all
         self.testing = testing
         self.use_truth = use_truth
 
@@ -314,15 +322,15 @@ class LOfData(L.LightningDataModule):
             prekey = "truth_"
 
         # Pass 190 flags
-        pass190_source = ak.to_numpy(tree_source[prekey+'pass190'].array())
-        pass190_target = ak.to_numpy(tree_target[prekey+'pass190'].array())
-        rank_zero_info("We have a fracion {} of good events in source".format(np.sum(pass190_source) / len(pass190_source)))
-        rank_zero_info("We have a fracion {} of good events in target".format(np.sum(pass190_target) / len(pass190_target)))
+        self.pass190_source = ak.to_numpy(tree_source[prekey+'pass190'].array())
+        self.pass190_target = ak.to_numpy(tree_target[prekey+'pass190'].array())
+        rank_zero_info("We have a fracion {} of good events in source".format(np.sum(self.pass190_source) / len(self.pass190_source)))
+        rank_zero_info("We have a fracion {} of good events in target".format(np.sum(self.pass190_target) / len(self.pass190_target)))
 
         # Load kinematics
         source_kinematics, source_mask = get_kinematics(
             tree_source, 
-            filter=pass190_source,
+            filter=self.pass190_source,
             max_tracks=self.max_tracks,
             muon_only=muon_only,
             one_hot=True,
@@ -332,7 +340,7 @@ class LOfData(L.LightningDataModule):
         # Target kinematics will take the maximum # of tracks from source
         target_kinematics, target_mask = get_kinematics(
             tree_target,
-            filter=pass190_target,
+            filter=self.pass190_target,
             max_tracks=source_kinematics.shape[2]-2,
             muon_only=muon_only,
             one_hot=True,
@@ -341,39 +349,13 @@ class LOfData(L.LightningDataModule):
         )
 
         ## TODO: Refactor this into a function!
-        # Get source weights. Options are:
-        # 1. Load weights from root file
-        # 2. Use weights from a saved .npz file
-        # 3. Just use a vector of ones
-        source_root_weights = ak.to_numpy(tree_source['weight'].array())  # For use in deriving final comparison plots
-        self.source_root_weights = source_root_weights[pass190_source == 1]
-        if self.source_weight_path == 'root':
-            source_weights = np.expand_dims(self.source_root_weights, axis=1)
-        elif self.source_weight_path is not None:
-            # Note this assumes we only store weights for events which pass reco or truth level cuts
-            source_weight_file = np.load(self.source_weight_path)
-            if self.testing:
-                source_weights = np.expand_dims(source_weight_file['test'], 1)
-            else:
-                source_weights = np.expand_dims(source_weight_file['train'], 1)
-        else:
-            source_weights = np.ones((source_kinematics.shape[0], 1), dtype=np.float32)
-        self.source_weights = source_weights
+        # Get source weights
+        self.source_all_weights = self.load_weights(tree_source, path=self.source_weight_path, test=self.testing)
+        self.source_weights = np.expand_dims(self.source_all_weights[self.pass190_source == 1], axis=1)
 
-        # Get target weights. Procedure is the same for source
-        if self.target_weight_path == 'root':
-            target_weights = ak.to_numpy(tree_target['weight'].array())
-            target_weights = np.expand_dims(target_weights[pass190_target == 1], axis=1)
-        elif self.target_weight_path is not None:
-            # Note this assumes we only store weights for events which pass reco or truth level cuts
-            target_weight_file = np.load(self.target_weight_path)
-            if self.testing:
-                target_weights = np.expand_dims(target_weight_file['test'], 1)
-            else:
-                target_weights = np.expand_dims(target_weight_file['train'], 1)
-        else:
-            target_weights = np.ones((target_kinematics.shape[0], 1), dtype=np.float32)
-        self.target_weights = target_weights
+        # Get target weights
+        self.target_all_weights = self.load_weights(tree_target, path=self.target_weight_path, test=self.testing)
+        self.target_weights = np.expand_dims(self.target_all_weights[self.pass190_target == 1], axis=1)
 
         # Labels
         source_labels = np.zeros((source_kinematics.shape[0], 1), dtype=np.float32)
@@ -381,13 +363,13 @@ class LOfData(L.LightningDataModule):
 
         # Load plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
-        source_plotting = get_plotting(tree_source, vars=plotting_variables, filter=pass190_source, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
-        target_plotting = get_plotting(tree_target, vars=plotting_variables, filter=pass190_target, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
+        source_plotting = get_plotting(tree_source, vars=plotting_variables, filter=self.pass190_source, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
+        target_plotting = get_plotting(tree_target, vars=plotting_variables, filter=self.pass190_target, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
 
         # Concatenate source and pseudodata together
         self.kinematics = np.concatenate([source_kinematics, target_kinematics], axis=0)
         mask = np.concatenate([source_mask, target_mask], axis=0)
-        weights = np.concatenate([source_weights, target_weights], axis=0)
+        weights = np.concatenate([self.source_weights, self.target_weights], axis=0)
         self.labels = np.concatenate([source_labels, target_labels], axis=0)  # Make instance variable for getting labels in eval script
         self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
@@ -398,16 +380,49 @@ class LOfData(L.LightningDataModule):
         labels = torch.from_numpy(self.labels.astype(np.float32))
         plotting = torch.from_numpy(self.plotting.astype(np.float32))
 
-        print(kinematics.shape)
-        print(mask.shape)
-        print(weights.shape)
-        print(labels.shape)
-        print(plotting.shape)
-
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
         rank_zero_info("We have {} source events and {} pseudo data events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
+
+
+    def load_weights(self, tree, path=None, test=False):
+        """ load_weights - This function implements the logic for loading weights to be used both in data loading, and
+        in providing access to the weights for the purposes of calculating the next iteration of weights in the evaluation
+        routine. The logic is as follows:
+        
+        1. If the path is 'root', then we load the weights from the root file
+        2. If the path is not None, then we load the weights from the .npz file at the given path
+        3. If the path is None, then we return a vector of ones
+        
+        Arguments:
+            tree {uproot.tree.TTree} -- The uproot tree object
+            path {str} -- The path to the weights file. If set to 'root', then we load the weights from the root file.
+            test {bool} -- Set to true if we want to load the test weights. Defaults to false.
+            
+        Returns:
+            np.ndarray -- A numpy array of weights
+        """
+
+        # Get weights from root tree
+        root_weights = ak.to_numpy(tree['weight'].array())
+
+        # Load weights directly from root file
+        if path == 'root':
+            all_weights = root_weights
+
+        # Load weights from the path
+        elif path is not None:
+            weight_file = np.load(path)
+            if test:
+                all_weights = weight_file['test']
+            else:
+                all_weights = weight_file['train']
+
+        # Otherwise create a vector of ones
+        else:
+            all_weights = np.ones_like(root_weights, dtype=np.float32)
+        return all_weights
 
 
     # Method for getting source weights
@@ -427,8 +442,12 @@ class LOfData(L.LightningDataModule):
         return self.plotting
 
     # Method for getting source root weights
-    def get_source_root_weights(self):
-        return self.source_root_weights
+    def get_source_all_weights(self):
+        return self.source_all_weights
+
+    # Method for getting pass 190 flags
+    def get_source_pass190(self):
+        return self.pass190_source
 
 
     # Setup function
@@ -441,7 +460,7 @@ class LOfData(L.LightningDataModule):
         """
 
         # Make train and validation split if necessary
-        if not stage == 'test':
+        if not self.load_all:
             generator = torch.Generator().manual_seed(self.split_seed)
             self.train_dataset, self.val_dataset = torch.utils.data.random_split(
                 self.all_dataset, 
@@ -458,7 +477,7 @@ class LOfData(L.LightningDataModule):
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader for the training data.
         """
-        assert not self.testing
+        assert not self.load_all
         return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.dataloader_workers)
     
 
@@ -470,7 +489,7 @@ class LOfData(L.LightningDataModule):
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader for the validation data.
         """
-        assert not self.testing
+        assert not self.load_all
         return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
 
 
@@ -482,19 +501,19 @@ class LOfData(L.LightningDataModule):
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
-        assert self.testing
+        assert self.load_all
         return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
 
 
     # Predict dataloader
     def predict_dataloader(self):
         """ predict_dataloader - This method returns a pytorch dataloader for running predictions. Yields either the validation or the 
-        full data set depending on whether testing is set to true.
+        full data set depending on whether "load_all" is set to true.
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
-        if self.testing:
+        if self.load_all:
             return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
         else:
             return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)

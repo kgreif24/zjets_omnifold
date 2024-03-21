@@ -71,8 +71,7 @@ class Omnifolder():
         for i in range(self.cfg.num_iterations):
             self.current_interation = i
             print(f"\n\n ##### Running iteration {i+1} of {self.cfg.num_iterations} #####")
-            print("DEBUG!!! Skipping step 1")
-            # self.run_step(1)
+            self.run_step(1)
             self.run_step(2)
 
         print("\n############## Omnifold Finished!! ##############\n")

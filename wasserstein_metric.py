@@ -54,31 +54,43 @@ class WassersteinOne(torchmetrics.Metric):
         self.target.append(labels)
 
 
-    def compute(self):
+    def compute(self, from_torch=True):
         """ compute - Actually compute the sum of the wasserstein distances
         over the dimensions used in plotting.
 
-        No arguments
+        Arguments:
+        from_torch - Optional, default True. If True, will convert the state tensors
+            to numpy. If false assumes state tensors are alreeady numpy
         Returns: the sum of the wasserstein distances, and a dictionary of plots
         with form {plot_name: stored location of .png file}. If draw_plots is False,
         then this dictionary is empty.
         """
 
-        # Concatenate list states
-        plotting = torchmetrics.utilities.dim_zero_cat(self.plotting)
-        start_weights = torchmetrics.utilities.dim_zero_cat(self.start_weights)
-        end_weights = torchmetrics.utilities.dim_zero_cat(self.end_weights)
-        target = torchmetrics.utilities.dim_zero_cat(self.target)
+        # If from_torch, convert to numpy
+        if from_torch:
 
-        # To numpy
-        plotting = plotting.cpu().detach().numpy()
-        start_weights = start_weights.cpu().detach().numpy().flatten()
-        end_weights = end_weights.cpu().detach().numpy().flatten()
-        target = target.cpu().detach().numpy().flatten()
+            # Concatenate list states
+            plotting = torchmetrics.utilities.dim_zero_cat(self.plotting)
+            start_weights = torchmetrics.utilities.dim_zero_cat(self.start_weights)
+            end_weights = torchmetrics.utilities.dim_zero_cat(self.end_weights)
+            target = torchmetrics.utilities.dim_zero_cat(self.target)
+
+            # To numpy
+            plotting = plotting.cpu().detach().numpy()
+            start_weights = start_weights.cpu().detach().numpy().flatten()
+            end_weights = end_weights.cpu().detach().numpy().flatten()
+            target = target.cpu().detach().numpy().flatten()
+
+        # Else the state tensors already contain numpy, and just need to be concatenated
+        else:
+            plotting = np.concatenate(self.plotting, axis=0)
+            start_weights = np.concatenate(self.start_weights, axis=0).flatten()
+            end_weights = np.concatenate(self.end_weights, axis=0).flatten()
+            target = np.concatenate(self.target, axis=0).flatten()
 
         # Isolate source and target weights
-        source_weight = end_weights[target == 0]
-        target_weight = end_weights[target == 1]
+        source_weight = end_weights[target == 0]  # Want ending weights for the source
+        target_weight = start_weights[target == 1] # And the starting weights for the target
 
         # If we want to draw plots, do so here
         plot_dict = {}

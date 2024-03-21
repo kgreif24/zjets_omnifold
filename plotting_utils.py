@@ -216,7 +216,7 @@ def make_logged_plots(
         plot_data, 
         labels, 
         start_weights, 
-        outputs=None, 
+        end_weights=None, 
         definitions=default_settings, 
         save_location='./plot_storage', 
         display=False,
@@ -234,7 +234,7 @@ def make_logged_plots(
     plot_data - numpy array of the data to be plotted
     labels - numpy array of the labels for the data
     start_weights - numpy array of the weights used in network training
-    outputs - numpy array of network outputs over the events contained in "plot_data"
+    end_weights - numpy array of new derived weights.
         If left as None, don't plot reweighting
     definitions - list of dictionaries describing each of the histograms to build
     save_location - location of directory for plot staging
@@ -245,17 +245,12 @@ def make_logged_plots(
     is to a .png stored on local disk
     """
 
-    # First calculate weights from outputs
-    if outputs is not None:
-        probs = 1 / (1 + np.exp(-outputs))
-        derived_weights = probs / (1 - probs)
-        end_weights = start_weights * derived_weights
-        end_weights = end_weights[labels==0] # Drop the data events here
-        end_effective_events = np.sum(end_weights)**2 / np.sum(end_weights**2)
-    else:
-        end_weights = None
+    # Drop data weights and calculate effeective number of events
     start_weights = start_weights[labels==0] # Drop the data events here
     start_effective_events = np.sum(start_weights)**2 / np.sum(start_weights**2)
+    if end_weights is not None:
+        end_weights = end_weights[labels==0]
+        end_effective_events = np.sum(end_weights)**2 / np.sum(end_weights**2)
 
     # Make dictionary for return
     return_dict = {}
@@ -292,31 +287,16 @@ def make_logged_plots(
         plt.close()
         return_dict[key] = hist_path
 
-    # Also make histograms of the network outputs and derived weights
-    if outputs is not None:
+    # Also make histograms of the derived weights
+    if end_weights is not None:
         fig = plt.figure()
         ax = plt.gca()
-        bins = np.linspace(0, 1, 150)
-        ax.hist(probs[labels==0], bins=bins, label='MC', density=True, histtype='step')
-        ax.hist(probs[labels==1], bins=bins, label='Pseudodata', density=True, histtype='step')
-        ax.set_yscale('log')
-        ax.set_xlabel('Network Output')
-        ax.set_ylabel('A.U.')
-        ax.legend()
-        plt.savefig(f'{save_location}/network_output.png', dpi=300)
-        if display:
-            plt.show()
-        plt.close()
-        return_dict['network_output'] = f'{save_location}/network_output.png'
-
-        fig = plt.figure()
-        ax = plt.gca()
-        ax.hist(end_weights[labels==0], bins=150, label='MC', density=True, histtype='step')
+        ax.hist(end_weights, bins=150, label='MC', density=True, histtype='step')
         ax.set_yscale('log')
         ax.set_xlabel('Derived Weights for MC')
         ax.set_ylabel('A.U.')
         # Add stats box
-        add_stats_box(ax, end_weights[labels==0])
+        add_stats_box(ax, end_weights)
         # Add the number of effective of events as a text box
         textstr = f'Start Effective Events: {start_effective_events:10.0f}' + \
                 '\n' + f'End Effective Events: {end_effective_events:10.0f}'
@@ -337,7 +317,7 @@ def make_inclusive_track_plots(
         track_data,
         labels,
         start_weights,
-        outputs=None,
+        end_weights=None,
         definitions=track_hists,
         save_location='./plot_storage',
         display=False,
@@ -350,25 +330,21 @@ def make_inclusive_track_plots(
     track_data - numpy array of the track kinematics to be plotted, in shape (n_events, 3, n_tracks)
     labels - numpy array of the labels for the data
     start_weights - numpy array of the weights used in network training
-    outputs - numpy array of network outputs over the events contained in "plot_data"
+    end_weights - numpy array of new derived weights.
+        If left as None, don't plot reweighting
     definitions - list of dictionaries describing each of the histograms to build, default setting is above
     save_location - location of directory in which to dump plots
     display - if true, display the plots to the screen
     """
 
-    # First calculate weights from outputs, expand to track_data shape and flatten
-    if outputs is not None:
-        probs = 1 / (1 + np.exp(-outputs))
-        derived_weights = probs / (1 - probs)
-        end_weights = start_weights * derived_weights
-        end_weights = end_weights[labels==0] # Drop the data events here
-        end_weights = np.repeat(np.expand_dims(end_weights, axis=1), track_data.shape[2], axis=1)
-        end_weights = np.ravel(end_weights)
-    else:
-        end_weights = None
+    # Drop data weights and extend to the track data shape 
     start_weights = start_weights[labels==0] # Drop the data events here
     start_weights = np.repeat(np.expand_dims(start_weights, axis=1), track_data.shape[2], axis=1)
     start_weights = np.ravel(start_weights)
+    if end_weights is not None:
+        end_weights = end_weights[labels==0]
+        end_weights = np.repeat(np.expand_dims(end_weights, axis=1), track_data.shape[2], axis=1)
+        end_weights = np.ravel(end_weights)
 
     # Make dictionary for return
     return_dict = {}
@@ -388,7 +364,7 @@ def make_inclusive_track_plots(
             track_pt_mc = this_data_mc
             track_pt_pd = this_data_pd
             start_weights = start_weights[track_pt_mc != 0]
-            if outputs is not None:
+            if end_weights is not None:
                 end_weights = end_weights[track_pt_mc != 0]
         this_data_mc = this_data_mc[track_pt_mc != 0]
         this_data_pd = this_data_pd[track_pt_pd != 0]

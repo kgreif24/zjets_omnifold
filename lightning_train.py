@@ -90,6 +90,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.config.split_seed,
+            load_all=False,
             testing=False,
             max_tracks=self.config.max_tracks,
             use_truth=use_truth
