@@ -52,6 +52,13 @@ class OfConfig:
             default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Jan30_Combined_All.root',
             help='Path for the data'
         )
+        self.parser.add_argument(
+            '--truth_data_path',
+            type=str,
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Combined_1-18.root',
+            help='Path to the truth pseudodata'
+
+        )
         self.parser.add_argument('--split_seed', type=int, default=420, help='Seed for the train / validation split')
         self.parser.add_argument('--max_tracks', type=int, default=150, help='Maximum number of tracks to use in the data')
 

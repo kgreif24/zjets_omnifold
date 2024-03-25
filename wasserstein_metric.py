@@ -54,7 +54,7 @@ class WassersteinOne(torchmetrics.Metric):
         self.target.append(labels)
 
 
-    def compute(self, from_torch=True):
+    def compute(self, from_torch=True, **kwargs):
         """ compute - Actually compute the sum of the wasserstein distances
         over the dimensions used in plotting.
 
@@ -96,7 +96,7 @@ class WassersteinOne(torchmetrics.Metric):
         plot_dict = {}
         if self.draw_plots:
             plot_dict = pu.make_logged_plots(
-                plotting, target, start_weights, end_weights, save_location=self.save_location
+                plotting, target, start_weights, end_weights, save_location=self.save_location, **kwargs
             )
 
         # Results list

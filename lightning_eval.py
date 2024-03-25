@@ -51,6 +51,9 @@ class OfEval:
         self.iteration = iteration
         self.step = step
 
+        # Hard code the number of events to use in step 2 truth pseudodata comparison
+        self.n_compare_events = 1000000
+
         # Make directories for storing plots and weights
         self.test_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/test_plots'
         os.makedirs(self.test_dir, exist_ok=True)
@@ -154,7 +157,8 @@ class OfEval:
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
             test_plots=self.test_dir,
-            debug=self.config.debug
+            debug=self.config.debug,
+            step=self.step
         )
 
         # Make lightning trainer for testing
@@ -256,21 +260,23 @@ class OfEval:
         # Load truth level MC and pseudodata from scratch
         f_mc = uproot.open(self.config.mc_train_path)
         tree_mc = f_mc["OmniTree"]
-        f_pd = uproot.open(self.config.data_path)
+        f_pd = uproot.open(self.config.truth_data_path)
         tree_pd = f_pd["OmniTree"]
 
         # Get the truth level pass190 filters
         filter_mc = ak.to_numpy(tree_mc["truth_pass190"].array())
+        filter_mc_plot = filter_mc[:self.n_compare_events]
         filter_pd = ak.to_numpy(tree_pd["truth_pass190"].array())
+        filter_pd_plot = filter_pd[:self.n_compare_events]
 
         # Get the plot data
-        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), filter=filter_mc, get_truth=True)
-        plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), filter=filter_pd, get_truth=True)
+        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
+        plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
 
         # Get the track kinematics
-        kinematics_mc = du.get_kinematics(tree_mc, filter=filter_mc, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks)
+        kinematics_mc = du.get_kinematics(tree_mc, filter=filter_mc, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks, max_events=self.n_compare_events)
         kinematics_mc = kinematics_mc[:,:3,2:]
-        kinematics_pd = du.get_kinematics(tree_pd, filter=filter_pd, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks)
+        kinematics_pd = du.get_kinematics(tree_pd, filter=filter_pd, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks, max_events=self.n_compare_events)
         kinematics_pd = kinematics_pd[:,:3,2:]
 
         # Concatenate the truth level MC and truth level pseudodata
@@ -284,16 +290,21 @@ class OfEval:
 
         # Get start weights
         root_weights_mc = ak.to_numpy(tree_mc['weight'].array())
-        root_weights_mc = root_weights_mc[filter_mc == 1]
-        weights_pd = np.ones(plotting_pd.shape[0])
-        start_weights = np.concatenate([root_weights_mc, weights_pd], axis=0)
+        root_weights_mc = root_weights_mc[:self.n_compare_events]
+        root_weights_mc = root_weights_mc[filter_mc_plot == 1]
+        root_weights_pd = ak.to_numpy(tree_pd['weight'].array())
+        root_weights_pd = root_weights_pd[:self.n_compare_events]
+        root_weights_pd = root_weights_pd[filter_pd_plot == 1]
+        start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
 
         # Make end weights
-        end_weights = np.concatenate([self.new_weights_train, weights_pd], axis=0)
+        mc_end_weights = self.new_weights_train[:self.n_compare_events]
+        mc_end_weights = mc_end_weights[filter_mc_plot == 1]
+        end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
 
         # Update and compute metric
         self.wasserstein.update(plotting, start_weights, end_weights, labels)
-        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False)
+        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False, names=('TruthMC', 'TruthPD'))
         print("Reweighted truth MC to truth PD Wasserstein metric:", comp_wass)
 
         # Log wasserstein metric and plots if we are using wandb

@@ -6,12 +6,12 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH -C gpu
 #SBATCH -G 4
-#SBATCH -q regular
-#SBATCH -J of_iteration_1
+#SBATCH -q debug
+#SBATCH -J of_debug
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
-#SBATCH -t 6:0:0
+#SBATCH -t 0:10:0
 
 # Set up environment
 module load conda
@@ -22,6 +22,6 @@ export OMP_NUM_THREADS=1
 export OMP_PLACES=threads
 export OMP_PROC_BIND=spread
 
-#run the application: 
-# applications may perform better with --gpu-bind=none instead of --gpu-bind=single:1
-srun -n 4 -c 32 --cpu_bind=cores -G 4 --gpu-bind=none python run_omnifold.py --config_path ./cli/default_of_template.yml
+# run the application:
+# Since the parent process just handles calling the subprocesses for training / eval, run it sequentially
+python run_omnifold.py --config_path ./cli/default_of_template.yml

@@ -40,7 +40,8 @@ class LOfTransformer(L.LightningModule):
                  val_plots='./val_plot_storage', 
                  test_plots='./test_plot_storage', 
                  debug=False, 
-                 seed=420, 
+                 seed=420,
+                 step=1,
                  **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
         There is one required argument which gives the input dimension for the 
@@ -54,6 +55,7 @@ class LOfTransformer(L.LightningModule):
             test_plots {str} -- The path to the directory where testing plots will be stored for logging
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
             seed {int} -- The random seed to use for the train / val split. Only used for logging
+            step {int} -- Whether this training is for OF step one or two, only effects plot labeling
             **kwargs {dict} -- A dictionary of keyword arguments to be passed
                 to the OfTransformer init function.
         """
@@ -61,6 +63,12 @@ class LOfTransformer(L.LightningModule):
         # Debug flag and seed value
         self.debug = debug
         self.seed = seed
+
+        # Set plotting names based on step argument
+        if step == 1:
+            self.names = ('RecoMC', 'RecoPD')
+        elif step == 2:
+            self.names = ('TruthMC', 'PulledWeightsMC')
 
         # Initialize model and loss
         super().__init__()
@@ -161,7 +169,7 @@ class LOfTransformer(L.LightningModule):
         if not self.trainer.sanity_checking:
 
             # Calculate wasserstein metric, and get dictionary of plots to log
-            val_wass, plot_dict = self.wasserstein_val.compute()
+            val_wass, plot_dict = self.wasserstein_val.compute(names=self.names)
 
             # Log wasserstein metric
             self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
@@ -205,7 +213,7 @@ class LOfTransformer(L.LightningModule):
             return
 
         # Calculate wasserstein metric, and get dictionary of plots to log
-        test_wass, plot_dict = self.wasserstein_test.compute()
+        test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
 
         # Log wasserstein metric
         self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)

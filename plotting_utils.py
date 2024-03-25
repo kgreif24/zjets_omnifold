@@ -233,8 +233,8 @@ def make_logged_plots(
     Arguments:
     plot_data - numpy array of the data to be plotted
     labels - numpy array of the labels for the data
-    start_weights - numpy array of the weights used in network training
-    end_weights - numpy array of new derived weights.
+    start_weights - numpy array of the weights used in network training, for all events
+    end_weights - numpy array of new derived weights for all events.
         If left as None, don't plot reweighting
     definitions - list of dictionaries describing each of the histograms to build
     save_location - location of directory for plot staging
@@ -245,9 +245,10 @@ def make_logged_plots(
     is to a .png stored on local disk
     """
 
-    # Drop data weights and calculate effeective number of events
-    start_weights = start_weights[labels==0] # Drop the data events here
-    start_effective_events = np.sum(start_weights)**2 / np.sum(start_weights**2)
+    # Separate weights and calculate effeective number of events
+    source_start_weights = start_weights[labels==0]
+    target_weights = start_weights[labels==1]
+    start_effective_events = np.sum(source_start_weights)**2 / np.sum(source_start_weights**2)
     if end_weights is not None:
         end_weights = end_weights[labels==0]
         end_effective_events = np.sum(end_weights)**2 / np.sum(end_weights**2)
@@ -269,8 +270,9 @@ def make_logged_plots(
         fig = plot_reweighting(
             this_data[labels==0],
             this_data[labels==1], 
-            start_weights,
-            weight_end=end_weights,
+            source_start_weights,
+            source_weight_end=end_weights,
+            target_weight=target_weights,
             bins=element['bins'], 
             xlabel=element['xlabel'], 
             linear_scale=element['linear_scale'],
@@ -329,18 +331,21 @@ def make_inclusive_track_plots(
     Arguments:
     track_data - numpy array of the track kinematics to be plotted, in shape (n_events, 3, n_tracks)
     labels - numpy array of the labels for the data
-    start_weights - numpy array of the weights used in network training
-    end_weights - numpy array of new derived weights.
+    start_weights - numpy array of the weights used in network training for all events
+    end_weights - numpy array of new derived weights for all events.
         If left as None, don't plot reweighting
     definitions - list of dictionaries describing each of the histograms to build, default setting is above
     save_location - location of directory in which to dump plots
     display - if true, display the plots to the screen
     """
 
-    # Drop data weights and extend to the track data shape 
-    start_weights = start_weights[labels==0] # Drop the data events here
-    start_weights = np.repeat(np.expand_dims(start_weights, axis=1), track_data.shape[2], axis=1)
-    start_weights = np.ravel(start_weights)
+    # Separate weights and extend to the track data shape 
+    source_start_weights = start_weights[labels==0]
+    source_start_weights = np.repeat(np.expand_dims(source_start_weights, axis=1), track_data.shape[2], axis=1)
+    source_start_weights = np.ravel(source_start_weights)
+    target_weights = start_weights[labels==1]
+    target_weights = np.repeat(np.expand_dims(target_weights, axis=1), track_data.shape[2], axis=1)
+    target_weights = np.ravel(target_weights)
     if end_weights is not None:
         end_weights = end_weights[labels==0]
         end_weights = np.repeat(np.expand_dims(end_weights, axis=1), track_data.shape[2], axis=1)
@@ -363,7 +368,8 @@ def make_inclusive_track_plots(
         if i == 0:
             track_pt_mc = this_data_mc
             track_pt_pd = this_data_pd
-            start_weights = start_weights[track_pt_mc != 0]
+            source_start_weights = source_start_weights[track_pt_mc != 0]
+            target_weights = target_weights[track_pt_pd != 0]
             if end_weights is not None:
                 end_weights = end_weights[track_pt_mc != 0]
         this_data_mc = this_data_mc[track_pt_mc != 0]
@@ -378,8 +384,9 @@ def make_inclusive_track_plots(
         fig = plot_reweighting(
             this_data_mc,
             this_data_pd, 
-            start_weights,
-            weight_end=end_weights,
+            source_start_weights,
+            source_weight_end=end_weights,
+            target_weight=target_weights,
             bins=element['bins'], 
             xlabel=element['xlabel'], 
             linear_scale=element['linear_scale'],
@@ -451,8 +458,9 @@ def add_stats_box(ax, data, low=0, high=1e20):
 def plot_reweighting(
         source_data, 
         target_data, 
-        weight_start, 
-        weight_end=None, 
+        source_weight_start, 
+        source_weight_end=None,
+        target_weight=None, 
         bins=150, 
         xlabel="", 
         linear_scale=False, 
@@ -466,8 +474,9 @@ def plot_reweighting(
     Arguments:
     source_data - numpy array of original data
     target_data - numpy array of target data
-    weight_start - numpy array of starting weights, set to vector of ones if there are none
-    weights_end - numpy array of ending weights. Optional if there are none
+    source_weight_start - numpy array of starting weights for source, required
+    source_weights_end - numpy array of ending weights for source. Optional if there are none
+    target_weight - numpy array of weights for target, optional
     bins - number of bins to use in the plot, if not set use mpl default w/ 150 bins
     xlabel - label to use for the x-axis
     linear_scale - if true, use linear scale for y-axis, otherwise use log scale
@@ -488,10 +497,12 @@ def plot_reweighting(
 
     fig = plt.figure()
     ax, axr = add_ratios(fig)
-    n_mc, bins, patches =  ax.hist(source_data, bins=bins, label=name1, density=True, alpha=0.5, weights=weight_start)
-    if weight_end is not None:
-        n_rw, bins, patches = ax.hist(source_data, bins=bins, label='ReweightedMC', density=True, histtype='step', color='black', weights=weight_end)
-    n_pd, bins, patches = ax.hist(target_data, bins=bins, label=name2, density=True, alpha=0.5)
+    n_mc, bins, patches =  ax.hist(source_data, bins=bins, label=name1, density=True, alpha=0.5, weights=source_weight_start)
+    if source_weight_end is not None:
+        n_rw, bins, patches = ax.hist(source_data, bins=bins, label='ReweightedMC', density=True, histtype='step', color='black', weights=source_weight_end)
+    if target_weight is None:
+        target_weight = np.ones_like(target_data)
+    n_pd, bins, patches = ax.hist(target_data, bins=bins, label=name2, density=True, alpha=0.5, weights=target_weight)
     if ylim is not None:
         ax.set_ylim(ylim)
     ax.set_xticks([])
@@ -504,7 +515,7 @@ def plot_reweighting(
 
     axr.hlines(1, bins[0], bins[-1], color='k', linestyle='--', alpha=0.8)
     axr.plot(bins[:-1], n_mc / n_pd, color='#1f77b4', drawstyle='steps-post')
-    if weight_end is not None:
+    if source_weight_end is not None:
         axr.plot(bins[:-1], n_rw / n_pd, color='k', drawstyle='steps-post')
     axr.set_ylabel(f'{name1}/{name2}')
     axr.set_xlim(ax.get_xlim())

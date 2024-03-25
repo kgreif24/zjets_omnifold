@@ -29,7 +29,8 @@ parser.add_argument("--store", type=str, help="The path to store the plots")
 args = parser.parse_args()
 
 # Set max tracks
-max_tracks = 200
+max_events = 1000000
+max_tracks = 150
 
 # Get the trees
 file1 = uproot.open(args.f1)
@@ -47,12 +48,16 @@ if args.truth2:
     filter2 = ak.to_numpy(tree2["truth_pass190"].array())
 else:
     filter2 = ak.to_numpy(tree2["pass190"].array())
+filter1_plot = filter1[:max_events]
+filter2_plot = filter2[:max_events]
 
 # Get weights and filter weights
 weights1 = ak.to_numpy(tree1["weight"].array())
-weights1 = weights1[filter1 == 1]
+weights1 = weights1[:max_events]
+weights1 = weights1[filter1_plot == 1]
 weights2 = ak.to_numpy(tree2["weight"].array())
-weights2 = weights2[filter2 == 1]
+weights2 = weights2[:max_events]
+weights2 = weights2[filter2_plot == 1]
 weights = np.concatenate([weights1, weights2], axis=0)
 
 # Make labels
@@ -62,13 +67,13 @@ labels = np.concatenate([labels1, labels2], axis=0)
 
 # Get the plot data
 plotting_variables = pu.default_settings.keys()
-plotting1 = du.get_plotting(tree1, vars=plotting_variables, filter=filter1, get_truth=args.truth1)
-plotting2 = du.get_plotting(tree2, vars=plotting_variables, filter=filter2, get_truth=args.truth2)
+plotting1 = du.get_plotting(tree1, vars=plotting_variables, filter=filter1, get_truth=args.truth1, max_events=max_events)
+plotting2 = du.get_plotting(tree2, vars=plotting_variables, filter=filter2, get_truth=args.truth2, max_events=max_events)
 plotting = np.concatenate([plotting1, plotting2], axis=0)
 
 # Get the track kinematics
-kinematics1 = du.get_kinematics(tree1, filter=filter1, get_mask=False, one_hot=False, get_truth=args.truth1, max_tracks=max_tracks)
-kinematics2 = du.get_kinematics(tree2, filter=filter2, get_mask=False, one_hot=False, get_truth=args.truth2, max_tracks=max_tracks)
+kinematics1 = du.get_kinematics(tree1, filter=filter1, get_mask=False, one_hot=False, get_truth=args.truth1, max_tracks=max_tracks, max_events=max_events)
+kinematics2 = du.get_kinematics(tree2, filter=filter2, get_mask=False, one_hot=False, get_truth=args.truth2, max_tracks=max_tracks, max_events=max_events)
 kinematics = np.concatenate([kinematics1, kinematics2], axis=0)
 
 # Drop the muons

@@ -80,7 +80,7 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     return np.stack(one_hots, axis=1)
 
 
-def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=True, get_truth=False, **kwargs):
+def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=True, get_truth=False, max_events=None, **kwargs):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenatd as a single numpy array. An optional "filter"
     argument will allow the user to filter events with a boolean array.
@@ -95,6 +95,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     one_hot - boolean to include one-hot encoded labels of muon, track jet 1-5,
         and everything else, optional
     get_truth - If true, get the truth level data instead of reco, optional
+    max_events - maximum number of events to process, optional
     **kwargs - keyword arguments to pass to the "pad_kinematics" function
 
     Returns:
@@ -115,6 +116,11 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     m1_kinematics = np.stack([m1_pt, m1_eta, m1_phi], axis=1)
     m2_kinematics = np.stack([m2_pt, m2_eta, m2_phi], axis=1)
     kinematics = np.stack([m1_kinematics, m2_kinematics], axis=2)
+    if max_events is not None:
+        kinematics = kinematics[:max_events,...]
+        # Remember to truncate the filter as well
+        if filter is not None:
+            filter = filter[:max_events]
 
     # Track information if requested
     if not muon_only:
@@ -123,6 +129,12 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
         track_pt = np.log(tree[prekey+'pT_tracks'].array())
         track_eta = tree[prekey+'eta_tracks'].array()
         track_phi = tree[prekey+'phi_tracks'].array()
+
+        # If max events is set drop the extra events here
+        if max_events is not None:
+            track_pt = track_pt[:max_events,...]
+            track_eta = track_eta[:max_events,...]
+            track_phi = track_phi[:max_events,...]
 
         # Run padding function
         pad_pt = pad_kinematics(track_pt, **kwargs)
@@ -134,9 +146,12 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
 
         # Hack to fix missing 11k events, should be removed!
         if track_kinematics.shape[0] != kinematics.shape[0]:
+            lesser_shape = min(track_kinematics.shape[0], kinematics.shape[0])
             print("Warning! Track kinematics shape does not match muon kinematics shape!")
-            kinematics = kinematics[:track_kinematics.shape[0],...]
-            filter = filter[:track_kinematics.shape[0]]
+            kinematics = kinematics[:lesser_shape,...]
+            track_kinematics = track_kinematics[:lesser_shape,...]
+            if filter is not None:
+                filter = filter[:lesser_shape]
 
         # Concatenate muon and track kinematics
         kinematics = np.concatenate([kinematics, track_kinematics], axis=2)
@@ -168,7 +183,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
         return kinematics
 
 
-def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, **kwargs):
+def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, max_events=None, **kwargs):
     """ get_plotting - This function will accept an uproot TTree object, and return the
     requested branches as numpy arrays. Branches are passed in as a list of strings to the
     "vars" keyword argument.
@@ -180,6 +195,7 @@ def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, *
     muon_only - boolean to return only muon kinematics, in practice just does not
     truncate away the 11k events with missing track information
     get_truth - If true, get the truth level data instead of reco
+    max_events - maximum number of events to process, optional
 
     Returns:
     plotting - numpy array of requested branches, stacked along the second axis
@@ -201,18 +217,24 @@ def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, *
         muon_pts = tree['pT_l1'].array()
         num_good_events = len(muon_pts)
 
+    # Take the minimum of the number of good events and the max events
+    if max_events is not None:
+        take_events = min(num_good_events, max_events)
+    else:
+        take_events = num_good_events
+
     # Loop over requested branches
     for var in vars:
         if get_truth:
             var = "truth_" + var
-        plotting.append(ak.to_numpy(tree[var].array())[:num_good_events])
+        plotting.append(ak.to_numpy(tree[var].array())[:take_events])
 
     # Stack requested branches
     plotting = np.stack(plotting, axis=1)
 
     # Apply filter if passed
     if filter is not None:
-        filter = filter[:num_good_events]
+        filter = filter[:take_events]
         plotting = plotting[filter == True,...]
 
     return plotting

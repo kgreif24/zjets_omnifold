@@ -48,6 +48,10 @@ class Omnifolder():
         print("############## Welcome to Omnifold!! ##############")
         print("###################################################\n\n")
 
+        print("Is CUDA available: ", torch.cuda.is_available())
+        print("CUDA device count: ", torch.cuda.device_count())
+        print("CUDA device name: ", torch.cuda.get_device_name(0))
+
         # Set config path and config object as instance variables
         self.config_path = config_path
         self.cfg = OfConfig(config_name=config_path)
@@ -96,6 +100,12 @@ class Omnifolder():
 
         # Run training as a subprocess
         train_args = [
+            "srun",
+            "-n", "4",
+            "-c", "32",
+            "--cpu_bind=cores",
+            "-G", "4",
+            "--gpu-bind=none",
             "python", 
             "lightning_train.py", 
             "--config_path", 
@@ -109,6 +119,7 @@ class Omnifolder():
         if train_code != 0:
             print("Error running training subprocess!")
             sys.exit(train_code)
+
 
         # Reverse search output for run_id and best model path
         lines = output.split("\n")
@@ -128,6 +139,12 @@ class Omnifolder():
 
         # Run evaluation as a subprocess, no need to keep output
         eval_args = [
+            "srun",
+            "-n", "1",
+            "-c", "32",
+            "--cpu_bind=cores",
+            "-G", "1",
+            "--gpu-bind=none",
             "python", 
             "lightning_eval.py",
             "--check_path",
@@ -141,7 +158,10 @@ class Omnifolder():
             "--step", 
             str(step)
         ]
-        process = subprocess.run(eval_args, check=True)
+        test_code, _ = capture_subprocess_output(eval_args)
+        if test_code != 0:
+            print("Error running evaluation subprocess!")
+            sys.exit(test_code)
 
         print(f"Finished step {step}!!")
 

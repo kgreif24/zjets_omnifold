@@ -178,7 +178,9 @@ class OfTrain:
             block_params=block_params,
             num_layers=self.config.num_layers,
             # Include the seed just so it is logged to W&B
-            seed=self.config.split_seed
+            seed=self.config.split_seed,
+            # Include the OF step for plots
+            step=self.step
         )
 
 
