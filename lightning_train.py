@@ -11,7 +11,6 @@ python3
 import os
 import argparse
 
-import numpy as np
 import lightning as L
 import wandb
 from pytorch_lightning.loggers import WandbLogger
@@ -19,7 +18,7 @@ from pytorch_lightning.utilities.rank_zero import *
 
 from cli.of_config import OfConfig
 from lightning_module import *
-from plotting_utils import *
+from utils.plotting_utils import *
 
 
 class OfTrain:
@@ -28,7 +27,7 @@ class OfTrain:
     below.
     """
 
-    def __init__(self, config_path, iteration, step):
+    def __init__(self, config_path, iteration, step, interactive=False):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
 
@@ -36,6 +35,7 @@ class OfTrain:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
+        interactive - If true, the training will be run in interactive mode
 
         Returns:
         None
@@ -45,6 +45,7 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
+        self.interactive = interactive
 
         # Get weights for use in training. Define (but do not make!) the weight directory
         weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
@@ -104,8 +105,7 @@ class OfTrain:
                 project=self.config.project_name, 
                 group=self.config.group_name,
                 name=run_name, 
-                save_dir=self.config.checkpoint_dir,
-                resume=True
+                save_dir=self.config.checkpoint_dir
             )
 
             # Get run ID
@@ -138,7 +138,7 @@ class OfTrain:
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
-            enable_progress_bar=False
+            enable_progress_bar=self.interactive
         )
 
         # Make directories for saving validation plots in the rank zero process
@@ -216,10 +216,11 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
+    parser.add_argument('--interactive', action='store_true', help='Run the training in interactive mode')
     args, unknown = parser.parse_known_args()
 
     # Run the training
-    trainer = OfTrain(args.config_path, args.iteration, args.step)
+    trainer = OfTrain(args.config_path, args.iteration, args.step, interactive=args.interactive)
     run_id, best_path = trainer.run()
 
     # Print the run id and best model path

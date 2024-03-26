@@ -8,6 +8,7 @@ python3
 
 import numpy as np
 import awkward as ak
+from pytorch_lightning.utilities.rank_zero import *
 
 
 def pad_kinematics(input_array, max_tracks=None) -> np.ndarray:
@@ -102,7 +103,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     kinematics - numpy array of muon and track kinematics
     """
 
-    # Muon information
+    # Muon information, take logarithm of pT values immediately
     prekey = ""
     if get_truth:
         prekey = "truth_"
@@ -121,8 +122,10 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     # They often don't, so longer one needs to be truncated
     if filter is not None:
         if len(filter) != len(kinematics):
+            rank_zero_info("Warning! Filter shape does not match muon kinematics shape!")
+            rank_zero_info(f"Filter shape: {len(filter)}")
+            rank_zero_info(f"Muon kinematics shape: {len(kinematics)}")
             lesser_shape = min(len(filter), len(kinematics))
-            print("Warning! Filter shape does not match kinematics shape!")
             kinematics = kinematics[:lesser_shape,...]
             filter = filter[:lesser_shape]
 
@@ -139,16 +142,20 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
         track_pt = np.log(tree[prekey+'pT_tracks'].array())
         track_eta = tree[prekey+'eta_tracks'].array()
         track_phi = tree[prekey+'phi_tracks'].array()
+        track_jet_indeces = tree['trackJetIndex_tracks'].array()
 
         # Check if filter and track kinematics have the same size in 0th dimension
         # They often don't, so longer one needs to be truncated
         if filter is not None:
             if len(filter) != len(track_pt):
+                rank_zero_info("Warning! Filter shape does not match track kinematics shape!")
+                rank_zero_info(f"Filter shape: {len(filter)}")
+                rank_zero_info(f"Track kinematics shape: {len(track_pt)}")
                 lesser_shape = min(len(filter), len(track_pt))
-                print("Warning! Filter shape does not match track kinematics shape!")
                 track_pt = track_pt[:lesser_shape,...]
                 track_eta = track_eta[:lesser_shape,...]
                 track_phi = track_phi[:lesser_shape,...]
+                track_jet_indeces = track_jet_indeces[:lesser_shape,...]
                 filter = filter[:lesser_shape]
 
         # Apply filter then truncate if necessary
@@ -156,10 +163,12 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
             track_pt = track_pt[filter == True,...]
             track_eta = track_eta[filter == True,...]
             track_phi = track_phi[filter == True,...]
+            track_jet_indeces = track_jet_indeces[filter == True,...]
         if max_events is not None:
             track_pt = track_pt[:max_events,...]
             track_eta = track_eta[:max_events,...]
             track_phi = track_phi[:max_events,...]
+            track_jet_indeces = track_jet_indeces[:max_events,...]
 
         # Run padding function
         pad_pt = pad_kinematics(track_pt, **kwargs)
@@ -174,13 +183,9 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
 
         # Make one hot encodings if requested
         if one_hot:
-            track_jet_indeces = tree['trackJetIndex_tracks'].array()[:track_kinematics.shape[0],...]
             pad_indeces = pad_kinematics(track_jet_indeces, **kwargs)
             one_hot_inputs = get_one_hot(kinematics, pad_indeces)
             kinematics = np.concatenate([kinematics, one_hot_inputs], axis=1)
-
-    # Take log of muon pT values
-    kinematics[:,0,0:2] = np.log(kinematics[:,0,0:2])
 
     # Build padded mask if necessary
     if get_mask:

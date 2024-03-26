@@ -18,8 +18,8 @@ import lightning as L
 from pytorch_lightning.loggers import WandbLogger
 
 from lightning_module import *
-import plotting_utils as pu
-import data_utils as du
+import utils.plotting_utils as pu
+import utils.data_utils as du
 from cli.of_config import OfConfig
 from wasserstein_metric import WassersteinOne
 

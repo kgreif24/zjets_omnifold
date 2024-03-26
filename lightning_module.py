@@ -19,11 +19,11 @@ import awkward as ak
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 
-from of_transformer import OfTransformer
-from simple_network import DumbNeuralNetwork
+from of_transformer.of_transformer import OfTransformer
+from of_transformer.simple_network import DumbNeuralNetwork
 from wasserstein_metric import WassersteinOne
-from data_utils import *
-import plotting_utils as pu
+from utils.data_utils import *
+import utils.plotting_utils as pu
 
 
 class LOfTransformer(L.LightningModule):
@@ -349,7 +349,7 @@ class LOfData(L.LightningDataModule):
         target_kinematics, target_mask = get_kinematics(
             tree_target,
             filter=self.pass190_target,
-            max_tracks=source_kinematics.shape[2]-2,
+            max_tracks=self.max_tracks,
             muon_only=muon_only,
             one_hot=True,
             get_truth=self.use_truth,
@@ -390,7 +390,7 @@ class LOfData(L.LightningDataModule):
 
         # Build pytorch datasets
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
-        rank_zero_info("We have {} source events and {} pseudo data events".format(len(source_kinematics), len(target_kinematics)))
+        rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 

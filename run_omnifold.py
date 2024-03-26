@@ -7,6 +7,10 @@ Last updated 03/05/2024
 python3
 """
 
+import sys
+sys.path.append('of_transformer')
+sys.path.append('utils')
+
 import argparse
 import numpy as np
 from cli.of_config import OfConfig

@@ -6,22 +6,16 @@ Last updated 03/06/2024
 python3
 """
 
-import os, sys
-import subprocess
-import numpy as np
+import sys
 
 import torch
 import lightning as L
 from lightning_module import *
-from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.rank_zero import *
 import wandb
 
 from cli.of_config import OfConfig
-import lightning_train as train
-import lightning_eval as eval
-import plotting_utils as pu
-from subprocess_utils import capture_subprocess_output
+from utils.subprocess_utils import capture_subprocess_output
 
 
 class Omnifolder():

@@ -17,7 +17,7 @@ import numpy as np
 import scipy
 from pytorch_lightning.utilities.rank_zero import *
 
-import plotting_utils as pu
+import utils.plotting_utils as pu
 
 
 class WassersteinOne(torchmetrics.Metric):

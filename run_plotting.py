@@ -14,8 +14,8 @@ import numpy as np
 import uproot
 import awkward as ak
 
-import plotting_utils as pu
-import data_utils as du
+import utils.plotting_utils as pu
+import utils.data_utils as du
 
 
 parser = argparse.ArgumentParser(description="Run plotting functions")

@@ -12,13 +12,13 @@ import torch.nn as nn
 import copy
 
 # Import network pieces
-from embed import Embed
-from pair_embed import PairEmbed
-from sequence_trimmer import SequenceTrimmer
-from block import Block
+from . import embed
+from . import pair_embed
+from . import sequence_trimmer
+from . import block
 
 # Import utilities
-from net_utils import *
+from . import net_utils
 
 
 class OfTransformer(nn.Module):
@@ -48,7 +48,7 @@ class OfTransformer(nn.Module):
                  **kwargs) -> None:
         super(OfTransformer, self).__init__(**kwargs)
 
-        self.trimmer = SequenceTrimmer(enabled=trim and not for_inference)
+        self.trimmer = sequence_trimmer.SequenceTrimmer(enabled=trim and not for_inference)
         self.for_inference = for_inference
         self.use_amp = use_amp
 
@@ -70,9 +70,9 @@ class OfTransformer(nn.Module):
         # Embedding layers
         self.pair_extra_dim = pair_extra_dim
         print("Batch normalization disabled in embeddings!")
-        self.embed = Embed(input_dim, embed_dims, activation=activation, normalize_input=False) if len(embed_dims) > 0 else nn.Identity()
+        self.embed = embed.Embed(input_dim, embed_dims, activation=activation, normalize_input=False) if len(embed_dims) > 0 else nn.Identity()
 
-        self.pair_embed = PairEmbed(
+        self.pair_embed = pair_embed.PairEmbed(
             # The number of heads is added to the pair_embed_dims since we add the pairwise features to the weights for **each** head.
             # Wouldn't it be nice if we could do this for only some of the heads?
             pair_input_dim, pair_extra_dim, pair_embed_dims + [cfg_block['num_heads']],
@@ -80,8 +80,8 @@ class OfTransformer(nn.Module):
             for_onnx=for_inference) if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
         
         # Transformer layers
-        self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
-        self.cls_blocks = nn.ModuleList([Block(**cfg_cls_block) for _ in range(num_cls_layers)])
+        self.blocks = nn.ModuleList([block.Block(**cfg_block) for _ in range(num_layers)])
+        self.cls_blocks = nn.ModuleList([block.Block(**cfg_cls_block) for _ in range(num_cls_layers)])
         self.norm = nn.LayerNorm(embed_dim)
 
         # Fully connected layers
@@ -98,7 +98,7 @@ class OfTransformer(nn.Module):
 
         # init
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
-        trunc_normal_(self.cls_token, std=.02)
+        net_utils.trunc_normal_(self.cls_token, std=.02)
 
     @torch.jit.ignore
     def no_weight_decay(self):
@@ -114,7 +114,7 @@ class OfTransformer(nn.Module):
         with torch.no_grad():
             if not self.for_inference:
                 if uu_idx is not None:
-                    uu = build_sparse_tensor(uu, uu_idx, x.size(-1))
+                    uu = net_utils.build_sparse_tensor(uu, uu_idx, x.size(-1))
             x, v, mask, uu = self.trimmer(x, v, mask, uu)
             # Removing dimension from mask and taking not, for use in attention blocks
             padding_mask = ~mask.squeeze(1)  # (N, P)

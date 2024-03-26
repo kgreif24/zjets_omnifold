@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from functools import partial
 
-from net_utils import *
+from . import net_utils
 
 class PairEmbed(nn.Module):
     def __init__(
@@ -18,7 +18,7 @@ class PairEmbed(nn.Module):
         self.remove_self_pair = remove_self_pair
         self.mode = mode
         self.for_onnx = for_onnx
-        self.pairwise_lv_fts = partial(pairwise_lv_fts, num_outputs=pairwise_lv_dim, eps=eps, for_onnx=for_onnx)
+        self.pairwise_lv_fts = partial(net_utils.pairwise_lv_fts, num_outputs=pairwise_lv_dim, eps=eps, for_onnx=for_onnx)
         self.out_dim = dims[-1]
 
         if self.mode == 'concat':

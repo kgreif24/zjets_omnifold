@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from input_distributed import InputDistributed
+from . import input_distributed
 
 # Should "input_dim" here be the number of particle features or the maximum
 # number of particles? I think the latter, and then we mask after the embedding layer.
@@ -19,7 +19,7 @@ class Embed(nn.Module):
             ])
             input_dim = dim
         embed_one_element = nn.Sequential(*module_list)
-        self.embed = InputDistributed(embed_one_element)
+        self.embed = input_distributed.InputDistributed(embed_one_element)
 
     def forward(self, x):
         # x: (batch, seq_len, input_dim)
