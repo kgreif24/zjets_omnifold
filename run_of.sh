@@ -6,12 +6,12 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH -C gpu
 #SBATCH -G 4
-#SBATCH -q debug
-#SBATCH -J of_debug
+#SBATCH -q regular
+#SBATCH -J of_trial_1
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
-#SBATCH -t 0:10:0
+#SBATCH -t 1-00:00:00
 
 # Set up environment
 module load conda

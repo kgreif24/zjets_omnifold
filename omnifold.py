@@ -101,7 +101,7 @@ class Omnifolder():
         # Run training as a subprocess
         train_args = [
             "srun",
-            "-n", "4",
+            "--ntasks-per-node", "4",
             "-c", "32",
             "--cpu_bind=cores",
             "-G", "4",
@@ -140,7 +140,7 @@ class Omnifolder():
         # Run evaluation as a subprocess, no need to keep output
         eval_args = [
             "srun",
-            "-n", "1",
+            "--ntasks-per-node", "1",
             "-c", "32",
             "--cpu_bind=cores",
             "-G", "1",

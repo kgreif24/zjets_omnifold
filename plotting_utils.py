@@ -58,7 +58,8 @@ event_hists = {
         'bins': np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2]
+        'ylim': [0, 0.2],
+        'w1_eval': False
     },
     'phi_l2': {
         'key': 'phi_l2',
@@ -66,7 +67,8 @@ event_hists = {
         'bins': np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2]
+        'ylim': [0, 0.2],
+        'w1_eval': False
     },
     'pT_ll': {
         'key': 'pT_ll',
@@ -104,7 +106,8 @@ event_hists = {
         'bins': np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2]
+        'ylim': [0, 0.2],
+        'w1_eval': False
     },
     'phi_trackj2': {
         'key': 'phi_trackj2',
@@ -112,7 +115,8 @@ event_hists = {
         'bins': np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2]
+        'ylim': [0, 0.2],
+        'w1_eval': False
     },
     'm_trackj1': {
         'key': 'm_trackj1',
@@ -167,8 +171,7 @@ event_hists = {
     'Ntracks': {
         'key': 'Ntracks',
         'xlabel': '# of tracks',
-        'bins': np.arange(0, 256, 1),
-        'w1_eval': False
+        'bins': np.arange(0, 256, 1)
     }
 }
 
@@ -499,7 +502,7 @@ def plot_reweighting(
     ax, axr = add_ratios(fig)
     n_mc, bins, patches =  ax.hist(source_data, bins=bins, label=name1, density=True, alpha=0.5, weights=source_weight_start)
     if source_weight_end is not None:
-        n_rw, bins, patches = ax.hist(source_data, bins=bins, label='ReweightedMC', density=True, histtype='step', color='black', weights=source_weight_end)
+        n_rw, bins, patches = ax.hist(source_data, bins=bins, label='Reweighted', density=True, histtype='step', color='black', weights=source_weight_end)
     if target_weight is None:
         target_weight = np.ones_like(target_data)
     n_pd, bins, patches = ax.hist(target_data, bins=bins, label=name2, density=True, alpha=0.5, weights=target_weight)

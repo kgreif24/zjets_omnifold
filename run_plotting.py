@@ -48,16 +48,14 @@ if args.truth2:
     filter2 = ak.to_numpy(tree2["truth_pass190"].array())
 else:
     filter2 = ak.to_numpy(tree2["pass190"].array())
-filter1_plot = filter1[:max_events]
-filter2_plot = filter2[:max_events]
 
 # Get weights and filter weights
 weights1 = ak.to_numpy(tree1["weight"].array())
+weights1 = weights1[filter1 == 1]
 weights1 = weights1[:max_events]
-weights1 = weights1[filter1_plot == 1]
 weights2 = ak.to_numpy(tree2["weight"].array())
+weights2 = weights2[filter2 == 1]
 weights2 = weights2[:max_events]
-weights2 = weights2[filter2_plot == 1]
 weights = np.concatenate([weights1, weights2], axis=0)
 
 # Make labels

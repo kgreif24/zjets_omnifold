@@ -25,11 +25,12 @@ class WassersteinOne(torchmetrics.Metric):
     based performance metrics for omnifold classifiers.
     """
 
-    def __init__(self, draw_plots=False, save_location=None, from_outputs=True, **kwargs):
+    def __init__(self, hist_info, draw_plots=False, save_location=None, from_outputs=True, **kwargs):
         """ __init__ - Init function for the class. Both definees the state of the
         metric, and accepts some keyword arguments to control plot drawing if enabled.
 
         Arguments:
+        hist_info - Dictionary describing the histograms used in the plotting
         draw_plots - Optional, default False. If True, will draw plots of the plot dimensions
         save_location - Optional, default None. If provided, will save the plots to this location
 
@@ -42,6 +43,7 @@ class WassersteinOne(torchmetrics.Metric):
         self.add_state("end_weights", default=[], dist_reduce_fx="cat")
         self.add_state("target", default=[], dist_reduce_fx="cat")
 
+        self.hist_info = hist_info
         self.draw_plots = draw_plots
         self.save_location = save_location
 
@@ -100,10 +102,14 @@ class WassersteinOne(torchmetrics.Metric):
             )
 
         # Results list
-        results = np.zeros(plotting.shape[1])
+        results = []
 
         # Loop through plotting dimensions
-        for i in range(plotting.shape[1]):
+        for i, (key, hist_dict) in enumerate(self.hist_info.items()):
+
+            # If we are not using this dimension for W1 computation, continue
+            if not hist_dict['w1_eval']:
+                continue
 
             # Slice this dimension
             this_dim = plotting[:,i]
@@ -116,7 +122,7 @@ class WassersteinOne(torchmetrics.Metric):
             this_wass = scipy.stats.wasserstein_distance(source_dist, target_dist, u_weights=source_weight, v_weights=target_weight)
 
             # Append to results list
-            results[i] = this_wass
+            results.append(this_wass)
 
         # Return the sum over all plotting dimensions, and the plot dictionary
-        return np.sum(results), plot_dict
+        return np.sum(np.array(results)), plot_dict

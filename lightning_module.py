@@ -82,9 +82,9 @@ class LOfTransformer(L.LightningModule):
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
         if not self.debug:
-            self.wasserstein_train = WassersteinOne(draw_plots=False)
-            self.wasserstein_val = WassersteinOne(draw_plots=not self.debug, save_location=val_plots)
-            self.wasserstein_test = WassersteinOne(draw_plots=not self.debug, save_location=test_plots)
+            self.wasserstein_train = WassersteinOne(pu.default_settings, draw_plots=False)
+            self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=not self.debug, save_location=val_plots)
+            self.wasserstein_test = WassersteinOne(pu.default_settings, draw_plots=not self.debug, save_location=test_plots)
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=['plot_staging', 'debug'])
