@@ -58,7 +58,7 @@ class Omnifolder():
         # Set some instance variables for tracking progress through the procedure
         self.current_iteration = continue_iteration
         self.continue_step_two = continue_step_two
-        self.end_iteration = self.current_interation + self.cfg.num_iterations
+        self.end_iteration = self.current_iteration + self.cfg.num_iterations
 
         # Login to wandb
         if self.cfg.wandb:
@@ -76,7 +76,7 @@ class Omnifolder():
         first_iteration = True
 
         for i in range(self.current_iteration, self.end_iteration):
-            self.current_interation = i
+            self.current_iteration = i
             print(f"\n\n ##### Running iteration {i+1} of {self.end_iteration} #####")
             if first_iteration and not self.continue_step_two:
                 self.run_step(1)
@@ -116,7 +116,7 @@ class Omnifolder():
             "--config_path", 
             self.config_path, 
             "--iteration", 
-            str(self.current_interation), 
+            str(self.current_iteration), 
             "--step", 
             str(step)
         ]
@@ -159,7 +159,7 @@ class Omnifolder():
             "--config_path", 
             self.config_path, 
             "--iteration", 
-            str(self.current_interation), 
+            str(self.current_iteration), 
             "--step", 
             str(step)
         ]
