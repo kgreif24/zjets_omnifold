@@ -24,4 +24,4 @@ export OMP_PROC_BIND=spread
 
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it sequentially
-python run_omnifold.py --config_path ./cli/default_of_template.yml
+python run_omnifold.py --config_path ./cli/default_of_template.yml --continue_step_two

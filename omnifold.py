@@ -27,7 +27,7 @@ class Omnifolder():
     classifiers. This is handled in processes spawned by this class.
     """
 
-    def __init__(self, config_path):
+    def __init__(self, config_path, continue_iteration=0, continue_step_two=False):
         """ __init__ - This function initializes the omnifolder object.
 
         Arguments:
@@ -37,7 +37,7 @@ class Omnifolder():
         None
         """
 
-        # Print welcome message if rank zero
+        # Print welcome message
         print("\n\n###################################################")
         print("############## Welcome to Omnifold!! ##############")
         print("###################################################\n\n")
@@ -46,12 +46,19 @@ class Omnifolder():
         print("CUDA device count: ", torch.cuda.device_count())
         print("CUDA device name: ", torch.cuda.get_device_name(0))
 
+        if continue_iteration != 0:
+            print("Continuing from iteration ", continue_iteration)
+        if continue_step_two:
+            print("Continuing from step two")
+
         # Set config path and config object as instance variables
         self.config_path = config_path
         self.cfg = OfConfig(config_name=config_path)
 
         # Set some instance variables for tracking progress through the procedure
-        self.current_interation = 0
+        self.current_interation = continue_iteration
+        self.continue_step_two = continue_step_two
+        self.end_iteration = self.current_interation + self.cfg.num_iterations
 
         # Login to wandb
         if self.cfg.wandb:
@@ -66,10 +73,14 @@ class Omnifolder():
 
         print("\n############## Running Omnifold ##############\n")
 
-        for i in range(self.cfg.num_iterations):
+        first_iteration = True
+
+        for i in range(self.current_iteration, self.end_iteration):
             self.current_interation = i
-            print(f"\n\n ##### Running iteration {i+1} of {self.cfg.num_iterations} #####")
-            self.run_step(1)
+            print(f"\n\n ##### Running iteration {i+1} of {self.end_iteration} #####")
+            if first_iteration and not self.continue_step_two:
+                self.run_step(1)
+                first_iteration = False
             self.run_step(2)
 
         print("\n############## Omnifold Finished!! ##############\n")
