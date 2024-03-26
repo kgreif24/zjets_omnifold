@@ -56,7 +56,7 @@ class Omnifolder():
         self.cfg = OfConfig(config_name=config_path)
 
         # Set some instance variables for tracking progress through the procedure
-        self.current_interation = continue_iteration
+        self.current_iteration = continue_iteration
         self.continue_step_two = continue_step_two
         self.end_iteration = self.current_interation + self.cfg.num_iterations
 
