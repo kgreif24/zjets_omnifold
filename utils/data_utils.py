@@ -142,7 +142,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
         track_pt = np.log(tree[prekey+'pT_tracks'].array())
         track_eta = tree[prekey+'eta_tracks'].array()
         track_phi = tree[prekey+'phi_tracks'].array()
-        track_jet_indeces = tree['trackJetIndex_tracks'].array()
+        track_jet_indeces = tree[prekey+'trackJetIndex_tracks'].array()
 
         # Check if filter and track kinematics have the same size in 0th dimension
         # They often don't, so longer one needs to be truncated
