@@ -62,7 +62,8 @@ class OfEval:
         self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
 
-        # Find the data and weight files to use for this iteration and step
+        # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
+        # to use in testing sets (two copies of MC used for step two currently does not fit in memory)
         # For step one:
         if self.step == 1:
             use_truth = False
@@ -80,6 +81,8 @@ class OfEval:
             else:
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
+            max_events_source = None  # Want to use all events!
+            max_events_target = self.config.max_test_target
         # For step two:
         if self.step == 2:
             use_truth = True
@@ -97,6 +100,8 @@ class OfEval:
             else:
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
+            max_events_source = None  # Want to use all events!
+            max_events_target = self.config.max_test_target
 
 
         # Build a data module. We want to run prediction on every event
@@ -109,12 +114,14 @@ class OfEval:
             target_file=train_target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
+            max_events_source=max_events_source,
+            max_events_target=max_events_target,
+            max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             load_all=True,
             testing=False,
-            max_tracks=self.config.max_tracks,
             use_truth=use_truth
         )
         self.d_module_test = LOfData(
@@ -122,12 +129,14 @@ class OfEval:
             target_file=test_target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
+            max_events_source=max_events_source,
+            max_events_target=max_events_target,
+            max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             load_all=True,
             testing=True,
-            max_tracks=self.config.max_tracks,
             use_truth=use_truth
         )
 

@@ -7,15 +7,15 @@ Author: Kevin Greif
 python3
 """
 
+import numpy as np
+import uproot
+import awkward as ak
+
 import torch
 import lightning as L
 import torchmetrics
 import wandb
 from pytorch_lightning.utilities.rank_zero import *
-
-import numpy as np
-import uproot
-import awkward as ak
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 
@@ -270,9 +270,11 @@ class LOfData(L.LightningDataModule):
         self,
         source_file=None,
         target_file=None,
-        max_tracks=None,
         source_weight_path=None,
         target_weight_path=None,
+        max_events_source=None,
+        max_events_target=None,
+        max_tracks=None,
         muon_only=False,
         batch_size=256,
         dataloader_workers=0,
@@ -280,7 +282,6 @@ class LOfData(L.LightningDataModule):
         load_all=False,
         testing=False,
         use_truth=False,
-        **kwargs
     ):
         """ __init__ - This method initializes the LOfData class. It takes
         the path to the Monte Carlo and data files as arguments.
@@ -288,10 +289,14 @@ class LOfData(L.LightningDataModule):
         Arguments:
             source_file {str} -- The path to the file containing the source data.
             target_file {str} -- The path to the file containing the target data.
-            max_tracks {int} -- The maximum number of tracks to consider.
-                Defaults to None, which means all tracks are considered.
             source_weight_path {string} -- Path to a .npz file containing weights for the source data
             target_weight_path {string} -- Path to a .npz file containing weights for the target data
+            max_events_source {int} -- The maximum number of events to consider for the source data.
+                Defaults to None, which means all events are considered.
+            max_events_target {int} -- The maximum number of events to consider for the target data.
+                Defaults to None, which means all events are considered.
+            max_tracks {int} -- The maximum number of tracks to consider.
+                Defaults to None, which means all tracks are considered.
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
@@ -308,9 +313,12 @@ class LOfData(L.LightningDataModule):
         super().__init__()
         self.source_file = source_file
         self.target_file = target_file
-        self.max_tracks = max_tracks
         self.source_weight_path = source_weight_path
         self.target_weight_path = target_weight_path
+        self.max_events_source = max_events_source
+        self.max_events_target = max_events_target
+        self.max_tracks = max_tracks
+        self.muon_only = muon_only
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
         self.split_seed = split_seed
@@ -318,63 +326,31 @@ class LOfData(L.LightningDataModule):
         self.testing = testing
         self.use_truth = use_truth
 
-        # Load the data
-        f_source = uproot.open(self.source_file)
-        tree_source = f_source['OmniTree']
-        f_target = uproot.open(self.target_file)
-        tree_target = f_target['OmniTree']
-
-        # Set prefix for keys
-        prekey = ""
-        if self.use_truth:
-            prekey = "truth_"
-
-        # Pass 190 flags
-        self.pass190_source = ak.to_numpy(tree_source[prekey+'pass190'].array())
-        self.pass190_target = ak.to_numpy(tree_target[prekey+'pass190'].array())
-        rank_zero_info("We have a fracion {} of good events in source".format(np.sum(self.pass190_source) / len(self.pass190_source)))
-        rank_zero_info("We have a fracion {} of good events in target".format(np.sum(self.pass190_target) / len(self.pass190_target)))
-
-        # Load kinematics
-        source_kinematics, source_mask = get_kinematics(
-            tree_source, 
-            filter=self.pass190_source,
-            max_tracks=self.max_tracks,
-            muon_only=muon_only,
-            one_hot=True,
-            get_truth=self.use_truth,
-            **kwargs
+        # Get the data from files
+        source_kinematics, source_mask, source_weights, source_plotting, self.source_pass190 = self.load_data_from_file(
+            self.source_file, self.source_weight_path, one_hot=True, max_events=self.max_events_source
         )
-        # Target kinematics will take the maximum # of tracks from source
-        target_kinematics, target_mask = get_kinematics(
-            tree_target,
-            filter=self.pass190_target,
-            max_tracks=self.max_tracks,
-            muon_only=muon_only,
-            one_hot=True,
-            get_truth=self.use_truth,
-            **kwargs
+        target_kinematics, target_mask, target_weights, target_plotting, target_pass190 = self.load_data_from_file(
+            self.target_file, self.target_weight_path, one_hot=True, max_events=self.max_events_target
         )
 
-        ## TODO: Refactor this into a function!
-        # Get source weights
-        self.source_all_weights = self.load_weights(tree_source, path=self.source_weight_path, test=self.testing)
-        self.source_weights = np.expand_dims(self.source_all_weights[self.pass190_source == 1], axis=1)
+        # Store all weights for use in prediction, then apply filter
+        self.source_all_weights = source_weights
+        self.source_weights = np.expand_dims(self.source_all_weights[self.source_pass190 == 1], axis=1)
+        self.target_all_weights = target_weights
+        self.target_weights = np.expand_dims(self.target_all_weights[target_pass190 == 1], axis=1)
 
-        # Get target weights
-        self.target_all_weights = self.load_weights(tree_target, path=self.target_weight_path, test=self.testing)
-        self.target_weights = np.expand_dims(self.target_all_weights[self.pass190_target == 1], axis=1)
+        # Truncate weights if max_events values are set
+        if self.max_events_source is not None:
+            self.source_weights = self.source_weights[:self.max_events_source]
+        if self.max_events_target is not None:
+            self.target_weights = self.target_weights[:self.max_events_target]
 
         # Labels
         source_labels = np.zeros((source_kinematics.shape[0], 1), dtype=np.float32)
         target_labels = np.ones((target_kinematics.shape[0], 1), dtype=np.float32)
 
-        # Load plotting data
-        plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
-        source_plotting = get_plotting(tree_source, vars=plotting_variables, filter=self.pass190_source, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
-        target_plotting = get_plotting(tree_target, vars=plotting_variables, filter=self.pass190_target, muon_only=muon_only, get_truth=self.use_truth, **kwargs)
-
-        # Concatenate source and pseudodata together
+        # Concatenate source and target data
         self.kinematics = np.concatenate([source_kinematics, target_kinematics], axis=0)
         mask = np.concatenate([source_mask, target_mask], axis=0)
         weights = np.concatenate([self.source_weights, self.target_weights], axis=0)
@@ -392,6 +368,58 @@ class LOfData(L.LightningDataModule):
         self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
         rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
+
+
+    def load_data_from_file(self, path, weight_path, one_hot=True, **kwargs):
+        """ load_data_from_file - This function loads data from a file using uproot, and applies the relevant preprocessing.
+        It returns the kinematics, mask, plotting data, weights, and pass190 filter
+
+        Arguments:
+            path {str} -- The path to the file to load the data from.
+            weight_path {str} -- The path to the weights file. Note this is for all events, without the pass190 filter
+            one_hot {bool} -- Set to true if we want to one-hot encode the track type.
+            **kwargs {dict} -- A dictionary of keyword arguments to be passed to the get_kinematics function.
+
+        Returns:
+            np.ndarray -- The kinematics data
+            np.ndarray -- The mask data
+            np.ndarray -- The weight data, for all events. Does not apply the pass190 filter!!
+            np.ndarray -- The plotting data
+            np.ndarray -- The pass190 filter
+        """
+
+        # Load the data
+        f = uproot.open(path)
+        tree = f['OmniTree']
+
+        # Set prefix for keys
+        prekey = ""
+        if self.use_truth:
+            prekey = "truth_"
+
+        # Get pass 190 flags
+        pass190 = ak.to_numpy(tree[prekey+'pass190'].array())
+        rank_zero_info("We have a fracion {} of good events in this file".format(np.sum(pass190) / len(pass190)))
+
+        # Get kinematics
+        kinematics, mask = get_kinematics(
+            tree, 
+            filter=pass190,
+            max_tracks=self.max_tracks, 
+            muon_only=self.muon_only,
+            one_hot=one_hot,
+            get_truth=self.use_truth,
+            **kwargs
+        )
+
+        # Get weights, note this is for all events, without the pass190 filter
+        weights = self.load_weights(tree, path=weight_path, test=self.testing)
+
+        # Get plotting data
+        plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
+        plotting = get_plotting(tree, vars=plotting_variables, filter=pass190, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
+
+        return kinematics, mask, weights, plotting, pass190
 
 
     def load_weights(self, tree, path=None, test=False):
@@ -455,7 +483,7 @@ class LOfData(L.LightningDataModule):
 
     # Method for getting pass 190 flags
     def get_source_pass190(self):
-        return self.pass190_source
+        return self.source_pass190
 
 
     # Setup function

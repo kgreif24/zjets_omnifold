@@ -145,7 +145,7 @@ class Omnifolder():
         # Run evaluation as a subprocess, no need to keep output
         eval_args = [
             "srun",
-            "--ntasks-per-node", "1",
+            "-n", "1",
             "-c", "32",
             "--cpu_bind=cores",
             "-G", "1",

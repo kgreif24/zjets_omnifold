@@ -8,7 +8,7 @@ Last updated 03/08/2024
 python3
 """
 
-import os
+import sys, os
 import argparse
 
 import lightning as L
@@ -50,7 +50,8 @@ class OfTrain:
         # Get weights for use in training. Define (but do not make!) the weight directory
         weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
 
-        # Find the data and weight files to use for this iteration and step
+        # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
+        # to use (two copies of MC used for step two currently does not fit in memory)
         # For step one:
         if self.step == 1:
             use_truth = False
@@ -66,6 +67,8 @@ class OfTrain:
             else:
                 source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
+            max_events_source = self.config.max_train_step_one
+            max_events_target = self.config.max_train_step_one
         # For step two:
         if self.step == 2:
             use_truth = True
@@ -81,6 +84,8 @@ class OfTrain:
             else:
                 source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+            max_events_source = self.config.max_train_step_two
+            max_events_target = self.config.max_train_step_two
 
         # Build the data module
         self.d_module = LOfData(
@@ -88,6 +93,9 @@ class OfTrain:
             target_file=target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
+            max_events_source=max_events_source,
+            max_events_target=max_events_target,
+            max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.config.split_seed,

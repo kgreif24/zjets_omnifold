@@ -61,6 +61,12 @@ class OfConfig:
         )
         self.parser.add_argument('--split_seed', type=int, default=420, help='Seed for the train / validation split')
         self.parser.add_argument('--max_tracks', type=int, default=150, help='Maximum number of tracks to use in the data')
+        self.parser.add_argument('--max_train_step_one', type=int, default=None, 
+                                 help='Maximum number of events to use in step one. Applied to both MC and data')
+        self.parser.add_argument('--max_train_step_two', type=int, default=None,
+                                 help='Maximum number of events to use in step two. Applied to both copies of MC')
+        self.parser.add_argument('--max_test_target', type=int, default=None,
+                                 help='Maximum number of events to use in testing / prediction for the target. Applied to both steps')
 
         # Training
         self.parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training')
