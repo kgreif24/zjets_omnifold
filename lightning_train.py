@@ -101,7 +101,6 @@ class OfTrain:
             split_seed=self.config.split_seed,
             load_all=False,
             testing=False,
-            max_tracks=self.config.max_tracks,
             use_truth=use_truth
         )
 

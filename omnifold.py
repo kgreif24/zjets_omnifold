@@ -78,10 +78,12 @@ class Omnifolder():
         for i in range(self.current_iteration, self.end_iteration):
             self.current_iteration = i
             print(f"\n\n ##### Running iteration {i+1} of {self.end_iteration} #####")
-            if first_iteration and not self.continue_step_two:
-                self.run_step(1)
+            if first_iteration and self.continue_step_two:
+                self.run_step(2)
                 first_iteration = False
-            self.run_step(2)
+            else:
+                self.run_step(1)
+                self.run_step(2)
 
         print("\n############## Omnifold Finished!! ##############\n")
 
