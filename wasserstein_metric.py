@@ -3,62 +3,34 @@ is a omnifold classifier performance metric. It calculates the 1D wasserstein
 metric between two distributions over the dimensions used in plotting, and then sums
 them to get a single performance metric.
 
-It is implemented in the TorchMetrics framework for easy integration with 
-pytorch lightning.
+It is a subclass of the BaseMetric class, which is a subclass of torchmetrics.Metric.
 
 Author: Kevin Greif
-Last updated 02/29/2024
+Last updated 05/08/2024
 python3
 """
 
 
-import torchmetrics
 import numpy as np
 import scipy
 from pytorch_lightning.utilities.rank_zero import *
 
+from base_metric import BaseMetric
 import utils.plotting_utils as pu
 
 
-class WassersteinOne(torchmetrics.Metric):
-    """ A torchmetrics metric subclass which implements the 1D wasserstein 
+class WassersteinOne(BaseMetric):
+    """ A BaseMetric subclass which implements the 1D wasserstein 
     based performance metrics for omnifold classifiers.
     """
 
-    def __init__(self, hist_info, draw_plots=False, save_location=None, from_outputs=True, **kwargs):
-        """ __init__ - Init function for the class. Both definees the state of the
-        metric, and accepts some keyword arguments to control plot drawing if enabled.
-
-        Arguments:
-        hist_info - Dictionary describing the histograms used in the plotting
-        draw_plots - Optional, default False. If True, will draw plots of the plot dimensions
-        save_location - Optional, default None. If provided, will save the plots to this location
-
-        Returns:
-        None
-        """
-        super().__init__(**kwargs)
-        self.add_state("plotting", default=[], dist_reduce_fx="cat")
-        self.add_state("start_weights", default=[], dist_reduce_fx="cat")
-        self.add_state("end_weights", default=[], dist_reduce_fx="cat")
-        self.add_state("target", default=[], dist_reduce_fx="cat")
-
-        self.hist_info = hist_info
-        self.draw_plots = draw_plots
-        self.save_location = save_location
-
-
-    def update(self, plotting, start_weights, end_weights, labels):
-        """ update - Function to update the metric state on each batch."""
-        self.plotting.append(plotting)
-        self.start_weights.append(start_weights)
-        self.end_weights.append(end_weights)
-        self.target.append(labels)
-
+    # Can keep the same __init__ and update functions as the base class
 
     def compute(self, from_torch=True, **kwargs):
         """ compute - Actually compute the sum of the wasserstein distances
         over the dimensions used in plotting.
+
+        This calls the parent classes compute function
 
         Arguments:
         from_torch - Optional, default True. If True, will convert the state tensors
@@ -68,38 +40,13 @@ class WassersteinOne(torchmetrics.Metric):
         then this dictionary is empty.
         """
 
-        # If from_torch, convert to numpy
-        if from_torch:
+        # Call parent compute function
+        plot_dict = super().compute(from_torch=from_torch, **kwargs)
 
-            # Concatenate list states
-            plotting = torchmetrics.utilities.dim_zero_cat(self.plotting)
-            start_weights = torchmetrics.utilities.dim_zero_cat(self.start_weights)
-            end_weights = torchmetrics.utilities.dim_zero_cat(self.end_weights)
-            target = torchmetrics.utilities.dim_zero_cat(self.target)
-
-            # To numpy
-            plotting = plotting.cpu().detach().numpy()
-            start_weights = start_weights.cpu().detach().numpy().flatten()
-            end_weights = end_weights.cpu().detach().numpy().flatten()
-            target = target.cpu().detach().numpy().flatten()
-
-        # Else the state tensors already contain numpy, and just need to be concatenated
-        else:
-            plotting = np.concatenate(self.plotting, axis=0)
-            start_weights = np.concatenate(self.start_weights, axis=0).flatten()
-            end_weights = np.concatenate(self.end_weights, axis=0).flatten()
-            target = np.concatenate(self.target, axis=0).flatten()
-
-        # Isolate source and target weights
-        source_weight = end_weights[target == 0]  # Want ending weights for the source
-        target_weight = start_weights[target == 1] # And the starting weights for the target
-
-        # If we want to draw plots, do so here
-        plot_dict = {}
-        if self.draw_plots:
-            plot_dict = pu.make_logged_plots(
-                plotting, target, start_weights, end_weights, save_location=self.save_location, **kwargs
-            )
+        # Calculate final weights and separate weights to use in wasserstein calculation
+        final_weights = self.start_weights * self.derived_weights
+        source_weight = final_weights[self.target == 0]
+        target_weight = self.start_weights[self.target == 1]
 
         # Results list
         results = []
@@ -112,11 +59,11 @@ class WassersteinOne(torchmetrics.Metric):
                 continue
 
             # Slice this dimension
-            this_dim = plotting[:,i]
+            this_dim = self.plotting[:,i]
 
             # Separate into source / target
-            source_dist = this_dim[target == 0]
-            target_dist = this_dim[target == 1]
+            source_dist = this_dim[self.target == 0]
+            target_dist = this_dim[self.target == 1]
 
             # Calculate 1D wasserstein distance
             this_wass = scipy.stats.wasserstein_distance(source_dist, target_dist, u_weights=source_weight, v_weights=target_weight)

@@ -7,6 +7,7 @@ Author: Kevin Greif
 python3
 """
 
+import sys
 import numpy as np
 import uproot
 import awkward as ak
@@ -36,9 +37,10 @@ class LOfTransformer(L.LightningModule):
 
     # Init function 
     def __init__(self, 
-                 input_dim=3, 
-                 val_plots='./val_plot_storage', 
-                 test_plots='./test_plot_storage', 
+                 input_dim=3,          
+                 val_plots=None, 
+                 test_plots=None,
+                 log=False,
                  debug=False, 
                  seed=420,
                  step=1,
@@ -51,8 +53,11 @@ class LOfTransformer(L.LightningModule):
 
         Arguments:
             input_dim {int} -- The input dimension of the model.
-            val_plots {str} -- The path to the directory where validation plots will be stored for logging
-            test_plots {str} -- The path to the directory where testing plots will be stored for logging
+            val_plots {str} -- The path to the directory where validation plots will be stored for logging,
+                None by default, in which case validation plots will not be drawn
+            test_plots {str} -- The path to the directory where testing plots will be stored for logging,
+                None by default, in which case testing plots will not be drawn
+            log {bool} -- Set to true if we want to log plots to wandb. False by default
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
             seed {int} -- The random seed to use for the train / val split. Only used for logging
             step {int} -- Whether this training is for OF step one or two, only effects plot labeling
@@ -63,6 +68,8 @@ class LOfTransformer(L.LightningModule):
         # Debug flag and seed value
         self.debug = debug
         self.seed = seed
+        self.log_things = log
+        print("Are we logging: ", self.log_things)
 
         # Set plotting names based on step argument
         if step == 1:
@@ -83,11 +90,13 @@ class LOfTransformer(L.LightningModule):
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
         if not self.debug:
             self.wasserstein_train = WassersteinOne(pu.default_settings, draw_plots=False)
-            self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=not self.debug, save_location=val_plots)
-            self.wasserstein_test = WassersteinOne(pu.default_settings, draw_plots=not self.debug, save_location=test_plots)
+            self.draw_val = True if val_plots != None else False
+            self.draw_test = True if test_plots != None else False
+            self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=self.draw_val, save_location=val_plots)
+            self.wasserstein_test = WassersteinOne(pu.default_settings, draw_plots=self.draw_test, save_location=test_plots)
 
         # Log hyperparameters
-        self.save_hyperparameters(ignore=['plot_staging', 'debug'])
+        self.save_hyperparameters(ignore=['val_plots', 'test_plots', 'debug'])
 
 
     # Forward pass
@@ -111,12 +120,11 @@ class LOfTransformer(L.LightningModule):
         # Calculate new weights
         probs = 1 / (1 + torch.exp(-output))
         derived_weights = probs / (1 - probs)
-        end_weights = derived_weights * start_weights
 
         # Logging metrics
-        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
-        if not self.debug:
-            self.wasserstein_train.update(plotting, start_weights, end_weights, target)
+        self.wasserstein_train.update(plotting, start_weights, derived_weights, target)
+        if self.log_things:
+            self.log('train_loss', loss, prog_bar=True, sync_dist=True)
 
         return loss
     
@@ -126,7 +134,8 @@ class LOfTransformer(L.LightningModule):
         # Log wasserstein metric
         if not self.debug:
             train_wass, _ = self.wasserstein_train.compute()
-            self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
+            if self.log_things:
+                self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
 
             # Reset wasserstein metric
             self.wasserstein_train.reset()
@@ -142,20 +151,21 @@ class LOfTransformer(L.LightningModule):
         # Calculate new weights
         probs = 1 / (1 + torch.exp(-output))
         derived_weights = probs / (1 - probs)
-        end_weights = derived_weights * start_weights
 
         # Calculate and log loss
         loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
-        self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
+        if self.log_things:
+            self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
         # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
         self.val_auc(output, target)
-        self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+        if self.log_things:
+            self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Update wasserstein metric
         if not self.debug:
-            self.wasserstein_val.update(plotting, start_weights, end_weights, target)
+            self.wasserstein_val.update(plotting, start_weights, derived_weights, target)
 
 
     # Validation step end for logging reweighting plots to wandb
@@ -171,14 +181,13 @@ class LOfTransformer(L.LightningModule):
             # Calculate wasserstein metric, and get dictionary of plots to log
             val_wass, plot_dict = self.wasserstein_val.compute(names=self.names)
 
-            # Log wasserstein metric
-            self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
-
-            # Log plots if this is the rank zero process only!
-            if self.trainer.is_global_zero:
-                for key, histpath in plot_dict.items():
-                    log_name = 'val_' + key
-                    self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
+            # Logging
+            if self.log_things:
+                self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
+                if self.draw_val and self.trainer.is_global_zero:
+                    for key, histpath in plot_dict.items():
+                        log_name = 'val_' + key
+                        self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
             
         # Reset metric
         self.wasserstein_val.reset()
@@ -194,19 +203,21 @@ class LOfTransformer(L.LightningModule):
         # Calculate new weights
         probs = 1 / (1 + torch.exp(-output))
         derived_weights = probs / (1 - probs)
-        end_weights = derived_weights * start_weights
 
         # Calculate and log AUC
         self.test_auc(output, target)
-        self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
+        if self.log_things:
+            self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
 
         # Update wasserstein metric
         if not self.debug:
-            self.wasserstein_test.update(plotting, start_weights, end_weights, target)
+            self.wasserstein_test.update(plotting, start_weights, derived_weights, target)
 
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
+
+        print("On test epoch end!")
 
         # Just return if in debug mode
         if self.debug:
@@ -215,14 +226,14 @@ class LOfTransformer(L.LightningModule):
         # Calculate wasserstein metric, and get dictionary of plots to log
         test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
 
-        # Log wasserstein metric
-        self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)
-
-        # Log plots if this is the rank zero process only!
-        if self.trainer.is_global_zero:
-            for key, histpath in plot_dict.items():
-                log_name = 'test_' + key
-                self.logger.experiment.log({log_name: wandb.Image(histpath)})
+        # Logging
+        print("Are we logging: ", self.log_things)
+        if self.log_things:
+            self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)
+            if self.draw_test and self.trainer.is_global_zero:
+                for key, histpath in plot_dict.items():
+                    log_name = 'test_' + key
+                    self.logger.experiment.log({log_name: wandb.Image(histpath)})
 
         # Reset metric
         self.wasserstein_test.reset()
@@ -458,6 +469,7 @@ class LOfData(L.LightningDataModule):
         # Otherwise create a vector of ones
         else:
             all_weights = np.ones_like(root_weights, dtype=np.float32)
+            
         return all_weights
 
 

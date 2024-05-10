@@ -4,6 +4,8 @@ code whether to plot as reco or truth level.
 
 At all points we'll assume we aren't plotting a reweighting. This is just to look at raw data.
 
+Currently broken by plotting_utils requiring a reweighting as input.
+
 Author: Kevin Greif
 Last updated 03/18/2024
 python3
