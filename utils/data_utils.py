@@ -133,7 +133,7 @@ def get_kinematics(tree, filter=None, get_mask=True, muon_only=False, one_hot=Tr
     if filter is not None:
         kinematics = kinematics[filter == True,...]
     if max_events is not None:
-        kinematics = kinematics[:max_events,...]
+        kinematics = kinematics[:int(max_events),...]
 
     # Track information if requested
     if not muon_only:
