@@ -119,10 +119,11 @@ class LOfTransformer(L.LightningModule):
 
         # Calculate new weights
         probs = 1 / (1 + torch.exp(-output))
-        derived_weights = probs / (1 - probs)
+        network_weights = probs / (1 - probs)
+        end_weights = network_weights * start_weights
 
         # Logging metrics
-        self.wasserstein_train.update(plotting, start_weights, derived_weights, target)
+        self.wasserstein_train.update(plotting, start_weights, end_weights, target)
         if self.log_things:
             self.log('train_loss', loss, prog_bar=True, sync_dist=True)
 
@@ -150,7 +151,8 @@ class LOfTransformer(L.LightningModule):
 
         # Calculate new weights
         probs = 1 / (1 + torch.exp(-output))
-        derived_weights = probs / (1 - probs)
+        network_weights = probs / (1 - probs)
+        end_weights = network_weights * start_weights
 
         # Calculate and log loss
         loss = self.criterion(output, target) * start_weights
@@ -165,7 +167,7 @@ class LOfTransformer(L.LightningModule):
 
         # Update wasserstein metric
         if not self.debug:
-            self.wasserstein_val.update(plotting, start_weights, derived_weights, target)
+            self.wasserstein_val.update(plotting, start_weights, end_weights, target)
 
 
     # Validation step end for logging reweighting plots to wandb
@@ -202,7 +204,8 @@ class LOfTransformer(L.LightningModule):
 
         # Calculate new weights
         probs = 1 / (1 + torch.exp(-output))
-        derived_weights = probs / (1 - probs)
+        network_weights = probs / (1 - probs)
+        end_weights = network_weights * start_weights
 
         # Calculate and log AUC
         self.test_auc(output, target)
@@ -211,13 +214,11 @@ class LOfTransformer(L.LightningModule):
 
         # Update wasserstein metric
         if not self.debug:
-            self.wasserstein_test.update(plotting, start_weights, derived_weights, target)
+            self.wasserstein_test.update(plotting, start_weights, end_weights, target)
 
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
-
-        print("On test epoch end!")
 
         # Just return if in debug mode
         if self.debug:
@@ -227,7 +228,6 @@ class LOfTransformer(L.LightningModule):
         test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
 
         # Logging
-        print("Are we logging: ", self.log_things)
         if self.log_things:
             self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)
             if self.draw_test and self.trainer.is_global_zero:

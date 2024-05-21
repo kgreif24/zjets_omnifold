@@ -43,7 +43,7 @@ class BaseMetric(torchmetrics.Metric):
         super().__init__(**kwargs)
         self.add_state("plotting", default=[], dist_reduce_fx="cat")
         self.add_state("start_weights", default=[], dist_reduce_fx="cat")
-        self.add_state("derived_weights", default=[], dist_reduce_fx="cat")
+        self.add_state("end_weights", default=[], dist_reduce_fx="cat")
         self.add_state("target", default=[], dist_reduce_fx="cat")
 
         self.hist_info = hist_info
@@ -51,11 +51,11 @@ class BaseMetric(torchmetrics.Metric):
         self.save_location = save_location
 
 
-    def update(self, plotting, start_weights, derived_weights, labels):
+    def update(self, plotting, start_weights, end_weights, labels):
         """ update - Function to update the metric state on each batch."""
         self.plotting.append(plotting)
         self.start_weights.append(start_weights)
-        self.derived_weights.append(derived_weights)
+        self.end_weights.append(end_weights)
         self.target.append(labels)
 
 
@@ -76,33 +76,33 @@ class BaseMetric(torchmetrics.Metric):
             # Concatenate list states
             plotting = torchmetrics.utilities.dim_zero_cat(self.plotting)
             start_weights = torchmetrics.utilities.dim_zero_cat(self.start_weights)
-            derived_weights = torchmetrics.utilities.dim_zero_cat(self.derived_weights)
+            end_weights = torchmetrics.utilities.dim_zero_cat(self.end_weights)
             target = torchmetrics.utilities.dim_zero_cat(self.target)
 
             # To numpy
             plotting = plotting.cpu().detach().numpy()
             start_weights = start_weights.cpu().detach().numpy().flatten()
-            derived_weights = derived_weights.cpu().detach().numpy().flatten()
+            end_weights = end_weights.cpu().detach().numpy().flatten()
             target = target.cpu().detach().numpy().flatten()
 
         # Else the state tensors already contain numpy, and just need to be concatenated
         else:
             plotting = np.concatenate(self.plotting, axis=0)
             start_weights = np.concatenate(self.start_weights, axis=0).flatten()
-            derived_weights = np.concatenate(self.derived_weights, axis=0).flatten()
+            end_weights = np.concatenate(self.end_weights, axis=0).flatten()
             target = np.concatenate(self.target, axis=0).flatten()
 
         # Make instance variables
         self.plotting = plotting
         self.start_weights = start_weights
-        self.derived_weights = derived_weights
+        self.end_weights = end_weights
         self.target = target
 
         # If we want to draw plots, do so here
         plot_dict = {}
         if self.draw_plots:
             plot_dict = pu.make_logged_plots(
-                plotting, target, start_weights, derived_weights, save_location=self.save_location, **kwargs
+                plotting, target, start_weights, end_weights, save_location=self.save_location, **kwargs
             )
 
         # Return the plot dictionary

@@ -219,9 +219,10 @@ def make_logged_plots(
         plot_data, 
         labels, 
         start_weights, 
-        derived_weights, 
+        end_weights, 
         definitions=default_settings, 
-        save_location='./plot_storage', 
+        save_location='./plot_storage',
+        is_comp=False,
         display=False,
         **kwargs):
     """ make_logged_plots - This function will be called by the pytorch lightning module
@@ -237,10 +238,13 @@ def make_logged_plots(
     plot_data - numpy array of the data to be plotted
     labels - numpy array of the labels for the data
     start_weights - numpy array of the weights used in network training, for all events
-    derived_weights - numpy array of new derived weights for all events.
-        The actual weights used to draw histograms will be product of this and "start_weights"
+    end_weights - numpy array of new weights for all events.
+        These are not multiplied by the start weights. This should be done independently of this function
     definitions - list of dictionaries describing each of the histograms to build
     save_location - location of directory for plot staging
+    is_comp - set to true if we are plotting comparison between truth MC and truth PD.
+        In this case the weight histogram is of the Omnifold weights in total, and should be labeled
+        as such.
     display - if true, display the plots to the screen
 
     Returns:
@@ -250,63 +254,47 @@ def make_logged_plots(
 
     # Separate source and target weights
     source_start_weights = start_weights[labels==0]
-    source_derived_weights = derived_weights[labels==0]
+    source_end_weights = end_weights[labels==0]
     target_start_weights = start_weights[labels==1]
-    # We don't care about derived weights for target!
-
-    # Calculate source final weights
-    source_final_weights = source_start_weights * source_derived_weights
+    # We don't care about end weights for target!
 
     # Calculate loss factor and effective number of events
-    raw_num_source = len(source_start_weights)
-    effective_derived = np.sum(source_derived_weights)**2 / np.sum(source_derived_weights**2)
-    loss_factor = effective_derived / raw_num_source
     start_effective_events = np.sum(source_start_weights)**2 / np.sum(source_start_weights**2)
-    end_effective_events = np.sum(source_final_weights)**2 / np.sum(source_final_weights**2)
+    end_effective_events = np.sum(source_end_weights)**2 / np.sum(source_end_weights**2)
+    loss_factor = end_effective_events / start_effective_events
 
     # Make dictionary for return
     return_dict = {}
 
-    # Make histogram of the derived weights + loss factor
+    # Calculate the interesting weights to plot. If we are plotting a reweighting for a single
+    # step this is the network weights (end_weights). If we are plotting a comparison between
+    # the reweighted truth MC and truth PD, this is the omnifold weights (end_weights / start_weights)
+    if is_comp:
+        interesting_weights = end_weights / start_weights
+        label = 'Omnifold Weights'
+    else:
+        interesting_weights = end_weights
+        label = 'Network Weights'
+
+    # Make histogram of the interesting weights, with a loss factor
     fig = plt.figure()
     ax = plt.gca()
-    ax.hist(source_derived_weights, bins=150, label='Derived Weights', density=True, histtype='step')
+    ax.hist(interesting_weights, bins=150, label=label, density=True, histtype='step')
     ax.set_yscale('log')
-    ax.set_xlabel('Derived Weights')
+    ax.set_xlabel(label)
     ax.set_ylabel('A.U.')
-    add_stats_box(ax, source_derived_weights)
+    add_stats_box(ax, interesting_weights)
     # Add the loss factor as a text box
     textstr = f'Loss Factor: {loss_factor:10.4f}'
     props = dict(boxstyle='round', facecolor='white', alpha=0.5)
     ax.text(0.95, 0.75, textstr, transform=ax.transAxes, fontsize=12,
             verticalalignment='top', horizontalalignment='right', bbox=props)
-    save_path = f'{save_location}/derived_weights.png'
+    save_path = f'{save_location}/delta_weights.png'
     plt.savefig(save_path, dpi=300)
     if display:
         plt.show()
     plt.close()
-    return_dict['derived_weights'] = save_path
-
-    # Also make histogram of the final weights (derived weights multiplied by start weights)
-    fig = plt.figure()
-    ax = plt.gca()
-    ax.hist(source_final_weights, bins=150, density=True, histtype='step')
-    ax.set_yscale('log')
-    ax.set_xlabel('Updated Weights')
-    ax.set_ylabel('A.U.')
-    add_stats_box(ax, source_final_weights)
-    # Add the number of effective of events as a text box
-    textstr = f'Start Effective Events: {start_effective_events:10.0f}' + \
-            '\n' + f'End Effective Events: {end_effective_events:10.0f}'
-    props = dict(boxstyle='round', facecolor='white', alpha=0.5)
-    ax.text(0.95, 0.75, textstr, transform=ax.transAxes, fontsize=12,
-            verticalalignment='top', horizontalalignment='right', bbox=props)
-    save_path = f'{save_location}/updated_weights.png'
-    plt.savefig(save_path, dpi=300)
-    if display:
-        plt.show()
-    plt.close()
-    return_dict['updated_weights'] = save_path
+    return_dict['delta_weights'] = save_path
 
     # Loop over dictionary of dictionaries
     for i, (key, element) in enumerate(definitions.items()):
@@ -323,7 +311,7 @@ def make_logged_plots(
             this_data[labels==0],
             this_data[labels==1], 
             source_start_weights,
-            source_weight_end=source_final_weights,
+            source_weight_end=source_end_weights,
             target_weight=target_start_weights,
             bins=element['bins'],
             xlabel=element['xlabel'],
@@ -349,7 +337,7 @@ def make_inclusive_track_plots(
         track_data,
         labels,
         start_weights,
-        derived_weights,
+        end_weights,
         definitions=track_hists,
         save_location='./plot_storage',
         display=False,
@@ -362,8 +350,8 @@ def make_inclusive_track_plots(
     track_data - numpy array of the track kinematics to be plotted, in shape (n_events, 3, n_tracks)
     labels - numpy array of the labels for the data
     start_weights - numpy array of the weights used in network training for all events
-    derived_weights - numpy array of new derived weights for all events.
-        The actual weights used to draw histograms will be product of this and "start_weights"
+    end_weights - numpy array of new weights for all events.
+        These are not multiplied by the start weights. This should be done independently of this function
     definitions - list of dictionaries describing each of the histograms to build, default setting is above
     save_location - location of directory in which to dump plots
     display - if true, display the plots to the screen
@@ -371,20 +359,17 @@ def make_inclusive_track_plots(
 
     # Separate source and target weights
     source_start_weights = start_weights[labels==0]
-    source_derived_weights = derived_weights[labels==0]
+    source_end_weights = end_weights[labels==0]
     target_start_weights = start_weights[labels==1]
-    # We don't care about derived weights for target!
-
-    # Calculate source final weights
-    source_final_weights = source_start_weights * source_derived_weights
+    # We don't care about end weights for target!
 
     # Extend to the track data shape 
     source_start_weights = np.repeat(np.expand_dims(source_start_weights, axis=1), track_data.shape[2], axis=1)
     source_start_weights = np.ravel(source_start_weights)
     target_start_weights = np.repeat(np.expand_dims(target_start_weights, axis=1), track_data.shape[2], axis=1)
     target_start_weights = np.ravel(target_start_weights)
-    source_final_weights = np.repeat(np.expand_dims(source_final_weights, axis=1), track_data.shape[2], axis=1)
-    source_final_weights = np.ravel(source_final_weights)
+    source_end_weights = np.repeat(np.expand_dims(source_end_weights, axis=1), track_data.shape[2], axis=1)
+    source_end_weights = np.ravel(source_end_weights)
 
     # Make dictionary for return
     return_dict = {}
@@ -405,7 +390,7 @@ def make_inclusive_track_plots(
             track_pt_pd = this_data_pd
             source_start_weights = source_start_weights[track_pt_mc != 0]
             target_start_weights = target_start_weights[track_pt_pd != 0]
-            source_final_weights = source_final_weights[track_pt_mc != 0]
+            source_end_weights = source_end_weights[track_pt_mc != 0]
         this_data_mc = this_data_mc[track_pt_mc != 0]
         this_data_pd = this_data_pd[track_pt_pd != 0]
 
@@ -419,7 +404,7 @@ def make_inclusive_track_plots(
             this_data_mc,
             this_data_pd, 
             source_start_weights,
-            source_weight_end=source_final_weights,
+            source_weight_end=source_end_weights,
             target_weight=target_start_weights,
             bins=element['bins'], 
             xlabel=element['xlabel'], 

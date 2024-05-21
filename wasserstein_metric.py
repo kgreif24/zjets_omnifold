@@ -43,9 +43,8 @@ class WassersteinOne(BaseMetric):
         # Call parent compute function
         plot_dict = super().compute(from_torch=from_torch, **kwargs)
 
-        # Calculate final weights and separate weights to use in wasserstein calculation
-        final_weights = self.start_weights * self.derived_weights
-        source_weight = final_weights[self.target == 0]
+        # Separate weights to use in wasserstein calculation
+        source_weight = self.end_weights[self.target == 0]
         target_weight = self.start_weights[self.target == 1]
 
         # Results list
