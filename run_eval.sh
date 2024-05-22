@@ -6,7 +6,7 @@
 #SBATCH -C gpu
 #SBATCH -G 1
 #SBATCH -q standard
-#SBATCH -J pairwise_3_eval
+#SBATCH -J fix_weight_saving
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
@@ -23,4 +23,4 @@ export OMP_PROC_BIND=spread
 
 #run the application: 
 # applications may perform better with --gpu-bind=none instead of --gpu-bind=single:1
-srun -n 1 -c 128 --cpu_bind=cores -G 1 --gpu-bind=none python lightning_eval.py --model ./checkpoints/test-of-project/x342jv37/checkpoints/epoch\=17-val_loss\=0.1989.ckpt --save ./results/test-of-project/x342jv37/checkpoints/e17_preds.npy
+srun -n 1 -c 128 --cpu_bind=cores -G 1 --gpu-bind=none python lightning_eval.py --check_path ./checkpoints/of-step1-tests/x1gs4icl/checkpoints/epoch\=16-val_loss\=0.1300.ckpt --run_id x1gs4icl --config_path ./cli/it_1_debug.yml --iteration 0 --step 2

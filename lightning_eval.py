@@ -313,16 +313,16 @@ class OfEval:
         # Make end weights
         end_weights = np.concatenate([self.new_weights_train, root_weights_pd], axis=0)
 
-        # Update and compute metric
+        # Update and compute metrics, generate plots
         self.wasserstein.update(plotting, start_weights, end_weights, labels)
-        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False, names=('TruthMC', 'TruthPD'))
+        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False, names=('TruthMC', 'TruthPD'), is_comp=True)
+        track_dict = pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, save_location=self.comp_dir)
+        plot_dict = {**plot_dict, **track_dict}
         print("Reweighted truth MC to truth PD Wasserstein metric:", comp_wass)
 
         # Log wasserstein metric and plots if we are using wandb
         if self.config.wandb:
             self.wandb_logger.experiment.log({"comp_wasserstein": comp_wass})
-            track_dict = pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, save_location=self.comp_dir)
-            plot_dict = {**plot_dict, **track_dict}
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
                 self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
