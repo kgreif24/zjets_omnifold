@@ -7,7 +7,7 @@
 #SBATCH -C gpu
 #SBATCH -G 4
 #SBATCH -q regular
-#SBATCH -J of_trial_2
+#SBATCH -J of_trial_3
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
@@ -24,4 +24,4 @@ export OMP_PROC_BIND=spread
 
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it sequentially
-python run_omnifold.py --config_path ./cli/default_of_template.yml --continue_iteration 1
+python run_omnifold.py --config_path ./cli/default_of_template.yml

@@ -30,7 +30,7 @@ class OfEval:
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
-    def __init__(self, check_path, run_id, config_path, iteration, step):
+    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
@@ -40,6 +40,8 @@ class OfEval:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
+        verify - Defaults False, if set to true forget about testing and just run
+            prediction.
 
         Returns:
         None
@@ -50,6 +52,7 @@ class OfEval:
         self.run_id = run_id
         self.iteration = iteration
         self.step = step
+        self.verify = verify
 
         # Hard code the number of truth pseudodata events to use in step 2 comparison
         self.n_compare_events = 1000000
@@ -165,7 +168,9 @@ class OfEval:
         # Load model checkpoint
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
+            val_plots=None,
             test_plots=self.test_dir,
+            log=self.config.wandb,
             debug=self.config.debug,
             step=self.step
         )
@@ -220,38 +225,40 @@ class OfEval:
         source_predictions_train = predictions_train[labels_train == 0]
         source_predictions_test = predictions_test[labels_test == 0]
 
-        # Calculate derived weights
+        # Calculate network weights
         probs_train = 1 / (1 + np.exp(-source_predictions_train))
         probs_test = 1 / (1 + np.exp(-source_predictions_test))
-        derived_weights_train = probs_train / (1 - probs_train)
-        derived_weights_test = probs_test / (1 - probs_test)
+        self.network_weights_train = probs_train / (1 - probs_train)
+        self.network_weights_test = probs_test / (1 - probs_test)
 
-        # Get starting weights from the data modules
-        start_weights_train = self.d_module_train.get_source_weights()
-        start_weights_test = self.d_module_test.get_source_weights()
+        # Get source weights from the data modules
+        source_weights_train = self.d_module_train.get_source_weights()
+        source_weights_test = self.d_module_test.get_source_weights()
 
         # Calculate updated weights
-        self.new_weights_train = start_weights_train * derived_weights_train
-        self.new_weights_test = start_weights_test * derived_weights_test
+        self.new_weights_train = source_weights_train * self.network_weights_train
+        self.new_weights_test = source_weights_test * self.network_weights_test
 
         # Now we need to handle the events which do not pass the pass190 flags.
-        # Get the starting weights for every event
-        all_weights_train = self.d_module_train.get_source_all_weights()
-        all_weights_test = self.d_module_test.get_source_all_weights()
+        # Get the source weights for every event
+        self.all_updated_weights_train = self.d_module_train.get_source_all_weights()
+        self.all_updated_weights_test = self.d_module_test.get_source_all_weights()
 
         # Get the filters
         pass190_train = self.d_module_train.get_source_pass190()
         pass190_test = self.d_module_test.get_source_pass190()
 
         # Update the all weights vectors with the new weights
-        all_weights_train[pass190_train == 1] = self.new_weights_train
-        all_weights_test[pass190_test == 1] = self.new_weights_test
+        self.all_updated_weights_train[pass190_train == 1] = self.new_weights_train
+        self.all_updated_weights_test[pass190_test == 1] = self.new_weights_test
 
         # Save new weights for future use
         np.savez(
             f"{self.weight_dir}/iteration_{self.iteration}_step_{self.step}.npz",
-            train=all_weights_train,
-            test=all_weights_test
+            network_train=self.network_weights_train,
+            network_test=self.network_weights_test,
+            train=self.all_updated_weights_train,
+            test=self.all_updated_weights_test
         )
 
         # Evaluate difference between reweighted truth MC and truth data if this is step 2
@@ -295,7 +302,7 @@ class OfEval:
         labels_pd = np.ones(plotting_pd.shape[0])
         labels = np.concatenate([labels_mc, labels_pd], axis=0)
 
-        # Get start weights
+        # Get start weights for MC and truth pseudodata
         root_weights_mc = ak.to_numpy(tree_mc['weight'].array())
         root_weights_mc = root_weights_mc[filter_mc == 1]
         root_weights_pd = ak.to_numpy(tree_pd['weight'].array())
@@ -306,16 +313,16 @@ class OfEval:
         # Make end weights
         end_weights = np.concatenate([self.new_weights_train, root_weights_pd], axis=0)
 
-        # Update and compute metric
+        # Update and compute metrics, generate plots
         self.wasserstein.update(plotting, start_weights, end_weights, labels)
-        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False, names=('TruthMC', 'TruthPD'))
+        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False, names=('TruthMC', 'TruthPD'), is_comp=True)
+        track_dict = pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, save_location=self.comp_dir)
+        plot_dict = {**plot_dict, **track_dict}
         print("Reweighted truth MC to truth PD Wasserstein metric:", comp_wass)
 
         # Log wasserstein metric and plots if we are using wandb
         if self.config.wandb:
             self.wandb_logger.experiment.log({"comp_wasserstein": comp_wass})
-            track_dict = pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, save_location=self.comp_dir)
-            plot_dict = {**plot_dict, **track_dict}
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
                 self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
@@ -331,8 +338,9 @@ class OfEval:
         No Arguments or Returns
         """
 
-        print("Run testing")
-        self.run_testing()
+        if not self.verify:
+            print("Run testing")
+            self.run_testing()
         print("Run predictions")
         self.run_prediction()
 
@@ -349,6 +357,7 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
+    parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
     args, _ = parser.parse_known_args()
 
     # Run the evaluation
@@ -357,6 +366,7 @@ if __name__ == '__main__':
         run_id=args.run_id, 
         config_path=args.config_path, 
         iteration=args.iteration, 
-        step=args.step
+        step=args.step,
+        verify=args.verify
     )
     evaluator.run()

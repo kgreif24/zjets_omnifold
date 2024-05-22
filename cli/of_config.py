@@ -83,6 +83,7 @@ class OfConfig:
         self.parser.add_argument('--project_name', type=str, default='test-of-project', help='Name of the wandb project')
         self.parser.add_argument('--group_name', type=str, default='test-of-run', help='Name of the wandb group for all training runs')
         self.parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints', help='Directory in which save model checkpoints')
+        self.parser.add_argument('--plot_val', action='store_true', help='Plot validation results')
 
         # Model
         self.parser.add_argument('--input_dim', type=int, default=10, help='Input dimension for the model')

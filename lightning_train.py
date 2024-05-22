@@ -149,8 +149,8 @@ class OfTrain:
         )
 
         # Make directories for saving validation plots in the rank zero process
-        if self.trainer.global_rank == 0:
-            val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
+        val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
+        if self.trainer.global_rank == 0 and self.config.plot_val:
             os.makedirs(val_dir, exist_ok=True)
         else:
             val_dir = None
@@ -170,6 +170,7 @@ class OfTrain:
         self.l_module = LOfTransformer(
             input_dim=self.config.input_dim,
             val_plots=val_dir,
+            log=self.config.wandb,
             debug=self.config.debug,
             num_classes=1,
             trim=self.config.run_trimmer,
