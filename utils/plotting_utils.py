@@ -270,10 +270,10 @@ def make_logged_plots(
     # step this is the network weights (end_weights). If we are plotting a comparison between
     # the reweighted truth MC and truth PD, this is the omnifold weights (end_weights / start_weights)
     if is_comp:
-        interesting_weights = end_weights / start_weights
+        interesting_weights = source_end_weights / source_start_weights
         label = 'Omnifold Weights'
     else:
-        interesting_weights = end_weights
+        interesting_weights = source_end_weights
         label = 'Network Weights'
 
     # Make histogram of the interesting weights, with a loss factor
