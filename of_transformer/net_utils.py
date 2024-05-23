@@ -55,8 +55,8 @@ def to_m2(xi, xj, eps=1e-8):
 
     # Determine masses for the mi, mj based on the onehot encodings
     # muon mass = 0.11, pion mass = 0.14, so not so huge of a difference anyway
-    mi = torch.cat((0.11 * onehots[:,:2,:], 0.14 * onehots[:,2:,:]), dim=1).sum(dim=1, keepdim=True)
-    mj = torch.cat((0.11 * onehots[:,:2,:], 0.14 * onehots[:,2:,:]), dim=1).sum(dim=1, keepdim=True)
+    mi = torch.cat((0.11 * onehotsi[:,:2,:], 0.14 * onehotsi[:,2:,:]), dim=1).sum(dim=1, keepdim=True)
+    mj = torch.cat((0.11 * onehotsj[:,:2,:], 0.14 * onehotsj[:,2:,:]), dim=1).sum(dim=1, keepdim=True)
 
     # Calculate px, py, pz, and E
     pxi = pti * torch.cos(phii)
