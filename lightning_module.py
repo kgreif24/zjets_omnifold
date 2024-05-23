@@ -122,10 +122,12 @@ class LOfTransformer(L.LightningModule):
         network_weights = probs / (1 - probs)
         end_weights = network_weights * start_weights
 
-        # Logging metrics
-        self.wasserstein_train.update(plotting, start_weights, end_weights, target)
-        if self.log_things:
-            self.log('train_loss', loss, prog_bar=True, sync_dist=True)
+        # Update wasserstein metric
+        if not self.debug:
+            self.wasserstein_train.update(plotting, start_weights, end_weights, target)
+
+        # Log training loss
+        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
 
         return loss
     
@@ -157,13 +159,11 @@ class LOfTransformer(L.LightningModule):
         # Calculate and log loss
         loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
-        if self.log_things:
-            self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
         # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
         self.val_auc(output, target)
-        if self.log_things:
-            self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+        self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Update wasserstein metric
         if not self.debug:
@@ -209,8 +209,7 @@ class LOfTransformer(L.LightningModule):
 
         # Calculate and log AUC
         self.test_auc(output, target)
-        if self.log_things:
-            self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
+        self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
 
         # Update wasserstein metric
         if not self.debug:
@@ -350,6 +349,13 @@ class LOfData(L.LightningDataModule):
         self.source_weights = np.expand_dims(self.source_all_weights[self.source_pass190 == 1], axis=1)
         self.target_all_weights = target_weights
         self.target_weights = np.expand_dims(self.target_all_weights[target_pass190 == 1], axis=1)
+
+        # Normalize weights so the class ratio is one but the sum of the weights is
+        # the number of events in the whole dataset (so initial loss is log(2))
+        source_divisor = 2 * np.sum(self.source_weights) / (len(self.source_weights) + len(self.target_weights))
+        target_divisor = 2 * np.sum(self.target_weights) / (len(self.source_weights) + len(self.target_weights))
+        self.source_weights /= source_divisor
+        self.target_weights /= target_divisor
 
         # Truncate weights if max_events values are set
         if self.max_events_source is not None:

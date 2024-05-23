@@ -180,7 +180,7 @@ class OfEval:
             accelerator='gpu', 
             devices=1,
             logger=self.wandb_logger,
-            enable_progress_bar=False
+            enable_progress_bar=self.config.interactive
         )
 
         # Make wasserstein metric object for comparing derived reweighting

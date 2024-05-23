@@ -29,6 +29,7 @@ class OfConfig:
 
         # General
         self.parser.add_argument('--debug', action='store_true', help='Run in debug mode (single device, muons only)')
+        self.parser.add_argument('--interactive', action='store_true', help='Run in interactive mode with progress bars')
 
         # Omnifold
         self.parser.add_argument('--num_iterations', type=int, default=6, help='Number of iterations to run the Omnifold algorithm')
