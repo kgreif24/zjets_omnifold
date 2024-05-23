@@ -30,13 +30,13 @@ def to_pt2(x, eps=1e-8):
 def to_m2(xi, xj, eps=1e-8):
     """ to_m2 - This function calculates the invariant mass squared of the sum
     of the four vectors given by xi and xj. The xi and xj are assumed to have shape
-    (n_events, 3, n_particles) where the 3 dimensions are (log(pT), eta, phi).
+    (n_events, 3 + n_onehot, n_particles) where the 3 dimensions are (log(pT), eta, phi).
 
     The n_particles in xi will be added elementwise to the n_particles in xj.
 
     Arguments:
-    xi - The first set of four vectors
-    xj - The second set of four vectors
+    xi - The first set of three vectors
+    xj - The second set of three vectors
     eps - The minimum value for the invariant mass squared. Useful if you
     are taking the log of the invariant mass squared.
 
@@ -46,16 +46,17 @@ def to_m2(xi, xj, eps=1e-8):
     """
 
     # Separate the pT, eta, and phi from the input
-    pti, etai, phii, _ = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # pT, eta, phi, onehots
-    ptj, etaj, phij, _ = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+    pti, etai, phii, onehotsi = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+    ptj, etaj, phij, onehotsj = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # pT, eta, phi, onehots
 
     # Remember we take the log of the pTs, so we need to exponentiate them
     pti = torch.exp(pti)
     ptj = torch.exp(ptj)
 
-    # Fix masses to the pion mass
-    mi = 0.14
-    mj = 0.14
+    # Determine masses for the mi, mj based on the onehot encodings
+    # muon mass = 0.11, pion mass = 0.14, so not so huge of a difference anyway
+    mi = torch.cat((0.11 * onehots[:,:2,:], 0.14 * onehots[:,2:,:]), dim=1).sum(dim=1, keepdim=True)
+    mj = torch.cat((0.11 * onehots[:,:2,:], 0.14 * onehots[:,2:,:]), dim=1).sum(dim=1, keepdim=True)
 
     # Calculate px, py, pz, and E
     pxi = pti * torch.cos(phii)
