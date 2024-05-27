@@ -78,6 +78,7 @@ class LOfTransformer(L.LightningModule):
             self.names = ('TruthMC', 'PulledWeightsMC')
 
         # Initialize model and loss
+        super().__init__()
         self.criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
         if debug:
             self.model = DumbNeuralNetwork()
@@ -374,7 +375,6 @@ class LOfData(L.LightningDataModule):
         self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
         # Build pytorch dataset
-        print("Building dataset")
         self.all_dataset = OfDataset(
             self.kinematics,
             self.labels,

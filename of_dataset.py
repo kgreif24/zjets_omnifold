@@ -59,11 +59,8 @@ class OfDataset(torch.utils.data.Dataset):
         self.kinematics = kinematics
         self.object_indeces = object_indeces
 
-        # Find the maximum number of tracks to use in padding
-        if max_tracks is not None:
-            self.max_tracks = max_tracks
-        else:
-            self.max_tracks = int(ak.max(ak.count(self.kinematics, axis=2)))
+        # Make max tracks and n_jets a class variable
+        self.max_tracks = max_tracks
         self.n_jets = n_jets
 
         # Send labels, weights, and plotting to torch tensors
@@ -129,17 +126,24 @@ class OfDataset(torch.utils.data.Dataset):
 
         ################ Kinematics + One Hots ################
 
-        # Slice and zero pad the kinematics (muon and track)
-        # Result is a numpy array of shape (batch, n_features, max_tracks)
+        # Slice kinematics
         kinematics = self.kinematics[indeces,...]
-        kinematics = utils.pad_kinematics(kinematics, max_tracks=self.max_tracks)
+
+        # Find max tracks for this batch
+        batch_max_tracks = int(ak.max(ak.count(kinematics, axis=2)))
+        if self.max_tracks is not None and batch_max_tracks > self.max_tracks:
+            batch_max_tracks = self.max_tracks
+
+        # Zero pad kinematicc
+        # Result is a numpy array of shape (batch, n_features, batch_max_tracks)
+        kinematics = utils.pad_kinematics(kinematics, max_tracks=batch_max_tracks)
 
         # Process one-hot encodings
         if self.object_indeces is not None:
 
             # Slice and zero pad the object indeces
             object_indeces = self.object_indeces[indeces,...]
-            object_indeces = utils.pad_kinematics(object_indeces, max_tracks=self.max_tracks, fill=-1)
+            object_indeces = utils.pad_kinematics(object_indeces, max_tracks=batch_max_tracks, fill=-1)
 
             # Get one hot encodings
             one_hots = utils.get_one_hot(kinematics, object_indeces, n_jets=self.n_jets)
@@ -164,7 +168,7 @@ class OfDataset(torch.utils.data.Dataset):
         plotting = self.plotting[indeces,...]
 
         # Return the data as a tuple
-        return kinematics, mask, labels, weights, plotting
+        return kinematics, labels, mask, weights, plotting
 
 
 class DummyDataset(torch.utils.data.Dataset):
