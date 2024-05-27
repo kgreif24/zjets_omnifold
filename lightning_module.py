@@ -3,7 +3,7 @@ classes. These pytorch lightning modules that simplify the data processing
 and training of Omnifold classifiers.
 
 Author: Kevin Greif
-1/05/2024
+Last updated 5/26/2024
 python3
 """
 
@@ -20,6 +20,7 @@ from pytorch_lightning.utilities.rank_zero import *
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 
+from of_dataset import OfDataset
 from of_transformer.of_transformer import OfTransformer
 from of_transformer.simple_network import DumbNeuralNetwork
 from wasserstein_metric import WassersteinOne
@@ -69,7 +70,6 @@ class LOfTransformer(L.LightningModule):
         self.debug = debug
         self.seed = seed
         self.log_things = log
-        print("Are we logging: ", self.log_things)
 
         # Set plotting names based on step argument
         if step == 1:
@@ -337,11 +337,11 @@ class LOfData(L.LightningDataModule):
         self.use_truth = use_truth
 
         # Get the data from files
-        source_kinematics, source_mask, source_weights, source_plotting, self.source_pass190 = self.load_data_from_file(
-            self.source_file, self.source_weight_path, one_hot=True, max_events=self.max_events_source
+        source_kinematics, source_indeces, source_weights, source_plotting, self.source_pass190 = self.load_data_from_file(
+            self.source_file, self.source_weight_path, max_events=self.max_events_source
         )
-        target_kinematics, target_mask, target_weights, target_plotting, target_pass190 = self.load_data_from_file(
-            self.target_file, self.target_weight_path, one_hot=True, max_events=self.max_events_target
+        target_kinematics, target_indeces, target_weights, target_plotting, target_pass190 = self.load_data_from_file(
+            self.target_file, self.target_weight_path, max_events=self.max_events_target
         )
 
         # Store all weights for use in prediction, then apply filter
@@ -364,37 +364,36 @@ class LOfData(L.LightningDataModule):
             self.target_weights = self.target_weights[:self.max_events_target]
 
         # Labels
-        source_labels = np.zeros((source_kinematics.shape[0], 1), dtype=np.float32)
-        target_labels = np.ones((target_kinematics.shape[0], 1), dtype=np.float32)
+        source_labels = np.zeros((len(source_kinematics), 1), dtype=np.float32)
+        target_labels = np.ones((len(target_kinematics), 1), dtype=np.float32)
 
         # Concatenate source and target data
-        self.kinematics = np.concatenate([source_kinematics, target_kinematics], axis=0)
-        mask = np.concatenate([source_mask, target_mask], axis=0)
+        self.kinematics = ak.concatenate([source_kinematics, target_kinematics], axis=0)
+        self.indeces = ak.concatenate([source_indeces, target_indeces], axis=0)
         weights = np.concatenate([self.source_weights, self.target_weights], axis=0)
         self.labels = np.concatenate([source_labels, target_labels], axis=0)  # Make instance variable for getting labels in eval script
         self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
-        # Convert to torch tensors with float32 precision
-        kinematics = torch.from_numpy(self.kinematics.astype(np.float32))
-        mask = torch.from_numpy(mask.astype(np.float32))
-        weights = torch.from_numpy(weights.astype(np.float32))
-        labels = torch.from_numpy(self.labels.astype(np.float32))
-        plotting = torch.from_numpy(self.plotting.astype(np.float32))
-
-        # Build pytorch datasets
-        self.all_dataset = torch.utils.data.TensorDataset(kinematics, labels, mask, weights, plotting)
+        # Build pytorch dataset
+        self.all_dataset = OfDataset(
+            self.kinematics,
+            self.labels,
+            weights, 
+            self.plotting,
+            object_indeces=self.indeces,
+            max_tracks=self.max_tracks
+        )
         rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 
-    def load_data_from_file(self, path, weight_path, one_hot=True, **kwargs):
+    def load_data_from_file(self, path, weight_path, **kwargs):
         """ load_data_from_file - This function loads data from a file using uproot, and applies the relevant preprocessing.
         It returns the kinematics, mask, plotting data, weights, and pass190 filter
 
         Arguments:
             path {str} -- The path to the file to load the data from.
             weight_path {str} -- The path to the weights file. Note this is for all events, without the pass190 filter
-            one_hot {bool} -- Set to true if we want to one-hot encode the track type.
             **kwargs {dict} -- A dictionary of keyword arguments to be passed to the get_kinematics function.
 
         Returns:
@@ -416,15 +415,13 @@ class LOfData(L.LightningDataModule):
 
         # Get pass 190 flags
         pass190 = ak.to_numpy(tree[prekey+'pass190'].array())
-        rank_zero_info("We have a fracion {} of good events in this file".format(np.sum(pass190) / len(pass190)))
+        rank_zero_info("We have a fraction {} of good events in this file".format(np.sum(pass190) / len(pass190)))
 
         # Get kinematics
-        kinematics, mask = get_kinematics(
+        kinematics, indeces = get_kinematics(
             tree, 
             filter=pass190,
-            max_tracks=self.max_tracks, 
             muon_only=self.muon_only,
-            one_hot=one_hot,
             get_truth=self.use_truth,
             **kwargs
         )
@@ -436,7 +433,7 @@ class LOfData(L.LightningDataModule):
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
         plotting = get_plotting(tree, vars=plotting_variables, filter=pass190, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
 
-        return kinematics, mask, weights, plotting, pass190
+        return kinematics, indeces, weights, plotting, pass190
 
 
     def load_weights(self, tree, path=None, test=False):
@@ -532,7 +529,13 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader for the training data.
         """
         assert not self.load_all
-        return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.dataloader_workers)
+        return torch.utils.data.DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.dataloader_workers,
+            collate_fn=custom_collate
+        )
     
 
     # Validation dataloader
@@ -544,7 +547,13 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader for the validation data.
         """
         assert not self.load_all
-        return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
+        return torch.utils.data.DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.dataloader_workers,
+            collate_fn=custom_collate
+        )
 
 
     # Test dataloader
@@ -556,7 +565,13 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
         assert self.load_all
-        return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
+        return torch.utils.data.DataLoader(
+            self.all_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.dataloader_workers,
+            collate_fn=custom_collate
+        )
 
 
     # Predict dataloader
@@ -568,6 +583,18 @@ class LOfData(L.LightningDataModule):
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
         if self.load_all:
-            return torch.utils.data.DataLoader(self.all_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
+            return torch.utils.data.DataLoader(
+                self.all_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.dataloader_workers,
+                collate_fn=custom_collate
+            )
         else:
-            return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.dataloader_workers)
+            return torch.utils.data.DataLoader(
+                self.val_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.dataloader_workers,
+                collate_fn=custom_collate
+            )
