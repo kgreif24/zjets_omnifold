@@ -123,7 +123,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=30,
+            dataloader_workers=10,
             load_all=True,
             testing=False,
             use_truth=use_truth
@@ -139,7 +139,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=30,
+            dataloader_workers=10,
             load_all=True,
             testing=True,
             use_truth=use_truth
@@ -211,7 +211,7 @@ class OfEval:
         No arguments or returns
         """
 
-        # Run predictions
+        # Run predictions, note this only produces predictions for the source events
         predictions_train = self.trainer.predict(self.model, self.d_module_train)
         predictions_test = self.trainer.predict(self.model, self.d_module_test)
 
@@ -219,17 +219,9 @@ class OfEval:
         predictions_train = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_train])
         predictions_test = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_test])
 
-        # Get labels from data loaders
-        labels_train = self.d_module_train.get_labels()
-        labels_test = self.d_module_test.get_labels()
-
-        # Drop target predictions
-        source_predictions_train = predictions_train[labels_train == 0]
-        source_predictions_test = predictions_test[labels_test == 0]
-
         # Calculate network weights
-        probs_train = 1 / (1 + np.exp(-source_predictions_train))
-        probs_test = 1 / (1 + np.exp(-source_predictions_test))
+        probs_train = 1 / (1 + np.exp(-predictions_train))
+        probs_test = 1 / (1 + np.exp(-predictions_test))
         self.network_weights_train = probs_train / (1 - probs_train)
         self.network_weights_test = probs_test / (1 - probs_test)
 
