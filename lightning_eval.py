@@ -123,6 +123,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
+            dataloader_workers=30,
             load_all=True,
             testing=False,
             use_truth=use_truth
@@ -138,6 +139,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
+            dataloader_workers=30,
             load_all=True,
             testing=True,
             use_truth=use_truth
