@@ -285,8 +285,8 @@ class OfEval:
         plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
 
         # Get the track kinematics
-        kinematics_mc = du.get_kinematics(tree_mc, filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
-        kinematics_pd = du.get_kinematics(tree_pd, filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
+        kinematics_mc, _ = du.get_kinematics(tree_mc, filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
+        kinematics_pd, _ = du.get_kinematics(tree_pd, filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
 
         # Pad kinematics
         kinematics_mc = du.pad_kinematics(kinematics_mc, max_tracks=self.max_tracks)
