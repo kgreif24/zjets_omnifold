@@ -379,7 +379,15 @@ class LOfData(L.LightningDataModule):
         self.labels = np.concatenate([source_labels, target_labels], axis=0)  # Make instance variable for getting labels in eval script
         self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
-        # Build pytorch dataset
+        # Build pytorch datasets
+        self.source_dataset = OfDataset(
+            source_kinematics,
+            source_labels,
+            self.source_weights,
+            source_plotting,
+            object_indeces=source_indeces,
+            max_tracks=self.max_tracks
+        )
         self.all_dataset = OfDataset(
             self.kinematics,
             self.labels,
@@ -581,15 +589,18 @@ class LOfData(L.LightningDataModule):
 
     # Predict dataloader
     def predict_dataloader(self):
-        """ predict_dataloader - This method returns a pytorch dataloader for running predictions. Yields either the validation or the 
-        full data set depending on whether "load_all" is set to true.
+        """ predict_dataloader - This method returns a pytorch dataloader for running predictions. 
+        Yields either the validation or the source data set depending on whether "load_all" is set to true.
+        If load_all is false then we are running prediction to form validation plots during training.
+        If load_all is true then we are running predictions at the end of a training, and only need to 
+        do this for the source data.
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
         if self.load_all:
             return torch.utils.data.DataLoader(
-                self.all_dataset,
+                self.source_dataset,
                 batch_size=self.batch_size,
                 shuffle=False,
                 num_workers=self.dataloader_workers,
