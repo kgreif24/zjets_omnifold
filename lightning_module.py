@@ -240,12 +240,7 @@ class LOfTransformer(L.LightningModule):
 
     # Prediction step
     def predict_step(self, batch, batch_idx):
-        """ predict_step - Only need to run prediction for the source events, since these are the
-        ones we need to derive weights for. Can save time by dropping the target events.
-        """
-        inputs, target, mask, _, _ = batch
-        inputs = inputs[target[:,0] == 0,...]
-        mask = mask[target[:,0] == 0,...]
+        inputs, _, mask, _, _ = batch
         return self(inputs, mask)
 
 
