@@ -57,6 +57,9 @@ class OfEval:
         # Hard code the number of truth pseudodata events to use in step 2 comparison
         self.n_compare_events = 1000000
 
+        # Hard code the number of tracks to use in building inclusive track plots
+        self.max_tracks = 150
+
         # Make directories for storing plots and weights
         self.test_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/test_plots'
         os.makedirs(self.test_dir, exist_ok=True)
@@ -278,13 +281,19 @@ class OfEval:
         filter_pd = ak.to_numpy(tree_pd["truth_pass190"].array())
 
         # Get the plot data
-        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), filter=filter_mc, get_truth=True)
+        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
         plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
 
         # Get the track kinematics
-        kinematics_mc = du.get_kinematics(tree_mc, filter=filter_mc, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks)
+        kinematics_mc = du.get_kinematics(tree_mc, filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
+        kinematics_pd = du.get_kinematics(tree_pd, filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
+
+        # Pad kinematics
+        kinematics_mc = du.pad_kinematics(kinematics_mc, max_tracks=self.max_tracks)
+        kinematics_pd = du.pad_kinematics(kinematics_pd, max_tracks=self.max_tracks)
+
+        # Slice the track kinematics (log pT, eta, phi)
         kinematics_mc = kinematics_mc[:,:3,2:]
-        kinematics_pd = du.get_kinematics(tree_pd, filter=filter_pd, get_mask=False, one_hot=False, get_truth=True, max_tracks=self.config.max_tracks, max_events=self.n_compare_events)
         kinematics_pd = kinematics_pd[:,:3,2:]
 
         # Concatenate the truth level MC and truth level pseudodata
@@ -299,13 +308,16 @@ class OfEval:
         # Get start weights for MC and truth pseudodata
         root_weights_mc = ak.to_numpy(tree_mc['weight'].array())
         root_weights_mc = root_weights_mc[filter_mc == 1]
+        root_weights_mc = root_weights_mc[:self.n_compare_events]
         root_weights_pd = ak.to_numpy(tree_pd['weight'].array())
         root_weights_pd = root_weights_pd[filter_pd == 1]
         root_weights_pd = root_weights_pd[:self.n_compare_events]
         start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
 
         # Make end weights
-        end_weights = np.concatenate([self.new_weights_train, root_weights_pd], axis=0)
+        mc_end_weights = self.all_updated_weights_train[filter_mc == 1]
+        mc_end_weights = mc_end_weights[:self.n_compare_events]
+        end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
 
         # Update and compute metrics, generate plots
         self.wasserstein.update(plotting, start_weights, end_weights, labels)
