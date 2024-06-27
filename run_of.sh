@@ -7,7 +7,7 @@
 #SBATCH -C gpu
 #SBATCH -G 4
 #SBATCH -q regular
-#SBATCH -J of_run
+#SBATCH -J test_add_ons_2
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
@@ -17,6 +17,10 @@
 module load conda
 conda activate zjets
 
+# Set up wandb
+export WANDB__SERVICE_WAIT=300
+wandb login
+
 # OpenMP settings:
 export OMP_NUM_THREADS=1
 export OMP_PLACES=threads
@@ -24,4 +28,4 @@ export OMP_PROC_BIND=spread
 
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it sequentially
-python run_omnifold.py --config_path ./cli/default_of_template.yml
+python run_omnifold.py --config_path ./cli/test_add_ons.yml
