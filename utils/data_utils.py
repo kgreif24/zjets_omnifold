@@ -78,10 +78,12 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
 
 def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_events=None):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
-    muon and track kinematics concatenatd as a single numpy array. An optional "filter"
-    argument will allow the user to filter events with a boolean array.
+    muon and track kinematics concatenated as a single awkward.
+    
+    The function will also return a set of indeces which describe which AK4 track jet
+    in the event a given track corresponds to.
 
-    Note: Should add option to include one-hot encoding eventually
+    An optional "filter" argument will allow the user to filter events with a boolean array.
 
     Arguments:
     tree - uproot TTree object

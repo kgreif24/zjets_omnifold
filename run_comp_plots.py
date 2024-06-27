@@ -74,15 +74,18 @@ labels = np.concatenate([mc_labels, pd_labels], axis=0)
 plotting_variables = pu.default_settings.keys()
 mc_plotting = du.get_plotting(mc_tree, vars=plotting_variables, filter=mc_filter, get_truth=True, max_events=max_events)
 pd_plotting = du.get_plotting(pd_tree, vars=plotting_variables, filter=pd_filter, get_truth=True, max_events=max_events)
-plotting = np.concatenate([mc_plotting, pd_plotting], axis=0)
+plotting = ak.concatenate([mc_plotting, pd_plotting], axis=0)
 
 # Get the track kinematics
-mc_kinematics = du.get_kinematics(mc_tree, filter=mc_filter, get_mask=False, one_hot=False, get_truth=True, max_tracks=max_tracks, max_events=max_events)
-pd_kinematics = du.get_kinematics(pd_tree, filter=pd_filter, get_mask=False, one_hot=False, get_truth=True, max_tracks=max_tracks, max_events=max_events)
-kinematics = np.concatenate([mc_kinematics, pd_kinematics], axis=0)
+mc_kinematics, _ = du.get_kinematics(mc_tree, filter=mc_filter, get_truth=True, max_events=max_events)
+pd_kinematics, _ = du.get_kinematics(pd_tree, filter=pd_filter, get_truth=True, max_events=max_events)
+kinematics = ak.concatenate([mc_kinematics, pd_kinematics], axis=0)
 
 # Drop the muons
 kinematics = kinematics[:,:,2:]
+
+# Zero pad the kinematics, sends kinematics to a numpy array
+kinematics = du.pad_kinematics(kinematics)
 
 # Modify the legends to show the truth level data
 new_settings = pu.default_settings.copy()
