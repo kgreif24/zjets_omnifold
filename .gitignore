@@ -2,10 +2,9 @@ __pycache__/*
 *.pyc
 plot_storage
 slurm*
-*.yaml
+cli/*.yml
 lightning_logs
 wandb
 checkpoints
 test-of-project
 eval_plot_storage
-*.yml
