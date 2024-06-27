@@ -3,7 +3,7 @@
 
 ## Quick start
 
-Assuming you have all of the required software installed (see `requirements.txt`), activate your python environment then do the following to run Omnifold:
+Assuming you have all of the required software installed (see `environment.yml`), activate your python environment then do the following to run Omnifold:
 
 ```
 # First make a default yaml config file
