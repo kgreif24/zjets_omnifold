@@ -98,17 +98,12 @@ def add_ons(kinematics):
     eta = kinematics[:,[1],:]
     phi = kinematics[:,[2],:]
 
-    # Calculate px py pz (up to log-scaling)
-    px = logpT * np.cos(phi)
-    py = logpT * np.sin(phi)
-    pz = logpT * np.sinh(eta)
-
     # Calculate cos(phi) and sin(phi)
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
 
     # Stack new features and return
-    new_kinematics = ak.concatenate([kinematics, px, py, pz, cos_phi, sin_phi], axis=1)
+    new_kinematics = ak.concatenate([logpT, eta, cos_phi, sin_phi], axis=1)
     return new_kinematics
 
 
