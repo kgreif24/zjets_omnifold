@@ -76,21 +76,18 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     return np.stack(one_hots, axis=1)
 
 
-def add_ons(kinematics):
-    """ add_ons - This function will add additional kinematic features to the kinematics
-    array. These will be px, py, pz, cos(phi), sin(phi). They are meant to address the
-    discontinuity in phi.
-
-    The px, py, pz values will really be log(pT) * cos(phi), etc. This is proportional
-    to the actual values up to a scaling.
+def to_trig_rep(kinematics):
+    """ to_trig_rep - This function will preprocess the phi feature within
+    the kinematics array of tracks and muons. It will replace phi with
+    cos(phi) and sin(phi) to naturally handle the periodicity of phi.
     
     Arguments:
     kinematics - awkward array of muon and track kinematics, with form
         (events, features, VAR objects). Features should have order log(pT), eta, phi
 
     Returns:
-    kinematics - awkward array of muon and track kinematics with additional features.
-        Features should now have order log(pT), eta, phi, px, py, pz, cos(phi), sin(phi)
+    kinematics - awkward array of muon and track kinematics with preprocessing.
+        Features should now have order log(pT), eta, cos(phi), sin(phi)
     """
 
     # Get logpT, eta, phi awkward arrays, make sure you keep sliced dim
@@ -197,7 +194,7 @@ def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_even
         indeces = ak.concatenate([muon_indeces, indeces], axis=2)
 
     # Add additional kinematic features
-    kinematics = add_ons(kinematics)
+    kinematics = to_trig_rep(kinematics)
 
     # Return kinematics and track indeces
     return kinematics, indeces

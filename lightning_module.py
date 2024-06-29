@@ -246,13 +246,23 @@ class LOfTransformer(L.LightningModule):
 
     # Configure optimizer
     def configure_optimizers(self):
+
+        # Determine learning rates based on step
+        if self.step == 1:
+            min_lr = 1e-5
+            max_lr = 1e-4
+        else:
+            min_lr = 1e-4
+            max_lr = 1e-3
+
+        # Build and return optimizer and scheduler
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5)
         scheduler = CosineAnnealingWarmupRestarts(
             optimizer,
             first_cycle_steps=1e4,
             warmup_steps=1e3,
-            max_lr=1e-4,
-            min_lr=1e-5,
+            max_lr=max_lr,
+            min_lr=min_lr,
             gamma=0.8
         )
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'frequency': 1}}

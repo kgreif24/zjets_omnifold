@@ -271,7 +271,7 @@ class OfEval:
         """
 
         # Load truth level MC and pseudodata from scratch
-        f_mc = uproot.open(self.config.mc_train_path)
+        f_mc = uproot.open(self.config.mc_test_path)  # Compare testing set MC to data
         tree_mc = f_mc["OmniTree"]
         f_pd = uproot.open(self.config.truth_data_path)
         tree_pd = f_pd["OmniTree"]
