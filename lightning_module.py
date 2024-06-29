@@ -66,10 +66,11 @@ class LOfTransformer(L.LightningModule):
                 to the OfTransformer init function.
         """
 
-        # Debug flag and seed value
+        # Set instance vars
         self.debug = debug
         self.seed = seed
         self.log_things = log
+        self.step = step
 
         # Set plotting names based on step argument
         if step == 1:
