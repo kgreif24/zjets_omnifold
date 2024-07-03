@@ -225,35 +225,30 @@ class OfEval:
         # Calculate network weights
         probs_train = 1 / (1 + np.exp(-predictions_train))
         probs_test = 1 / (1 + np.exp(-predictions_test))
-        self.network_weights_train = probs_train / (1 - probs_train)
-        self.network_weights_test = probs_test / (1 - probs_test)
+        network_weights_train = probs_train / (1 - probs_train)
+        network_weights_test = probs_test / (1 - probs_test)
 
-        # Get source weights from the data modules
-        source_weights_train = self.d_module_train.get_source_weights()
-        source_weights_test = self.d_module_test.get_source_weights()
-
-        # Calculate updated weights
-        self.new_weights_train = source_weights_train * self.network_weights_train
-        self.new_weights_test = source_weights_test * self.network_weights_test
-
-        # Now we need to handle the events which do not pass the pass190 flags.
-        # Get the source weights for every event
-        self.all_updated_weights_train = self.d_module_train.get_source_all_weights()
-        self.all_updated_weights_test = self.d_module_test.get_source_all_weights()
+        # Get source weights from the data modules, note this is before normalization
+        source_weights_train = self.d_module_train.get_source_all_weights()
+        source_weights_test = self.d_module_test.get_source_all_weights()
 
         # Get the filters
         pass190_train = self.d_module_train.get_source_pass190()
         pass190_test = self.d_module_test.get_source_pass190()
 
-        # Update the all weights vectors with the new weights
-        self.all_updated_weights_train[pass190_train == 1] = self.new_weights_train
-        self.all_updated_weights_test[pass190_test == 1] = self.new_weights_test
+        # Calculate updated weights
+        source_weights_train[pass190_train == 1] *= network_weights_train
+        source_weights_test[pass190_test == 1] *= network_weights_test
+        self.all_updated_weights_train = source_weights_train
+        self.all_updated_weights_test = source_weights_test
 
         # Save new weights for future use
         np.savez(
             f"{self.weight_dir}/iteration_{self.iteration}_step_{self.step}.npz",
-            network_train=self.network_weights_train,
-            network_test=self.network_weights_test,
+            raw_train_output=predictions_train,
+            raw_test_output=predictions_test,
+            network_train=network_weights_train,
+            network_test=network_weights_test,
             train=self.all_updated_weights_train,
             test=self.all_updated_weights_test
         )
@@ -315,7 +310,7 @@ class OfEval:
         start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
 
         # Make end weights
-        mc_end_weights = self.all_updated_weights_train[filter_mc == 1]
+        mc_end_weights = self.all_updated_weights_test[filter_mc == 1]
         mc_end_weights = mc_end_weights[:self.n_compare_events]
         end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
 
