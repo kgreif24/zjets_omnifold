@@ -119,8 +119,7 @@ class LOfTransformer(L.LightningModule):
         loss = loss.mean()
 
         # Calculate new weights
-        probs = 1 / (1 + torch.exp(-output))
-        network_weights = probs / (1 - probs)
+        network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
         # Update wasserstein metric
@@ -153,8 +152,7 @@ class LOfTransformer(L.LightningModule):
         output = self(inputs, mask)
 
         # Calculate new weights
-        probs = 1 / (1 + torch.exp(-output))
-        network_weights = probs / (1 - probs)
+        network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
         # Calculate and log loss
@@ -204,8 +202,7 @@ class LOfTransformer(L.LightningModule):
         output = self(inputs, mask)
 
         # Calculate new weights
-        probs = 1 / (1 + torch.exp(-output))
-        network_weights = probs / (1 - probs)
+        network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
         # Calculate and log AUC

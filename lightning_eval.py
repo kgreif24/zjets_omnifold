@@ -222,11 +222,9 @@ class OfEval:
         predictions_train = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_train])
         predictions_test = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_test])
 
-        # Calculate network weights
-        probs_train = 1 / (1 + np.exp(-predictions_train))
-        probs_test = 1 / (1 + np.exp(-predictions_test))
-        network_weights_train = probs_train / (1 - probs_train)
-        network_weights_test = probs_test / (1 - probs_test)
+        # Calculate network weights, can just take the exponential
+        network_weights_train = np.exp(predictions_train)
+        network_weights_test = np.exp(predictions_test)
 
         # Get source weights from the data modules, note this is before normalization
         source_weights_train = self.d_module_train.get_source_all_weights()
