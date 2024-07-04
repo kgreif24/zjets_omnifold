@@ -66,10 +66,11 @@ class LOfTransformer(L.LightningModule):
                 to the OfTransformer init function.
         """
 
-        # Debug flag and seed value
+        # Set instance vars
         self.debug = debug
         self.seed = seed
         self.log_things = log
+        self.step = step
 
         # Set plotting names based on step argument
         if step == 1:
@@ -118,8 +119,7 @@ class LOfTransformer(L.LightningModule):
         loss = loss.mean()
 
         # Calculate new weights
-        probs = 1 / (1 + torch.exp(-output))
-        network_weights = probs / (1 - probs)
+        network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
         # Update wasserstein metric
@@ -152,8 +152,7 @@ class LOfTransformer(L.LightningModule):
         output = self(inputs, mask)
 
         # Calculate new weights
-        probs = 1 / (1 + torch.exp(-output))
-        network_weights = probs / (1 - probs)
+        network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
         # Calculate and log loss
@@ -203,8 +202,7 @@ class LOfTransformer(L.LightningModule):
         output = self(inputs, mask)
 
         # Calculate new weights
-        probs = 1 / (1 + torch.exp(-output))
-        network_weights = probs / (1 - probs)
+        network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
         # Calculate and log AUC
@@ -246,13 +244,23 @@ class LOfTransformer(L.LightningModule):
 
     # Configure optimizer
     def configure_optimizers(self):
+
+        # Determine learning rates based on step
+        if self.step == 1:
+            min_lr = 1e-5
+            max_lr = 1e-4
+        else:
+            min_lr = 1e-4
+            max_lr = 1e-3
+
+        # Build and return optimizer and scheduler
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5)
         scheduler = CosineAnnealingWarmupRestarts(
             optimizer,
             first_cycle_steps=1e4,
             warmup_steps=1e3,
-            max_lr=1e-4,
-            min_lr=1e-5,
+            max_lr=max_lr,
+            min_lr=min_lr,
             gamma=0.8
         )
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'frequency': 1}}
@@ -291,7 +299,7 @@ class LOfData(L.LightningDataModule):
         split_seed=420,
         load_all=False,
         testing=False,
-        use_truth=False,
+        use_truth=False
     ):
         """ __init__ - This method initializes the LOfData class. It takes
         the path to the Monte Carlo and data files as arguments.
@@ -346,22 +354,22 @@ class LOfData(L.LightningDataModule):
 
         # Store all weights for use in prediction, then apply filter
         self.source_all_weights = source_weights
-        self.source_weights = np.expand_dims(self.source_all_weights[self.source_pass190 == 1], axis=1)
+        source_weights = np.expand_dims(self.source_all_weights[self.source_pass190 == 1], axis=1)
         self.target_all_weights = target_weights
-        self.target_weights = np.expand_dims(self.target_all_weights[target_pass190 == 1], axis=1)
+        target_weights = np.expand_dims(self.target_all_weights[target_pass190 == 1], axis=1)
 
         # Normalize weights so the class ratio is one but the sum of the weights is
         # the number of events in the whole dataset (so initial loss is log(2))
-        source_divisor = 2 * np.sum(self.source_weights) / (len(self.source_weights) + len(self.target_weights))
-        target_divisor = 2 * np.sum(self.target_weights) / (len(self.source_weights) + len(self.target_weights))
-        self.source_weights /= source_divisor
-        self.target_weights /= target_divisor
+        source_divisor = 2 * np.sum(source_weights) / (len(source_weights) + len(target_weights))
+        target_divisor = 2 * np.sum(target_weights) / (len(source_weights) + len(target_weights))
+        source_weights /= source_divisor
+        target_weights /= target_divisor
 
         # Truncate weights if max_events values are set
         if self.max_events_source is not None:
-            self.source_weights = self.source_weights[:self.max_events_source]
+            source_weights = source_weights[:self.max_events_source]
         if self.max_events_target is not None:
-            self.target_weights = self.target_weights[:self.max_events_target]
+            target_weights = target_weights[:self.max_events_target]
 
         # Labels
         source_labels = np.zeros((len(source_kinematics), 1), dtype=np.float32)
@@ -369,16 +377,19 @@ class LOfData(L.LightningDataModule):
 
         # Concatenate source and target data
         self.kinematics = ak.concatenate([source_kinematics, target_kinematics], axis=0)
-        self.indeces = ak.concatenate([source_indeces, target_indeces], axis=0)
-        weights = np.concatenate([self.source_weights, self.target_weights], axis=0)
-        self.labels = np.concatenate([source_labels, target_labels], axis=0)  # Make instance variable for getting labels in eval script
+        if not self.muon_only:  # Since we don't use one-hot encodings in debug mode
+            self.indeces = ak.concatenate([source_indeces, target_indeces], axis=0)
+        else:
+            self.indeces = None
+        weights = np.concatenate([source_weights, target_weights], axis=0)
+        self.labels = np.concatenate([source_labels, target_labels], axis=0)
         self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
 
         # Build pytorch datasets
         self.source_dataset = OfDataset(
             source_kinematics,
             source_labels,
-            self.source_weights,
+            source_weights,
             source_plotting,
             object_indeces=source_indeces,
             max_tracks=self.max_tracks
@@ -482,11 +493,6 @@ class LOfData(L.LightningDataModule):
             all_weights = np.ones_like(root_weights, dtype=np.float32)
             
         return all_weights
-
-
-    # Method for getting source weights
-    def get_source_weights(self):
-        return self.source_weights.flatten()
     
     # Method for getting the labels
     def get_labels(self):

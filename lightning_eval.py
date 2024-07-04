@@ -30,7 +30,7 @@ class OfEval:
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
-    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False):
+    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
@@ -42,6 +42,7 @@ class OfEval:
         step - The step number for this training
         verify - Defaults False, if set to true forget about testing and just run
             prediction.
+        store - Defaults None, if set, store weights here instead of in the default
 
         Returns:
         None
@@ -67,6 +68,12 @@ class OfEval:
         os.makedirs(self.comp_dir, exist_ok=True)
         self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
+
+        # Change the save location if the store argument is set
+        if store is not None:
+            self.save_dir = store
+        else:
+            self.save_dir = self.weight_dir
 
         # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
         # to use in testing sets (two copies of MC used for step two currently does not fit in memory)
@@ -222,38 +229,31 @@ class OfEval:
         predictions_train = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_train])
         predictions_test = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_test])
 
-        # Calculate network weights
-        probs_train = 1 / (1 + np.exp(-predictions_train))
-        probs_test = 1 / (1 + np.exp(-predictions_test))
-        self.network_weights_train = probs_train / (1 - probs_train)
-        self.network_weights_test = probs_test / (1 - probs_test)
+        # Calculate network weights, can just take the exponential
+        network_weights_train = np.exp(predictions_train)
+        network_weights_test = np.exp(predictions_test)
 
-        # Get source weights from the data modules
-        source_weights_train = self.d_module_train.get_source_weights()
-        source_weights_test = self.d_module_test.get_source_weights()
-
-        # Calculate updated weights
-        self.new_weights_train = source_weights_train * self.network_weights_train
-        self.new_weights_test = source_weights_test * self.network_weights_test
-
-        # Now we need to handle the events which do not pass the pass190 flags.
-        # Get the source weights for every event
-        self.all_updated_weights_train = self.d_module_train.get_source_all_weights()
-        self.all_updated_weights_test = self.d_module_test.get_source_all_weights()
+        # Get source weights from the data modules, note this is before normalization
+        source_weights_train = self.d_module_train.get_source_all_weights()
+        source_weights_test = self.d_module_test.get_source_all_weights()
 
         # Get the filters
         pass190_train = self.d_module_train.get_source_pass190()
         pass190_test = self.d_module_test.get_source_pass190()
 
-        # Update the all weights vectors with the new weights
-        self.all_updated_weights_train[pass190_train == 1] = self.new_weights_train
-        self.all_updated_weights_test[pass190_test == 1] = self.new_weights_test
+        # Calculate updated weights
+        source_weights_train[pass190_train == 1] *= network_weights_train
+        source_weights_test[pass190_test == 1] *= network_weights_test
+        self.all_updated_weights_train = source_weights_train
+        self.all_updated_weights_test = source_weights_test
 
         # Save new weights for future use
         np.savez(
-            f"{self.weight_dir}/iteration_{self.iteration}_step_{self.step}.npz",
-            network_train=self.network_weights_train,
-            network_test=self.network_weights_test,
+            f"{self.save_dir}/iteration_{self.iteration}_step_{self.step}.npz",
+            raw_train_output=predictions_train,
+            raw_test_output=predictions_test,
+            network_train=network_weights_train,
+            network_test=network_weights_test,
             train=self.all_updated_weights_train,
             test=self.all_updated_weights_test
         )
@@ -271,7 +271,7 @@ class OfEval:
         """
 
         # Load truth level MC and pseudodata from scratch
-        f_mc = uproot.open(self.config.mc_train_path)
+        f_mc = uproot.open(self.config.mc_test_path)  # Compare testing set MC to data
         tree_mc = f_mc["OmniTree"]
         f_pd = uproot.open(self.config.truth_data_path)
         tree_pd = f_pd["OmniTree"]
@@ -315,7 +315,7 @@ class OfEval:
         start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
 
         # Make end weights
-        mc_end_weights = self.all_updated_weights_train[filter_mc == 1]
+        mc_end_weights = self.all_updated_weights_test[filter_mc == 1]
         mc_end_weights = mc_end_weights[:self.n_compare_events]
         end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
 
@@ -364,6 +364,7 @@ if __name__ == '__main__':
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
     parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
+    parser.add_argument('--store', type=str, default=None, help='If set, store weights here instead of in the default location')
     args, _ = parser.parse_known_args()
 
     # Run the evaluation
@@ -373,6 +374,7 @@ if __name__ == '__main__':
         config_path=args.config_path, 
         iteration=args.iteration, 
         step=args.step,
-        verify=args.verify
+        verify=args.verify,
+        store=args.store
     )
     evaluator.run()
