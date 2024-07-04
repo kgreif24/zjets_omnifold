@@ -30,7 +30,7 @@ class OfEval:
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
-    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False):
+    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
@@ -42,6 +42,7 @@ class OfEval:
         step - The step number for this training
         verify - Defaults False, if set to true forget about testing and just run
             prediction.
+        store - Defaults None, if set, store weights here instead of in the default
 
         Returns:
         None
@@ -67,6 +68,12 @@ class OfEval:
         os.makedirs(self.comp_dir, exist_ok=True)
         self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
+
+        # Change the save location if the store argument is set
+        if store is not None:
+            self.save_dir = store
+        else:
+            self.save_dir = self.weight_dir
 
         # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
         # to use in testing sets (two copies of MC used for step two currently does not fit in memory)
@@ -242,7 +249,7 @@ class OfEval:
 
         # Save new weights for future use
         np.savez(
-            f"{self.weight_dir}/iteration_{self.iteration}_step_{self.step}.npz",
+            f"{self.save_dir}/iteration_{self.iteration}_step_{self.step}.npz",
             raw_train_output=predictions_train,
             raw_test_output=predictions_test,
             network_train=network_weights_train,
@@ -357,6 +364,7 @@ if __name__ == '__main__':
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
     parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
+    parser.add_argument('--store', type=str, default=None, help='If set, store weights here instead of in the default location')
     args, _ = parser.parse_known_args()
 
     # Run the evaluation
@@ -366,6 +374,7 @@ if __name__ == '__main__':
         config_path=args.config_path, 
         iteration=args.iteration, 
         step=args.step,
-        verify=args.verify
+        verify=args.verify,
+        store=args.store
     )
     evaluator.run()

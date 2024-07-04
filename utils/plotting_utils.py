@@ -179,7 +179,7 @@ track_hists = {
     'alltrack_pt': {
         'key': 'alltrack_pt',
         'xlabel': r'$p_{T, track}$',
-        'bins': np.linspace(0, 1e3, 150),
+        'bins': np.linspace(0, 5, 150),
         'w1_eval': False
     },
     'alltrack_eta': {
@@ -188,15 +188,22 @@ track_hists = {
         'bins': np.linspace(-3, 3, 150),
         'w1_eval': False
     },
-    'alltrack_phi': {
-        'key': 'alltrack_phi',
-        'xlabel': r'$\phi_{track}$',
-        'bins': np.linspace(-3.2, 3.2, 150),
+    'alltrack_cos_phi': {
+        'key': 'alltrack_cos_phi',
+        'xlabel': r'$\cos(\phi_{track})$',
+        'bins': np.linspace(-1, 1, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2],
         'w1_eval': False
-    }
+    },
+    'alltrack_sin_phi': {
+        'key': 'alltrack_sin_phi',
+        'xlabel': r'$\sin(\phi_{track})$',
+        'bins': np.linspace(-1, 1, 150),
+        'rlim': [0.9, 1.1],
+        'linear_scale': True,
+        'w1_eval': False
+    },
 }
 
 # Overwrite default settings function
@@ -363,7 +370,8 @@ def make_inclusive_track_plots(
     target_start_weights = start_weights[labels==1]
     # We don't care about end weights for target!
 
-    # Extend to the track data shape 
+    # Extend to the track data shape
+    print(type(track_data))
     source_start_weights = np.repeat(np.expand_dims(source_start_weights, axis=1), track_data.shape[2], axis=1)
     source_start_weights = np.ravel(source_start_weights)
     target_start_weights = np.repeat(np.expand_dims(target_start_weights, axis=1), track_data.shape[2], axis=1)

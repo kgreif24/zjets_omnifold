@@ -72,8 +72,12 @@ plotting2 = du.get_plotting(tree2, vars=plotting_variables, filter=filter2, get_
 plotting = np.concatenate([plotting1, plotting2], axis=0)
 
 # Get the track kinematics
-kinematics1 = du.get_kinematics(tree1, filter=filter1, get_mask=False, one_hot=False, get_truth=args.truth1, max_tracks=max_tracks, max_events=max_events)
-kinematics2 = du.get_kinematics(tree2, filter=filter2, get_mask=False, one_hot=False, get_truth=args.truth2, max_tracks=max_tracks, max_events=max_events)
+kinematics1, _ = du.get_kinematics(tree1, filter=filter1, get_truth=args.truth1, max_events=max_events)
+kinematics2, _ = du.get_kinematics(tree2, filter=filter2, get_truth=args.truth2, max_events=max_events)
+
+# Zero pad and concatenate kinematics
+kinematics1 = du.pad_kinematics(kinematics1, max_tracks)
+kinematics2 = du.pad_kinematics(kinematics2, max_tracks)
 kinematics = np.concatenate([kinematics1, kinematics2], axis=0)
 
 # Drop the muons
@@ -100,5 +104,5 @@ if args.truth2:
 names = (args.name1, args.name2)
 
 # Make the logged plots
-pu.make_logged_plots(plotting, labels, weights, definitions=new_settings, save_location=args.store, names=names)
-pu.make_inclusive_track_plots(kinematics, labels, weights, definitions=new_track_settings, save_location=args.store, names=names)
+pu.make_logged_plots(plotting, labels, weights, weights, definitions=new_settings, save_location=args.store, names=names)
+pu.make_inclusive_track_plots(kinematics, labels, weights, weights, definitions=new_track_settings, save_location=args.store, names=names)
