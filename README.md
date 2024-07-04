@@ -3,7 +3,7 @@
 
 ## Quick start
 
-Assuming you have all of the required software installed (see `environment.yml`), activate your python environment then do the following to run Omnifold:
+Assuming you have all of the required software installed (see below), activate your python environment then do the following to run Omnifold:
 
 ```
 # First make a default yaml config file
@@ -24,6 +24,16 @@ The `run_of.sh` script requires you to set a NERSC project code. We have access 
 * Ben's project: m3246
 
 All of our files are stored in Ben's project space (`$CFS/m3246`) but in general it's best to use the ATLAS code unless there is some limitation.
+
+## Environment setup on Perlmutter
+
+First set up a conda release on Perlmutter. The NERSC documentation has instructions on how to do this. Once you have a base environment, you can build an environment for running Omnifold with the command `conda env create --name envname --file=environment.yml` run from this directory.
+
+This will install all of the software you need save one github repository that we use for learning rate scheduling during tagger training. If you want to run a training, you'll also need to run this command after activating your environment:
+
+```
+pip install 'git+https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup'
+```
 
 ## I just want to plot things
 
