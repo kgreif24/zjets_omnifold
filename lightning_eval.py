@@ -292,9 +292,9 @@ class OfEval:
         kinematics_mc = du.pad_kinematics(kinematics_mc, max_tracks=self.max_tracks)
         kinematics_pd = du.pad_kinematics(kinematics_pd, max_tracks=self.max_tracks)
 
-        # Slice the track kinematics (log pT, eta, phi)
-        kinematics_mc = kinematics_mc[:,:3,2:]
-        kinematics_pd = kinematics_pd[:,:3,2:]
+        # Slice the track kinematics (log pT, eta, cos(phi), sin(phi))
+        kinematics_mc = kinematics_mc[:,:4,2:]
+        kinematics_pd = kinematics_pd[:,:4,2:]
 
         # Concatenate the truth level MC and truth level pseudodata
         plotting = np.concatenate([plotting_mc, plotting_pd], axis=0)

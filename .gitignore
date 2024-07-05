@@ -8,3 +8,4 @@ wandb
 checkpoints
 test-of-project
 eval_plot_storage
+outfiles

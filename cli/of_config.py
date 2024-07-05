@@ -60,7 +60,7 @@ class OfConfig:
             help='Path to the truth pseudodata'
 
         )
-        self.parser.add_argument('--split_seed', type=int, default=420, help='Seed for the train / validation split')
+        self.parser.add_argument('--split_seed', type=int, default=420, help='Seed for the train / validation split, set to -1 to produce random seed at train time')
         self.parser.add_argument('--max_tracks', type=int, default=150, help='Maximum number of tracks to use in the data')
         self.parser.add_argument('--max_train_step_one', type=int, default=None, 
                                  help='Maximum number of events to use in step one. Applied to both MC and data')
@@ -87,7 +87,7 @@ class OfConfig:
         self.parser.add_argument('--plot_val', action='store_true', help='Plot validation results')
 
         # Model
-        self.parser.add_argument('--input_dim', type=int, default=10, help='Input dimension for the model')
+        self.parser.add_argument('--input_dim', type=int, default=11, help='Input dimension for the model')
         self.parser.add_argument('--pair_input_dim', type=int, default=4, help='Pair input dimension for the model')
         self.parser.add_argument('--remove_self_pair', action='store_true', help='Remove self pair from the model')
         self.parser.add_argument('--run_trimmer', action='store_true', help='Use the sequence trimmer in training the model')
