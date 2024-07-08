@@ -30,7 +30,7 @@ class OfEval:
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
-    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None):
+    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None, index=None):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
@@ -43,6 +43,8 @@ class OfEval:
         verify - Defaults False, if set to true forget about testing and just run
             prediction.
         store - Defaults None, if set, store weights here instead of in the default
+        index - The index of the ensemble to run. Add this number to the end of the group ID
+            if it is not None
 
         Returns:
         None
@@ -54,6 +56,10 @@ class OfEval:
         self.iteration = iteration
         self.step = step
         self.verify = verify
+
+        # Modify the group name if an index is provided
+        if index is not None:
+            self.config.group_name += f"_{index}"
 
         # Hard code the number of truth pseudodata events to use in step 2 comparison
         self.n_compare_events = 1000000
@@ -365,13 +371,15 @@ if __name__ == '__main__':
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
     parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
     parser.add_argument('--store', type=str, default=None, help='If set, store weights here instead of in the default location')
+    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run')
     args, _ = parser.parse_known_args()
 
     # Run the evaluation
     evaluator = OfEval(
         check_path=args.check_path, 
         run_id=args.run_id, 
-        config_path=args.config_path, 
+        config_path=args.config_path,
+        index=args.index,
         iteration=args.iteration, 
         step=args.step,
         verify=args.verify,
