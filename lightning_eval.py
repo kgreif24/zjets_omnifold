@@ -186,6 +186,7 @@ class OfEval:
         # Load model checkpoint
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
+            config=self.config,
             val_plots=None,
             test_plots=self.test_dir,
             log=self.config.wandb,

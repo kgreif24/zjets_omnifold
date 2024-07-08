@@ -220,7 +220,3 @@ if __name__ == '__main__':
     # Print the run id and best model path
     rank_zero_info(f"\n###RUN ID###\n{run_id}")
     rank_zero_info(f"\n###BEST MODEL PATH###\n{best_path}")
-
-    # Sleep for a bit to ensure the tail end of the output is captured
-    print("...")
-    time.sleep(20)
