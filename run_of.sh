@@ -7,11 +7,18 @@
 #SBATCH -C gpu
 #SBATCH -G 4
 #SBATCH -q regular
-#SBATCH -J test_add_ons_3
+#SBATCH -J ensemble_1
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
 #SBATCH -t 1-00:00:00
+
+# Make job array
+#SBATCH --array=1-10
+
+# Redirect stdout and stderr to output directory separated by job number
+#SBATCH -o ./outfiles/%x-%A-%a.out
+#SBATCH -e ./outfiles/%x-%A-%a.err
 
 # Set up environment
 module load conda
@@ -28,4 +35,4 @@ export OMP_PROC_BIND=spread
 
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it sequentially
-python run_omnifold.py --config_path ./cli/test_add_ons.yml
+python run_omnifold.py --config_path ./cli/first_ensemble.yml --ensemble_index $SLURM_ARRAY_TASK_ID
