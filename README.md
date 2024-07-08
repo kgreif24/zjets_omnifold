@@ -80,6 +80,22 @@ An overview of the important options in the config files is as follows (last upd
 * plot_val: If set to true, make reweighting plots using the validation set
 * Network hyperparameters: Everything below this is a hyperparameter to be used for each Omnifold Transformer. I (Kevin) will try to keep these defaults updated as I learn more about what parameters work well.
 
+## Ensembling
+
+We will need to perform a lot of ensembling to get good results from Omnifold. There are two types of ensembling one can perform:
+
+### Sequential Ensembling
+
+In sequential ensembling, N networks are trained to perform each step of Omnifold. The weights used for that step are then some aggregation of the weights produced by all of the networks. Since each network needs to finish training before the next step can begin, this is called sequential ensembling.
+
+At the moment this is not supported in the code!
+
+### Parallel Ensembling
+
+In parallel ensembling, Omnifold is run M times independently. An emsemble is then formed over the weights predicted by each independent run's final step 2. Since each Omnifold run happens independently, there is no need to synchronize them at any point in the process.
+
+The script `run_of.sh` implements this type of ensembling when run via `sbatch`. In particular it creates a job array where each job in the array performs a single run of Omnifold. When logging with W&B, the ensemble is given a name and each run of Omnifold is stored separately in a group with the name `<group_name>_<array_index>`.
+
 ## Interactive training on perlmutter
 
 Often it's useful to test new code developments by checking out an interactive compute node on perlmutter. When doing this, you should always only use 1 GPU for training. The reason is that pytorch lightning handles the launching of parallel tasks differently depending on whether it detects some SLURM environment variables. These are not set properly with a simple `salloc` command to get a compute node, so you will find lightning launches 4 network trainings in parallel rather than using 4 GPUs to train 1 network. For details, see https://lightning.ai/docs/pytorch/stable/clouds/cluster_advanced.html#run-on-a-slurm-managed-cluster
