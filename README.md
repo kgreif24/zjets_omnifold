@@ -80,6 +80,10 @@ An overview of the important options in the config files is as follows (last upd
 * plot_val: If set to true, make reweighting plots using the validation set
 * Network hyperparameters: Everything below this is a hyperparameter to be used for each Omnifold Transformer. I (Kevin) will try to keep these defaults updated as I learn more about what parameters work well.
 
+## Interactive training on perlmutter
+
+Often it's useful to test new code developments by checking out an interactive compute node on perlmutter. When doing this, you should always only use 1 GPU for training. The reason is that pytorch lightning handles the launching of parallel tasks differently depending on whether it detects some SLURM environment variables. These are not set properly with a simple `salloc` command to get a compute node, so you will find lightning launches 4 network trainings in parallel rather than using 4 GPUs to train 1 network. For details, see https://lightning.ai/docs/pytorch/stable/clouds/cluster_advanced.html#run-on-a-slurm-managed-cluster
+
 ## Weights and biases logging
 
 Training many neural networks is complicated. Luckily there's some great software available that lets you visualize what is happening with each training run. For this repository we use Weights and Biases. You can create an academic account at https://wandb.ai/site, then you can either create your own team or join my team and spy on my models :).
