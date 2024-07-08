@@ -49,7 +49,7 @@ class OfTrain:
         self.step = step
 
         # Modify the group name if an index is provided
-        if index is not -1:
+        if index != -1:
             self.config.group_name += f"_{index}"
 
         # Get weights for use in training. Define (but do not make!) the weight directory
