@@ -8,7 +8,7 @@ Last updated 03/08/2024
 python3
 """
 
-import sys, os
+import sys, os, time
 import argparse
 
 import lightning as L
@@ -27,7 +27,7 @@ class OfTrain:
     below.
     """
 
-    def __init__(self, config_path, iteration, step):
+    def __init__(self, config_path, iteration, step, index=-1):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
 
@@ -35,6 +35,8 @@ class OfTrain:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
+        index - The index of the ensemble to run. Add this number to the end of the group ID
+             if it is not None
 
         Returns:
         None
@@ -44,6 +46,10 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
+
+        # Modify the group name if an index is provided
+        if index != -1:
+            self.config.group_name = f"{self.config.group_name}_{index}"
 
         # Get weights for use in training. Define (but do not make!) the weight directory
         weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
@@ -243,12 +249,17 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
+    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run')    
     args, unknown = parser.parse_known_args()
 
     # Run the training
-    trainer = OfTrain(args.config_path, args.iteration, args.step)
+    trainer = OfTrain(args.config_path, args.iteration, args.step, index=args.index)
     run_id, best_path = trainer.run()
 
     # Print the run id and best model path
     rank_zero_info(f"\n###RUN ID###\n{run_id}")
     rank_zero_info(f"\n###BEST MODEL PATH###\n{best_path}")
+
+    # Sleep for a bit to ensure the tail end of the output is captured
+    print("...")
+    time.sleep(20)

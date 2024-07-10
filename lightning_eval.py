@@ -30,7 +30,7 @@ class OfEval:
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
-    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None):
+    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None, index=-1):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
@@ -43,6 +43,9 @@ class OfEval:
         verify - Defaults False, if set to true forget about testing and just run
             prediction.
         store - Defaults None, if set, store weights here instead of in the default
+            location
+        index - Defaults -1, the index of the ensemble to run. Add this number to the
+            end of the group ID if it is not -1
 
         Returns:
         None
@@ -54,6 +57,10 @@ class OfEval:
         self.iteration = iteration
         self.step = step
         self.verify = verify
+
+        # Modify the group name of an index is provided
+        if index != -1:
+            self.config.group_name = f"{self.config.group_name}_{index}"
 
         # Hard code the number of truth pseudodata events to use in step 2 comparison
         self.n_compare_events = 1000000
@@ -365,6 +372,7 @@ if __name__ == '__main__':
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
     parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
     parser.add_argument('--store', type=str, default=None, help='If set, store weights here instead of in the default location')
+    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run') 
     args, _ = parser.parse_known_args()
 
     # Run the evaluation
@@ -375,6 +383,7 @@ if __name__ == '__main__':
         iteration=args.iteration, 
         step=args.step,
         verify=args.verify,
-        store=args.store
+        store=args.store,
+        index=args.index
     )
     evaluator.run()

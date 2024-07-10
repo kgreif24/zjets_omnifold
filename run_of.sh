@@ -13,6 +13,13 @@
 #SBATCH -A m3246
 #SBATCH -t 1-00:00:00
 
+# Make job array
+#SBATCH --array=1-10
+
+# Redirect stdout and stderr to output directory separated by job number
+#SBATCH -o ./outfiles/%x-%A-%a.out
+#SBATCH -e ./outfiles/%x-%A-%a.err
+
 # Set up environment
 module load conda
 conda activate zjets
