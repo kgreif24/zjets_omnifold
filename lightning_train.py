@@ -160,6 +160,14 @@ class OfTrain:
         else:
             val_dir = None
 
+        # Get min/max learning rates depending on step
+        if self.step == 1:
+             min_lr = self.config.s1_min_lr
+             max_lr = self.config.s1_max_lr
+        else:
+             min_lr = self.config.s2_min_lr
+             max_lr = self.config.s2_max_lr
+
         # Build lightning module
         block_params = {
             'dropout': self.config.block_dropout,
@@ -177,6 +185,16 @@ class OfTrain:
             val_plots=val_dir,
             log=self.config.wandb,
             debug=self.config.debug,
+            # Include the seed just so it is logged to W&B
+            seed=split_seed,
+            # Include the OF step for plots
+            step=self.step,
+            min_lr=min_lr,
+            max_lr=max_lr,
+            cycle_steps=self.config.cycle_steps,
+            warmup_steps=self.config.warmup_steps,
+            gamma=self.config.gamma,
+            # Everything below here are parameters for the network
             num_classes=1,
             trim=self.config.run_trimmer,
             remove_self_pair=self.config.remove_self_pair,
@@ -190,10 +208,6 @@ class OfTrain:
             num_cls_layers=self.config.num_cls_layers,
             block_params=block_params,
             num_layers=self.config.num_layers,
-            # Include the seed just so it is logged to W&B
-            seed=split_seed,
-            # Include the OF step for plots
-            step=self.step
         )
 
 

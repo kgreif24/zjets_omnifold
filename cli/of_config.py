@@ -71,13 +71,22 @@ class OfConfig:
 
         # Training
         self.parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training')
-        self.parser.add_argument('--test_bath_size', type=int, default=1024, help='Batch size for testing')
+        self.parser.add_argument('--test_batch_size', type=int, default=1024, help='Batch size for testing')
         self.parser.add_argument('--max_epochs', type=int, default=70, help='Maximum number of epochs to train for')
 
         self.parser.add_argument('--top_k_checkpoints', type=int, default=5, help='Number of top checkpoints to save')
         self.parser.add_argument('--early_stopping_patience', type=int, default=8, help='Number of epochs to wait before stopping training')
 
         self.parser.add_argument('--num_gpus', type=int, default=4, help='Number of GPUs to use for training')
+
+        # Learning rate schedule
+        self.parser.add_argument('--s1_min_lr', type=float, default=1e-5, help='Minimum learning rate for step one training')
+        self.parser.add_argument('--s1_max_lr', type=float, default=1e-4, help='Maximum learning rate for step one training')
+        self.parser.add_argument('--s2_min_lr', type=float, default=5e-4, help='Minimum learning rate for step two training')
+        self.parser.add_argument('--s2_max_lr', type=float, default=5e-3, help='Maximum learning rate for step two training')
+        self.parser.add_argument('--cycle_steps', type=int, default=30000, help='Number of steps in a cycle')
+        self.parser.add_argument('--warmup_steps', type=int, default=8000, help='Number of steps to warm up the learning rate')
+        self.parser.add_argument('--gamma', type=float, default=0.85, help='Gamma for the learning rate scheduler')
 
         # Logging
         self.parser.add_argument('--wandb', action='store_true', help='Use wandb for logging')

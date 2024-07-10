@@ -106,10 +106,10 @@ class Omnifolder():
         # Run training as a subprocess
         train_args = [
             "srun",
-            "--ntasks-per-node", "4",
+            "--ntasks-per-node", str(self.cfg.num_gpus),
             "-c", "32",
             "--cpu_bind=cores",
-            "-G", "4",
+            "-G", str(self.cfg.num_gpus),
             "--gpu-bind=none",
             "python", 
             "lightning_train.py", 

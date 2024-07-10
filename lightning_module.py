@@ -45,6 +45,11 @@ class LOfTransformer(L.LightningModule):
                  debug=False, 
                  seed=420,
                  step=1,
+                 min_lr=1e-5,
+                 max_lr=1e-4,
+                 cycle_steps=30000,
+                 warmpup_steps=8000,
+                 gamma=0.05,
                  **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
         There is one required argument which gives the input dimension for the 
@@ -62,6 +67,11 @@ class LOfTransformer(L.LightningModule):
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
             seed {int} -- The random seed to use for the train / val split. Only used for logging
             step {int} -- Whether this training is for OF step one or two, only effects plot labeling
+            min_lr {float} -- The minimum learning rate
+            max_lr {float} -- The maximum learning rate
+            cycle_steps {int} -- The number of steps in a cycle
+            warmpup_steps {int} -- The number of steps in the warmup
+            gamma {float} -- The gamma parameter for the learning rate scheduler
             **kwargs {dict} -- A dictionary of keyword arguments to be passed
                 to the OfTransformer init function.
         """
@@ -71,6 +81,11 @@ class LOfTransformer(L.LightningModule):
         self.seed = seed
         self.log_things = log
         self.step = step
+        self.min_lr = min_lr
+        self.max_lr = max_lr
+        self.cycle_steps = cycle_steps
+        self.warmpup_steps = warmpup_steps
+        self.gamma = gamma
 
         # Set plotting names based on step argument
         if step == 1:
@@ -245,23 +260,15 @@ class LOfTransformer(L.LightningModule):
     # Configure optimizer
     def configure_optimizers(self):
 
-        # Determine learning rates based on step
-        if self.step == 1:
-            min_lr = 1e-5
-            max_lr = 1e-4
-        else:
-            min_lr = 1e-4
-            max_lr = 1e-3
-
         # Build and return optimizer and scheduler
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5)
         scheduler = CosineAnnealingWarmupRestarts(
             optimizer,
-            first_cycle_steps=1e4,
-            warmup_steps=1e3,
-            max_lr=max_lr,
-            min_lr=min_lr,
-            gamma=0.8
+            first_cycle_steps=self.cycle_steps,
+            warmup_steps=self.warmup_steps,
+            max_lr=self.max_lr,
+            min_lr=self.min_lr,
+            gamma=self.gamma
         )
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'frequency': 1}}
     
