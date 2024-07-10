@@ -48,7 +48,7 @@ class LOfTransformer(L.LightningModule):
                  min_lr=1e-5,
                  max_lr=1e-4,
                  cycle_steps=30000,
-                 warmpup_steps=8000,
+                 warmup_steps=8000,
                  gamma=0.05,
                  **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
@@ -70,7 +70,7 @@ class LOfTransformer(L.LightningModule):
             min_lr {float} -- The minimum learning rate
             max_lr {float} -- The maximum learning rate
             cycle_steps {int} -- The number of steps in a cycle
-            warmpup_steps {int} -- The number of steps in the warmup
+            warmup_steps {int} -- The number of steps in the warmup
             gamma {float} -- The gamma parameter for the learning rate scheduler
             **kwargs {dict} -- A dictionary of keyword arguments to be passed
                 to the OfTransformer init function.
@@ -84,7 +84,7 @@ class LOfTransformer(L.LightningModule):
         self.min_lr = min_lr
         self.max_lr = max_lr
         self.cycle_steps = cycle_steps
-        self.warmpup_steps = warmpup_steps
+        self.warmup_steps = warmup_steps
         self.gamma = gamma
 
         # Set plotting names based on step argument
