@@ -111,7 +111,7 @@ class Omnifolder():
         # Run training as a subprocess
         train_args = [
             "srun",
-            "--ntasks-per-node", f"{self.cfg.num_gpus}",
+            "--ntasks-per-node", #f"{self.cfg.num_gpus}",
             "-c", "32",
             "--cpu_bind=cores",
             "-G", f"{self.cfg.num_gpus}",
