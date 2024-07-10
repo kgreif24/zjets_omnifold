@@ -27,15 +27,11 @@ class Omnifolder():
     classifiers. This is handled in processes spawned by this class.
     """
 
-    def __init__(self, config_path, continue_iteration=0, continue_step_two=False, index=None):
+    def __init__(self, config_path, continue_iteration=0, continue_step_two=False):
         """ __init__ - This function initializes the omnifolder object.
 
         Arguments:
         config_path - Path to the config file for the omnifold algorithm
-        continue_iteration - The iteration to continue from
-        continue_step_two - If true, continue from step two
-        index - The index of the ensemble to run. Add this number to the end of the group ID
-            if it is not None
 
         Returns:
         None
@@ -63,7 +59,6 @@ class Omnifolder():
         self.current_iteration = continue_iteration
         self.continue_step_two = continue_step_two
         self.end_iteration = self.current_iteration + self.cfg.num_iterations
-        self.index = index
 
         # Login to wandb
         if self.cfg.wandb:
@@ -111,10 +106,10 @@ class Omnifolder():
         # Run training as a subprocess
         train_args = [
             "srun",
-            "--ntasks-per-node", #f"{self.cfg.num_gpus}",
+            "--ntasks-per-node", "4",
             "-c", "32",
             "--cpu_bind=cores",
-            "-G", f"{self.cfg.num_gpus}",
+            "-G", "4",
             "--gpu-bind=none",
             "python", 
             "lightning_train.py", 
@@ -123,9 +118,7 @@ class Omnifolder():
             "--iteration", 
             str(self.current_iteration), 
             "--step", 
-            str(step),
-            "--index",
-            str(self.index)
+            str(step)
         ]
         train_code, output = capture_subprocess_output(train_args)
         if train_code != 0:
@@ -168,9 +161,7 @@ class Omnifolder():
             "--iteration", 
             str(self.current_iteration), 
             "--step", 
-            str(step),
-            "--index",
-            str(self.index)
+            str(step)
         ]
         test_code, _ = capture_subprocess_output(eval_args)
         if test_code != 0:

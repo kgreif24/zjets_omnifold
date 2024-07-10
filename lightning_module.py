@@ -37,14 +37,15 @@ class LOfTransformer(L.LightningModule):
     """
 
     # Init function 
-    def __init__(self,
-                 config,
+    def __init__(self, 
+                 input_dim=3,          
                  val_plots=None, 
                  test_plots=None,
                  log=False,
                  debug=False, 
                  seed=420,
-                 step=1):
+                 step=1,
+                 **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
         There is one required argument which gives the input dimension for the 
         transformer. This is the # of features per object (usually 3). 
@@ -52,7 +53,7 @@ class LOfTransformer(L.LightningModule):
         and saved as hyperparameters of the module.
 
         Arguments:
-            config {dict} -- The configuration dictionary for the Omnifold training run
+            input_dim {int} -- The input dimension of the model.
             val_plots {str} -- The path to the directory where validation plots will be stored for logging,
                 None by default, in which case validation plots will not be drawn
             test_plots {str} -- The path to the directory where testing plots will be stored for logging,
@@ -61,10 +62,11 @@ class LOfTransformer(L.LightningModule):
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
             seed {int} -- The random seed to use for the train / val split. Only used for logging
             step {int} -- Whether this training is for OF step one or two, only effects plot labeling
+            **kwargs {dict} -- A dictionary of keyword arguments to be passed
+                to the OfTransformer init function.
         """
 
         # Set instance vars
-        self.config = config
         self.debug = debug
         self.seed = seed
         self.log_things = log
@@ -82,28 +84,7 @@ class LOfTransformer(L.LightningModule):
         if debug:
             self.model = DumbNeuralNetwork()
         else:
-            self.model = OfTransformer(
-                self.config.input_dim,
-                trim=self.config.run_trimmer,
-                remove_self_pair=self.config.remove_self_pair,
-                embed_dims=self.config.embed_dims,
-                pair_input_dim=self.config.pair_input_dim,
-                pair_embed_dims=self.config.pair_embed_dims,
-                fc_nodes=self.config.fc_nodes,
-                fc_dropout=self.config.fc_dropout,
-                cls_block_params={
-                    'dropout': self.config.cls_block_dropout,
-                    'attn_dropout': self.config.cls_block_attn_dropout,
-                    'activation_dropout': self.config.cls_block_activation_dropout
-                },
-                num_cls_layers=self.config.num_cls_layers,
-                block_params={
-                    'dropout': self.config.block_dropout,
-                    'attn_dropout': self.config.block_attn_dropout,
-                    'activation_dropout': self.config.block_activation_dropout
-                },
-                num_layers=self.config.num_layers
-            )
+            self.model = OfTransformer(input_dim, **kwargs)
 
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
@@ -114,6 +95,9 @@ class LOfTransformer(L.LightningModule):
             self.draw_test = True if test_plots != None else False
             self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=self.draw_val, save_location=val_plots)
             self.wasserstein_test = WassersteinOne(pu.default_settings, draw_plots=self.draw_test, save_location=test_plots)
+
+        # Log hyperparameters
+        self.save_hyperparameters(ignore=['val_plots', 'test_plots', 'debug'])
 
 
     # Forward pass
@@ -263,21 +247,21 @@ class LOfTransformer(L.LightningModule):
 
         # Determine learning rates based on step
         if self.step == 1:
-            min_lr = self.config.s1_min_lr
-            max_lr = self.config.s1_max_lr
+            min_lr = 1e-5
+            max_lr = 1e-4
         else:
-            min_lr = self.config.s2_min_lr
-            max_lr = self.config.s2_max_lr
+            min_lr = 1e-4
+            max_lr = 1e-3
 
         # Build and return optimizer and scheduler
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(max_lr))
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5)
         scheduler = CosineAnnealingWarmupRestarts(
             optimizer,
-            first_cycle_steps=int(self.config.cycle_steps),
-            warmup_steps=int(self.config.warmup_steps),
-            max_lr=float(max_lr),
-            min_lr=float(min_lr),
-            gamma=float(self.config.gamma)
+            first_cycle_steps=1e4,
+            warmup_steps=1e3,
+            max_lr=max_lr,
+            min_lr=min_lr,
+            gamma=0.8
         )
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'frequency': 1}}
     
