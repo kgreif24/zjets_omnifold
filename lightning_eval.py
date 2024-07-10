@@ -58,7 +58,7 @@ class OfEval:
         self.verify = verify
 
         # Modify the group name if an index is provided
-        if index != -1:
+        if index is not -1:
             self.config.group_name += f"_{index}"
 
         # Hard code the number of truth pseudodata events to use in step 2 comparison
