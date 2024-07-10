@@ -35,4 +35,4 @@ export OMP_PROC_BIND=spread
 
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it sequentially
-python run_omnifold.py --config_path ./cli/test_add_ons.yml
+python run_omnifold.py --config_path ./cli/test_add_ons.yml --ensemble_index $SLURM_ARRAY_TASK_ID
