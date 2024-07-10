@@ -93,6 +93,9 @@ class LOfTransformer(L.LightningModule):
         elif step == 2:
             self.names = ('TruthMC', 'PulledWeightsMC')
 
+        # Set 32 bit precision for all operations
+        torch.set_float32_matmul_precision('medium')
+
         # Initialize model and loss
         super().__init__()
         self.criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
