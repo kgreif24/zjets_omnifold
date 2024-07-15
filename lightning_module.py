@@ -306,7 +306,7 @@ class LOfData(L.LightningDataModule):
         muon_only=False,
         batch_size=256,
         dataloader_workers=0,
-        split_seed=420,
+        split_seed=-1,
         load_all=False,
         testing=False,
         use_truth=False
@@ -330,7 +330,7 @@ class LOfData(L.LightningDataModule):
                 to 256.
             dataloader_workers {int} -- The number of workers for the data loaders.
             split_seed {int} - The random seed to use in making train / val split,
-                ensure this is common between all processes
+                if set to -1 then a random integer is used.
             load_all {bool} - Set to true if data loader should load all data, if false it produces train / val split
             testing {bool} - Set to true for data module to load testing weights (not training)
             use_truth {bool} - Set to true if we want to use truth level information
@@ -533,6 +533,10 @@ class LOfData(L.LightningDataModule):
 
         No arguments or returns
         """
+
+        # Get the split seed
+        if self.split_seed == -1:
+            self.split_seed = np.random.randint(0, 1000)
 
         # Make train and validation split if necessary
         if not self.load_all:

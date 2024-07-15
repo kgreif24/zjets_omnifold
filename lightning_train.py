@@ -91,12 +91,6 @@ class OfTrain:
             max_events_source = self.config.max_train_step_two
             max_events_target = self.config.max_train_step_two
 
-        # If split seed is -1, we generate a new seed for this run
-        if self.config.split_seed == -1:
-            split_seed = np.random.randint(0, 1000000)
-        else:
-            split_seed = self.config.split_seed
-
         # Build the data module
         self.d_module = LOfData(
             source_file=source_file,
@@ -108,7 +102,7 @@ class OfTrain:
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
-            split_seed=split_seed,
+            split_seed=self.config.split_seed,
             dataloader_workers=10,
             load_all=False,
             testing=False,
@@ -192,7 +186,7 @@ class OfTrain:
             log=self.config.wandb,
             debug=self.config.debug,
             # Include the seed just so it is logged to W&B
-            seed=split_seed,
+            seed=self.config.split_seed,
             # Include the OF step for plots
             step=self.step,
             min_lr=min_lr,
