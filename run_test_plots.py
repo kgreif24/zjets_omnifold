@@ -24,6 +24,7 @@ parser.add_argument("--step", type=int, choices=[1,2], help="The step of the rew
 parser.add_argument("--start_weights", type=str, default=None, help="The path to the start weight file, if left at none use source")
 parser.add_argument("--end_weights", type=str, help="The path to the end weight file")
 parser.add_argument("--store", type=str, help="The path to store the plots")
+parser.add_argument("--train", action="store_true", help="If true, plot using training weights")
 args = parser.parse_args()
 
 # Set max tracks
@@ -51,12 +52,12 @@ if args.start_weights is None:
     start_weights = start_weights[:max_events]
 else:
     start_weight_file = np.load(args.start_weights)
-    start_weights = start_weight_file["test"]
+    start_weights = start_weight_file["train" if args.train else "test"]
     start_weights = start_weights[filter1 == 1]
     start_weights = start_weights[:max_events]
 
 end_weight_file = np.load(args.end_weights)
-end_weights = end_weight_file["test"]
+end_weights = end_weight_file["train" if args.train else "test"]
 end_weights = end_weights[filter1 == 1]
 end_weights = end_weights[:max_events]
 

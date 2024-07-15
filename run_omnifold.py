@@ -25,9 +25,8 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
     parser.add_argument('--continue_iteration', type=int, default=0, help='The restart iteration number for this run')
     parser.add_argument('--continue_step_two', action='store_true', help='If true, will continue from step two and then proceed as usual')
-    parser.add_argument('--ensemble_index', nargs='?', const=-1, type=int, help='The index of the ensemble to run')
+    parser.add_argument('--ensemble_index', default=-1, type=int, help='The index of the ensemble to run')
     args = parser.parse_args()
-    print(args.config_path)
 
     # Run Omnifold!
     of = Omnifolder(args.config_path, continue_iteration=args.continue_iteration, continue_step_two=args.continue_step_two, index=args.ensemble_index)
