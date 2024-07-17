@@ -27,7 +27,7 @@ class OfTrain:
     below.
     """
 
-    def __init__(self, config_path, iteration, step, index=-1):
+    def __init__(self, config_path, iteration, step, seed=222, index=-1):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
 
@@ -35,6 +35,7 @@ class OfTrain:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
+        seed - The seed to use for the train / val split in this training
         index - The index of the ensemble to run. Add this number to the end of the group ID
              if it is not None
 
@@ -46,6 +47,7 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
+        self.split_seed = seed
 
         # Modify the group name if an index is provided
         if index != -1:
@@ -102,7 +104,7 @@ class OfTrain:
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
-            split_seed=self.config.split_seed,
+            split_seed=self.split_seed,
             dataloader_workers=10,
             load_all=False,
             testing=False,
@@ -243,11 +245,12 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
-    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run')    
+    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run')
+    parser.add_argument('--split_seed', type=int, default=222, help='The seed to use for the data split')
     args, unknown = parser.parse_known_args()
 
     # Run the training
-    trainer = OfTrain(args.config_path, args.iteration, args.step, index=args.index)
+    trainer = OfTrain(args.config_path, args.iteration, args.step, seed=args.split_seed, index=args.index)
     run_id, best_path = trainer.run()
 
     # Print the run id and best model path

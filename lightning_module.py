@@ -534,10 +534,6 @@ class LOfData(L.LightningDataModule):
         No arguments or returns
         """
 
-        # Get the split seed
-        if self.split_seed == -1:
-            self.split_seed = np.random.randint(0, 1000)
-
         # Make train and validation split if necessary
         if not self.load_all:
             generator = torch.Generator().manual_seed(self.split_seed)

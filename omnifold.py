@@ -108,6 +108,11 @@ class Omnifolder():
 
         print(f"\n########## Step {step} Training ##########\n")
 
+        # Determine seed for train / val split
+        seed = self.cfg.split_seed
+        if seed == -1:
+            seed = np.random.randint(0, 10000)
+
         # Run training as a subprocess
         train_args = [
             "srun",
@@ -124,6 +129,8 @@ class Omnifolder():
             str(self.current_iteration), 
             "--step", 
             str(step),
+            "--split_seed",
+            str(seed),
             "--index",
             str(self.index)
         ]
