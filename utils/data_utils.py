@@ -76,34 +76,6 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     return np.stack(one_hots, axis=1)
 
 
-def to_trig_rep(kinematics):
-    """ to_trig_rep - This function will preprocess the phi feature within
-    the kinematics array of tracks and muons. It will replace phi with
-    cos(phi) and sin(phi) to naturally handle the periodicity of phi.
-    
-    Arguments:
-    kinematics - awkward array of muon and track kinematics, with form
-        (events, features, VAR objects). Features should have order log(pT), eta, phi
-
-    Returns:
-    kinematics - awkward array of muon and track kinematics with preprocessing.
-        Features should now have order log(pT), eta, cos(phi), sin(phi)
-    """
-
-    # Get logpT, eta, phi awkward arrays, make sure you keep sliced dim
-    logpT = kinematics[:,[0],:]
-    eta = kinematics[:,[1],:]
-    phi = kinematics[:,[2],:]
-
-    # Calculate cos(phi) and sin(phi)
-    cos_phi = np.cos(phi)
-    sin_phi = np.sin(phi)
-
-    # Stack new features and return
-    new_kinematics = ak.concatenate([logpT, eta, cos_phi, sin_phi], axis=1)
-    return new_kinematics
-
-
 def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_events=None):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenated as a single awkward.
@@ -194,9 +166,6 @@ def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_even
         kinematics = ak.concatenate([kinematics, track_kinematics], axis=2)
         muon_indeces = -1 * ak.from_numpy(np.ones((len(indeces), 1, 2), dtype=np.int8))
         indeces = ak.concatenate([muon_indeces, indeces], axis=2)
-
-    # Add additional kinematic features
-    kinematics = to_trig_rep(kinematics)
 
     # Return kinematics and track indeces
     return kinematics, indeces

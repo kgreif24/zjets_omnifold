@@ -188,22 +188,14 @@ track_hists = {
         'bins': np.linspace(-3, 3, 150),
         'w1_eval': False
     },
-    'alltrack_cos_phi': {
-        'key': 'alltrack_cos_phi',
-        'xlabel': r'$\cos(\phi_{track})$',
-        'bins': np.linspace(-1, 1, 150),
+    'alltrack_phi': {
+        'key': 'alltrack_phi',
+        'xlabel': r'$\phi_{track}$',
+        'bins': np.linspace(-np.pi, np.pi, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
         'w1_eval': False
-    },
-    'alltrack_sin_phi': {
-        'key': 'alltrack_sin_phi',
-        'xlabel': r'$\sin(\phi_{track})$',
-        'bins': np.linspace(-1, 1, 150),
-        'rlim': [0.9, 1.1],
-        'linear_scale': True,
-        'w1_eval': False
-    },
+    }
 }
 
 # Overwrite default settings function
