@@ -165,10 +165,10 @@ class OfTrain:
         # Get min/max learning rates depending on step
         if self.step == 1:
              min_lr = self.config.s1_min_lr
-             max_lr = self.config.s1_max_lr
+             max_lr = self.config.s1_max_lr * (self.config.s1_max_decay**self.iteration)
         else:
              min_lr = self.config.s2_min_lr
-             max_lr = self.config.s2_max_lr
+             max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
 
         # Build lightning module
         block_params = {
