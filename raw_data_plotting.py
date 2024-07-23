@@ -104,5 +104,5 @@ if args.truth2:
 names = (args.name1, args.name2)
 
 # Make the logged plots
-pu.make_logged_plots(plotting, labels, weights, weights, definitions=new_settings, save_location=args.store, names=names)
+# pu.make_logged_plots(plotting, labels, weights, weights, definitions=new_settings, save_location=args.store, names=names)
 pu.make_inclusive_track_plots(kinematics, labels, weights, weights, definitions=new_track_settings, save_location=args.store, names=names)
