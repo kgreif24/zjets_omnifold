@@ -254,6 +254,16 @@ class OfEval:
         self.all_updated_weights_train = source_weights_train
         self.all_updated_weights_test = source_weights_test
 
+        # Get all pass190s
+        source_pass190_train = self.d_module_train.get_source_reco_pass190()
+        source_pass190_test = self.d_module_test.get_source_reco_pass190()
+        source_truth_pass190_train = self.d_module_train.get_source_truth_pass190()
+        source_truth_pass190_test = self.d_module_test.get_source_truth_pass190()
+        target_pass190_train = self.d_module_train.get_target_reco_pass190()
+        target_pass190_test = self.d_module_test.get_target_reco_pass190()
+        target_truth_pass190_train = self.d_module_train.get_target_truth_pass190()
+        target_truth_pass190_test = self.d_module_test.get_target_truth_pass190()
+
         # Save new weights for future use
         np.savez(
             f"{self.save_dir}/iteration_{self.iteration}_step_{self.step}.npz",
@@ -262,7 +272,15 @@ class OfEval:
             network_train=network_weights_train,
             network_test=network_weights_test,
             train=self.all_updated_weights_train,
-            test=self.all_updated_weights_test
+            test=self.all_updated_weights_test,
+            source_pass190_train=source_pass190_train,
+            source_pass190_test=source_pass190_test,
+            source_truth_pass190_train=source_truth_pass190_train,
+            source_truth_pass190_test=source_truth_pass190_test,
+            target_pass190_train=target_pass190_train,
+            target_pass190_test=target_pass190_test,
+            target_truth_pass190_train=target_truth_pass190_train,
+            target_truth_pass190_test=target_truth_pass190_test
         )
 
         # Evaluate difference between reweighted truth MC and truth data if this is step 2

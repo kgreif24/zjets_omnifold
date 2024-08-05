@@ -127,7 +127,7 @@ def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_even
 
     # Apply filter then truncate if necessary
     if filter is not None:
-        kinematics = kinematics[filter == True,...]
+        kinematics = kinematics[filter == 1,...]
     if max_events is not None:
         kinematics = kinematics[:int(max_events),...]
 
@@ -156,8 +156,8 @@ def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_even
 
         # Apply filter then truncate if necessary
         if filter is not None:
-            track_kinematics = track_kinematics[filter == True,...]
-            indeces = indeces[filter == True,...]
+            track_kinematics = track_kinematics[filter == 1,...]
+            indeces = indeces[filter == 1,...]
         if max_events is not None:
             track_kinematics = track_kinematics[:max_events,...]
             indeces = indeces[:max_events,...]

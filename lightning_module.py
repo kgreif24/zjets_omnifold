@@ -362,11 +362,19 @@ class LOfData(L.LightningDataModule):
             self.target_file, self.target_weight_path, max_events=self.max_events_target
         )
 
+        # Use the appropriate pass190 flags
+        if self.use_truth:
+            self.source_use190 = self.source_truth_pass190
+            self.target_use190 = self.target_truth_pass190
+        else:
+            self.source_use190 = self.source_pass190
+            self.target_use190 = self.target_pass190
+
         # Store all weights for use in prediction, then apply filter
         self.source_all_weights = source_weights
-        source_weights = np.expand_dims(self.source_all_weights[self.source_pass190 == 1], axis=1)
+        source_weights = np.expand_dims(self.source_all_weights[self.source_use190 == 1], axis=1)
         self.target_all_weights = target_weights
-        target_weights = np.expand_dims(self.target_all_weights[target_pass190 == 1], axis=1)
+        target_weights = np.expand_dims(self.target_all_weights[self.target_use190 == 1], axis=1)
 
         # Normalize weights so the class ratio is one but the sum of the weights is
         # the number of events in the whole dataset (so initial loss is log(2))
@@ -443,13 +451,18 @@ class LOfData(L.LightningDataModule):
             prekey = "truth_"
 
         # Get pass 190 flags
-        pass190 = ak.to_numpy(tree[prekey+'pass190'].array())
-        rank_zero_info("We have a fraction {} of good events in this file".format(np.sum(pass190) / len(pass190)))
+        pass190 = ak.to_numpy(tree['pass190'].array())
+        truth_pass190 = ak.to_numpy(tree['truth_pass190'].array())
+        if self.use_truth:
+            use190 = truth_pass190
+        else:
+            use190 = pass190
+        rank_zero_info("We have a fraction {} of good events in this file".format(np.sum(use190) / len(use190)))
 
         # Get kinematics
         kinematics, indeces = get_kinematics(
             tree, 
-            filter=pass190,
+            filter=use190,
             muon_only=self.muon_only,
             get_truth=self.use_truth,
             **kwargs
@@ -460,9 +473,9 @@ class LOfData(L.LightningDataModule):
 
         # Get plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
-        plotting = get_plotting(tree, vars=plotting_variables, filter=pass190, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
+        plotting = get_plotting(tree, vars=plotting_variables, filter=use190, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
 
-        return kinematics, indeces, weights, plotting, pass190
+        return kinematics, indeces, weights, plotting, pass190, truth_pass190
 
 
     def load_weights(self, tree, path=None, test=False):
@@ -520,10 +533,19 @@ class LOfData(L.LightningDataModule):
     def get_source_all_weights(self):
         return self.source_all_weights
 
-    # Method for getting pass 190 flags
+    # Methods for getting pass 190 flags
     def get_source_pass190(self):
+        return self.source_use190
+    def get_target_pass190(self):
+        return self.target_use190
+    def get_source_reco_pass190(self):
         return self.source_pass190
-
+    def get_target_reco_pass190(self):
+        return self.target_pass190
+    def get_source_truth_pass190(self):
+        return self.source_truth_pass190
+    def get_target_truth_pass190(self):
+        return self.target_truth_pass190
 
     # Setup function
     def setup(self, stage: str):
