@@ -355,10 +355,10 @@ class LOfData(L.LightningDataModule):
         self.use_truth = use_truth
 
         # Get the data from files
-        source_kinematics, source_indeces, source_weights, source_plotting, self.source_pass190 = self.load_data_from_file(
+        source_kinematics, source_indeces, source_weights, source_plotting, self.source_pass190, self.source_truth_pass190 = self.load_data_from_file(
             self.source_file, self.source_weight_path, max_events=self.max_events_source
         )
-        target_kinematics, target_indeces, target_weights, target_plotting, target_pass190 = self.load_data_from_file(
+        target_kinematics, target_indeces, target_weights, target_plotting, self.target_pass190, self.target_truth_pass190 = self.load_data_from_file(
             self.target_file, self.target_weight_path, max_events=self.max_events_target
         )
 
