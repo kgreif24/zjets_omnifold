@@ -16,7 +16,7 @@ import awkward as ak
 
 import utils.plotting_utils as pu
 import utils.data_utils as du
-
+from wasserstein_metric import WassersteinOne
 
 parser = argparse.ArgumentParser(description="Generate comp plots for reweighted MC and truth pseudodata comparison.")
 parser.add_argument("--mc", type=str, help="The path to MC file")
@@ -24,6 +24,7 @@ parser.add_argument("--weights", type=str, help="The path to the weights file")
 parser.add_argument("--pd", type=str, help="The path to PD file")
 parser.add_argument("--store", type=str, help="The path to store the plots")
 parser.add_argument("--use_test", action="store_true", help="If true, will use the weights for the testing MC rather than training")
+parser.add_argument("--passBoth", action="store_true", help="If true, will require that the MC events pass the reco filter in addition to truth")
 args = parser.parse_args()
 
 # Set max events and max tracks to use for plotting
@@ -40,6 +41,11 @@ pd_tree = pd_file["OmniTree"]
 mc_filter = ak.to_numpy(mc_tree["truth_pass190"].array())
 pd_filter = ak.to_numpy(pd_tree["truth_pass190"].array())
 
+# If we only want to use events that pass both reco and truth filters, take and here
+if args.passBoth:
+    mc_filter = np.logical_and(mc_filter, ak.to_numpy(mc_tree["pass190"].array()))
+    pd_filter = np.logical_and(pd_filter, ak.to_numpy(pd_tree["pass190"].array()))
+
 # Get original MC weights
 mc_start_weights = ak.to_numpy(mc_tree["weight"].array())
 mc_start_weights = mc_start_weights[mc_filter == 1]
@@ -48,9 +54,10 @@ if len(mc_start_weights) > max_events:
 
 # Get new MC weights
 mc_wgt_file = np.load(args.weights)
-mc_end_weights = mc_wgt_file["train"]
 if args.use_test:
     mc_end_weights = mc_wgt_file["test"]
+else:
+    mc_end_weights = mc_wgt_file["train"]
 mc_end_weights = mc_end_weights[mc_filter == 1]
 if len(mc_end_weights) > max_events:
     mc_end_weights = mc_end_weights[:max_events]
@@ -101,6 +108,9 @@ for key, val in new_track_settings.items():
 # Make names argument
 names = ("TruthMC", "TruthPD")
 
-# Make the logged plots
-pu.make_logged_plots(plotting, labels, start_weights, end_weights=end_weights, definitions=new_settings, save_location=args.store, names=names)
+# Make the logged plots, using wasserstein metric class for the pre-computed overservables
+wass = WassersteinOne(hist_info=new_settings, draw_plots=True, save_location=args.store)
+wass.update(plotting, start_weights, end_weights, labels)
+w1, plot_dict = wass.compute(from_torch=False, names=names)
+print(f"Computed Wasserstein One: {w1}")
 pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights=end_weights, definitions=new_track_settings, save_location=args.store, names=names)

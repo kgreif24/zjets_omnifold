@@ -21,6 +21,7 @@ parser.add_argument("--f2", type=str, help="The path to file 2")
 parser.add_argument("--name1", type=str, help="The name of file 1")
 parser.add_argument("--name2", type=str, help="The name of file 2")
 parser.add_argument("--step", type=int, choices=[1,2], help="The step of the reweighting")
+parser.add_argument("--passBoth", action="store_true", help="If true, will require that the MC events pass both reco and truth selection")
 parser.add_argument("--start_weights", type=str, default=None, help="The path to the start weight file, if left at none use source")
 parser.add_argument("--end_weights", type=str, help="The path to the end weight file")
 parser.add_argument("--store", type=str, help="The path to store the plots")
@@ -38,10 +39,13 @@ file2 = uproot.open(args.f2)
 tree2 = file2["OmniTree"]
 
 # Get filters
-if args.step == 1:
-    filter1 = ak.to_numpy(tree1["pass190"].array())
-    filter2 = ak.to_numpy(tree2["pass190"].array())
-else:
+if args.passBoth:
+    filter1 = np.logical_and(ak.to_numpy(tree1["truth_pass190"].array()), ak.to_numpy(tree1["pass190"].array()))
+    filter2 = np.logical_and(ak.to_numpy(tree2["truth_pass190"].array()), ak.to_numpy(tree2["pass190"].array()))
+elif args.step == 1:
+    filter1 = ak.to_numpy(tree1["truth_pass190"].array())
+    filter2 = ak.to_numpy(tree2["truth_pass190"].array())
+elif args.step == 2:
     filter1 = ak.to_numpy(tree1["truth_pass190"].array())
     filter2 = ak.to_numpy(tree2["truth_pass190"].array())
 
@@ -81,8 +85,8 @@ kinematics1, _ = du.get_kinematics(tree1, filter=filter1, get_truth=True if args
 kinematics2, _ = du.get_kinematics(tree2, filter=filter2, get_truth=True if args.step == 2 else False, max_events=max_events)
 
 # Make labels
-labels1 = np.zeros(len(kinematics1))
-labels2 = np.ones(len(kinematics2))
+labels1 = np.zeros(len(plotting1))
+labels2 = np.ones(len(plotting2))
 labels = np.concatenate([labels1, labels2], axis=0)
 
 # Zero pad and concatenate kinematics
@@ -110,9 +114,5 @@ if args.step == 2:
 names = (args.name1, args.name2)
 
 # Make the logged plots
-print(plotting.shape)
-print(labels.shape)
-print(start_weights.shape)
-print(end_weights.shape)
 pu.make_logged_plots(plotting, labels, start_weights, end_weights, definitions=new_settings, save_location=args.store, names=names)
 pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, definitions=new_track_settings, save_location=args.store, names=names)
