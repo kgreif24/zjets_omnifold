@@ -172,7 +172,7 @@ event_hists = {
         'key': 'Ntracks',
         'xlabel': '# of tracks',
         'bins': np.arange(0, 256, 1)
-    }
+    },
 }
 
 track_hists = {
@@ -195,7 +195,13 @@ track_hists = {
         'rlim': [0.9, 1.1],
         'linear_scale': True,
         'w1_eval': False
-    }
+    },
+    'alltrack_Ht': {
+        'key': 'alltrack_Ht',
+        'xlabel': r'$H_{T, tracks}$',
+        'bins': np.linspace(0, 2e3, 150),
+        'w1_eval': False
+    },
 }
 
 # Overwrite default settings function
@@ -363,13 +369,12 @@ def make_inclusive_track_plots(
     # We don't care about end weights for target!
 
     # Extend to the track data shape
-    print(type(track_data))
-    source_start_weights = np.repeat(np.expand_dims(source_start_weights, axis=1), track_data.shape[2], axis=1)
-    source_start_weights = np.ravel(source_start_weights)
-    target_start_weights = np.repeat(np.expand_dims(target_start_weights, axis=1), track_data.shape[2], axis=1)
-    target_start_weights = np.ravel(target_start_weights)
-    source_end_weights = np.repeat(np.expand_dims(source_end_weights, axis=1), track_data.shape[2], axis=1)
-    source_end_weights = np.ravel(source_end_weights)
+    rvl_source_start_weights = np.repeat(np.expand_dims(source_start_weights, axis=1), track_data.shape[2], axis=1)
+    rvl_source_start_weights = np.ravel(rvl_source_start_weights)
+    rvl_target_start_weights = np.repeat(np.expand_dims(target_start_weights, axis=1), track_data.shape[2], axis=1)
+    rvl_target_start_weights = np.ravel(rvl_target_start_weights)
+    rvl_source_end_weights = np.repeat(np.expand_dims(source_end_weights, axis=1), track_data.shape[2], axis=1)
+    rvl_source_end_weights = np.ravel(rvl_source_end_weights)
 
     # Make dictionary for return
     return_dict = {}
@@ -377,35 +382,62 @@ def make_inclusive_track_plots(
     # Loop over pT, eta, phi
     for i, (key, element) in enumerate(definitions.items()):
 
-        # Pull plotting data for this particular histogram
-        this_data = track_data[:,i,:]
+        # Regular plotting for pt / eta / phi
+        if key != 'alltrack_Ht':
 
-        # Separate MC and pseudodata
-        this_data_mc = np.ravel(this_data[labels==0,:])
-        this_data_pd = np.ravel(this_data[labels==1,:])
+            # Pull plotting data for this particular histogram
+            this_data = track_data[:,i,:]
 
-        # Drop zero padded entries
-        if i == 0:
-            track_pt_mc = this_data_mc
-            track_pt_pd = this_data_pd
-            source_start_weights = source_start_weights[track_pt_mc != 0]
-            target_start_weights = target_start_weights[track_pt_pd != 0]
-            source_end_weights = source_end_weights[track_pt_mc != 0]
-        this_data_mc = this_data_mc[track_pt_mc != 0]
-        this_data_pd = this_data_pd[track_pt_pd != 0]
+            # Separate MC and pseudodata
+            this_data_mc = np.ravel(this_data[labels==0,:])
+            this_data_pd = np.ravel(this_data[labels==1,:])
 
-        # Take exponential if this is pT
-        if i == 0:
-            this_data_mc = np.exp(this_data_mc)
-            this_data_pd = np.exp(this_data_pd)
+            # Drop zero padded entries
+            if i == 0:
+                track_pt_mc = this_data_mc
+                track_pt_pd = this_data_pd
+                rvl_source_start_weights = rvl_source_start_weights[track_pt_mc != 0]
+                rvl_target_start_weights = rvl_target_start_weights[track_pt_pd != 0]
+                rvl_source_end_weights = rvl_source_end_weights[track_pt_mc != 0]
+            this_data_mc = this_data_mc[track_pt_mc != 0]
+            this_data_pd = this_data_pd[track_pt_pd != 0]
+
+            # Take exponential if this is pT
+            if i == 0:
+                this_data_mc = np.exp(this_data_mc)
+                this_data_pd = np.exp(this_data_pd)
+
+            # Set weights
+            this_plot_source_start_weights = rvl_source_start_weights
+            this_plot_source_end_weights = rvl_source_end_weights
+            this_plot_target_start_weights = rvl_target_start_weights
+
+        # Otherwise, this is Ht
+        else:
+
+            # Pull pT for the tracks
+            this_data = track_data[:,0,:]
+
+            # Take exponential and re-zero padded entries
+            this_data = np.exp(this_data)
+            this_data[this_data == 1] = 0
+
+            # Calculate Ht for the tracks
+            this_data_mc = np.sum(this_data[labels==0,:], axis=1)
+            this_data_pd = np.sum(this_data[labels==1,:], axis=1)
+
+            # Set weights
+            this_plot_source_start_weights = source_start_weights
+            this_plot_source_end_weights = source_end_weights
+            this_plot_target_start_weights = target_start_weights
         
         # Make reweighting plot
         fig = plot_reweighting(
             this_data_mc,
             this_data_pd, 
-            source_start_weights,
-            source_weight_end=source_end_weights,
-            target_weight=target_start_weights,
+            this_plot_source_start_weights,
+            source_weight_end=this_plot_source_end_weights,
+            target_weight=this_plot_target_start_weights,
             bins=element['bins'], 
             xlabel=element['xlabel'], 
             linear_scale=element['linear_scale'],
