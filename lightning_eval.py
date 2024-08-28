@@ -115,10 +115,10 @@ class OfEval:
             if self.iteration == 0:
                 source_weight_file = 'root'
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
-            # Otherwise use root weights for source, and the weights
+            # Otherwise use weights from previous step 2 for source, and the weights
             # from the previous step one for target
             else:
-                source_weight_file = 'root'
+                source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
             max_events_source = None  # Want to use all events!
             max_events_target = self.config.max_test_target
