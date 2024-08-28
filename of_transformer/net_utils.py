@@ -46,12 +46,12 @@ def to_m2(xi, xj, eps=1e-8):
     """
 
     # Separate the pT, eta, and phi from the input
-    pti, etai, phii, onehotsi = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # pT, eta, phi, onehots
-    ptj, etaj, phij, onehotsj = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # pT, eta, phi, onehots
+    logpti, etai, phii, onehotsi = torch.split(xi, [1, 1, 1, xi.shape[1] - 3], dim=1) # log(pT), eta, phi, onehots
+    logptj, etaj, phij, onehotsj = torch.split(xj, [1, 1, 1, xj.shape[1] - 3], dim=1) # log(pT), eta, phi, onehots
 
     # Remember we take the log of the pTs, so we need to exponentiate them
-    pti = torch.exp(pti)
-    ptj = torch.exp(ptj)
+    pti = torch.exp(logpti)
+    ptj = torch.exp(logptj)
 
     # Determine masses for the mi, mj based on the onehot encodings
     # muon mass = 0.11, pion mass = 0.14, so not so huge of a difference anyway
@@ -107,15 +107,18 @@ def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
     """ pairwise_lv_fts - This function calculates the pairwise level features
     given a set of input particles which is assumed to be in the shape:
 
-    (n_events, 3, n_particles) -> dim 1 w/ len=3 is (pT, eta, phi)
+    (n_events, 3, n_particles) -> dim 1 w/ len=3 is (log(pT), eta, phi)
 
     This is modified from the original ParT version which takes 4-vectors with
     E, px, py, pz as input.
     """
 
 
-    pti, etai, phii = xi.split((1, 1, 1), dim=1)
-    ptj, etaj, phij = xj.split((1, 1, 1), dim=1)
+    logpti, etai, phii = xi.split((1, 1, 1), dim=1)
+    logptj, etaj, phij = xj.split((1, 1, 1), dim=1)
+
+    pti = torch.exp(logpti)
+    ptj = torch.exp(logptj)
 
     delta = delta_r2(etai, phii, etaj, phij).sqrt()
     lndelta = torch.log(delta.clamp(min=eps))
