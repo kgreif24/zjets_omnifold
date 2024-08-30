@@ -5,7 +5,7 @@ It requires only the paths to the MC and truth pseudodata files, and a path to t
 the final weights that should be applied to the MC truth distribution.
 
 Author: Kevin Greif
-Last updated 05/21/2024
+Last updated 08/30/2024
 python3
 """
 
@@ -28,7 +28,8 @@ parser.add_argument("--passBoth", action="store_true", help="If true, will requi
 args = parser.parse_args()
 
 # Set max events and max tracks to use for plotting
-max_events = 1000000
+max_events = 3000000
+max_track_events = 800000
 max_tracks = 150
 
 # Get the trees
@@ -49,8 +50,17 @@ if args.passBoth:
 # Get original MC weights
 mc_start_weights = ak.to_numpy(mc_tree["weight"].array())
 mc_start_weights = mc_start_weights[mc_filter == 1]
+
+# Truncate weights if necessary
 if len(mc_start_weights) > max_events:
-    mc_start_weights = mc_start_weights[:max_events]
+    mc_start_weights_event = mc_start_weights[:max_events]
+else:
+    mc_start_weights_event = mc_start_weights
+
+if len(mc_start_weights) > max_track_events:
+    mc_start_weights_track = mc_start_weights[:max_track_events]
+else:
+    mc_start_weights_track = mc_start_weights
 
 # Get new MC weights
 mc_wgt_file = np.load(args.weights)
@@ -59,33 +69,57 @@ if args.use_test:
 else:
     mc_end_weights = mc_wgt_file["train"]
 mc_end_weights = mc_end_weights[mc_filter == 1]
+
+# Truncate weights if necessary
 if len(mc_end_weights) > max_events:
-    mc_end_weights = mc_end_weights[:max_events]
+    mc_end_weights_event = mc_end_weights[:max_events]
+else:
+    mc_end_weights_event = mc_end_weights
+
+if len(mc_end_weights) > max_track_events:
+    mc_end_weights_track = mc_end_weights[:max_track_events]
+else:
+    mc_end_weights_track = mc_end_weights
 
 # Get pseudodata weights
 pd_weights = ak.to_numpy(pd_tree["weight"].array())
 pd_weights = pd_weights[pd_filter == 1]
+
+# Truncate weights if necessary
 if len(pd_weights) > max_events:
-    pd_weights = pd_weights[:max_events]
+    pd_weights_event = pd_weights[:max_events]
+else:
+    pd_weights_event = pd_weights
+
+if len(pd_weights) > max_track_events:
+    pd_weights_track = pd_weights[:max_track_events]
+else:
+    pd_weights_track = pd_weights
 
 # Concatenate the weights
-start_weights = np.concatenate([mc_start_weights, pd_weights], axis=0)
-end_weights = np.concatenate([mc_end_weights, pd_weights], axis=0)
+start_weights = np.concatenate([mc_start_weights_event, pd_weights_event], axis=0)
+end_weights = np.concatenate([mc_end_weights_event, pd_weights_event], axis=0)
+start_weights_track = np.concatenate([mc_start_weights_track, pd_weights_track], axis=0)
+end_weights_track = np.concatenate([mc_end_weights_track, pd_weights_track], axis=0)
 
 # Make labels
-mc_labels = np.zeros_like(mc_start_weights)
-pd_labels = np.ones_like(pd_weights)
+mc_labels = np.zeros_like(mc_start_weights_event)
+pd_labels = np.ones_like(pd_weights_event)
 labels = np.concatenate([mc_labels, pd_labels], axis=0)
 
-# Get the plot data, always want the truth level for this script
+mc_labels_track = np.zeros_like(mc_start_weights_track)
+pd_labels_track = np.ones_like(pd_weights_track)
+labels_track = np.concatenate([mc_labels_track, pd_labels_track], axis=0)
+
+# Get the plot data, always want the truth level for this script. Take all events for event level observables
 plotting_variables = pu.default_settings.keys()
 mc_plotting = du.get_plotting(mc_tree, vars=plotting_variables, filter=mc_filter, get_truth=True, max_events=max_events)
 pd_plotting = du.get_plotting(pd_tree, vars=plotting_variables, filter=pd_filter, get_truth=True, max_events=max_events)
 plotting = ak.concatenate([mc_plotting, pd_plotting], axis=0)
 
 # Get the track kinematics
-mc_kinematics, _ = du.get_kinematics(mc_tree, filter=mc_filter, get_truth=True, max_events=max_events)
-pd_kinematics, _ = du.get_kinematics(pd_tree, filter=pd_filter, get_truth=True, max_events=max_events)
+mc_kinematics, _ = du.get_kinematics(mc_tree, filter=mc_filter, get_truth=True, max_events=max_track_events)
+pd_kinematics, _ = du.get_kinematics(pd_tree, filter=pd_filter, get_truth=True, max_events=max_track_events)
 kinematics = ak.concatenate([mc_kinematics, pd_kinematics], axis=0)
 
 # Drop the muons
@@ -111,6 +145,6 @@ names = ("TruthMC", "TruthPD")
 # Make the logged plots, using wasserstein metric class for the pre-computed overservables
 wass = WassersteinOne(hist_info=new_settings, draw_plots=True, save_location=args.store)
 wass.update(plotting, start_weights, end_weights, labels)
-w1, plot_dict = wass.compute(from_torch=False, names=names)
+w1, plot_dict = wass.compute(from_torch=False, names=names, is_comp=True)
 print(f"Computed Wasserstein One: {w1}")
-pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights=end_weights, definitions=new_track_settings, save_location=args.store, names=names)
+pu.make_inclusive_track_plots(kinematics, labels_track, start_weights_track, end_weights=end_weights_track, definitions=new_track_settings, save_location=args.store, names=names)
