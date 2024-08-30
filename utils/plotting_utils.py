@@ -12,10 +12,38 @@ import matplotlib.gridspec as gs
 from pytorch_lightning.utilities.rank_zero import *
 
 import numpy as np
-import sys
+from collections import OrderedDict
 
 
 ############################ Default plotting settings for wandb logging ############################
+
+# IBU binning from first round analysis
+use_ibu_bins = True
+ibu_bins = OrderedDict()
+ibu_bins["pT_l1"] = [25.0, 125.0, 200.0, 300.0, 400.0, 500.0, 800.0]
+ibu_bins["pT_l2"] = [25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 400.0]
+ibu_bins["eta_l1"] = [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
+ibu_bins["eta_l2"] = [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
+ibu_bins["phi_l1"] = [-(np.pi + 1e-5), -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, (np.pi + 1e-5)]
+ibu_bins["phi_l2"] = [-(np.pi + 1e-5), -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, (np.pi + 1e-5)]
+ibu_bins["pT_trackj1"] = [5.0, 50.0, 100.0, 150.0, 200.0, 300.0, 1000.0]
+ibu_bins["pT_trackj2"] = [5.0, 25.0, 50.0, 100.0, 500.0]
+ibu_bins["y_trackj1"] = [-2.5, -2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5]
+ibu_bins["y_trackj2"] = [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+ibu_bins["phi_trackj1"] = [-(np.pi + 1e-5), -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, (np.pi + 1e-5)]
+ibu_bins["phi_trackj2"] = [-(np.pi + 1e-5), -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, (np.pi + 1e-5)]
+ibu_bins["pT_ll"] = [200.0, 230.0, 300.0, 450.0, 600.0, 1000.0]
+ibu_bins["y_ll"] = [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
+ibu_bins["Ntracks_trackj1"] = [0.5, 6.5, 10.5, 14.5, 19.5, 25.5, 39.5]
+ibu_bins["Ntracks_trackj2"] = [0.5, 3.5, 7.5, 11.5, 15.5, 34.5]
+ibu_bins["m_trackj1"] = [0.0, 8.0, 16.0, 24.0, 32.0, 42.0, 70.0]
+ibu_bins["m_trackj2"] = [0.0, 5.0, 10.0, 20.0, 40.0] 
+ibu_bins["tau1_trackj1"] = [0.0, 0.05, 0.1, 0.17, 0.25, 0.35, 0.4, 0.9]
+ibu_bins["tau1_trackj2"] = [0.0, 0.1, 0.2, 0.35, 0.5, 0.9]
+ibu_bins["tau2_trackj1"] = [0.0, 0.025, 0.05, 0.08, 0.12, 0.17, 0.2, 0.5]
+ibu_bins["tau2_trackj2"] = [0.0, 0.025, 0.1, 0.17, 0.25, 0.5]
+ibu_bins["tau3_trackj1"] = [0.0, 0.025, 0.05, 0.1, 0.3]
+ibu_bins["tau3_trackj2"] = [0.0, 0.025, 0.08, 0.14, 0.3]
 
 # Default settings for histograms
 common_hist_settings = {
@@ -35,27 +63,27 @@ event_hists = {
     'pT_l1': {
         'key': 'pT_l1',
         'xlabel': r'$p_{T,\mu1}$',
-        'bins': np.linspace(0, 1e3, 150)
+        'bins': ibu_bins['pT_l1'] if use_ibu_bins else np.linspace(0, 1e3, 150)
     },
     'pT_l2': {
         'key': 'pT_l2',
         'xlabel': r'$p_{T,\mu2}$',
-        'bins': np.linspace(0, 800, 150)
+        'bins': ibu_bins['pT_l2'] if use_ibu_bins else np.linspace(0, 800, 150)
     },
     'eta_l1': {
         'key': 'eta_l1',
         'xlabel': r'$\eta_{\mu1}$',
-        'bins': np.linspace(-3, 3, 150)
+        'bins': ibu_bins['eta_l1'] if use_ibu_bins else np.linspace(-3, 3, 150)
     },
     'eta_l2': {
         'key': 'eta_l2',
         'xlabel': r'$\eta_{\mu2}$',
-        'bins': np.linspace(-3, 3, 150)
+        'bins': ibu_bins['eta_l2'] if use_ibu_bins else np.linspace(-3, 3, 150)
     },
     'phi_l1': {
         'key': 'phi_l1',
         'xlabel': r'$\phi_{\mu1}$',
-        'bins': np.linspace(-3.2, 3.2, 150),
+        'bins': ibu_bins['phi_l1'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
         'ylim': [0, 0.2],
@@ -64,7 +92,7 @@ event_hists = {
     'phi_l2': {
         'key': 'phi_l2',
         'xlabel': r'$\phi_{\mu2}$',
-        'bins': np.linspace(-3.2, 3.2, 150),
+        'bins': ibu_bins['phi_l2'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
         'ylim': [0, 0.2],
@@ -73,37 +101,37 @@ event_hists = {
     'pT_ll': {
         'key': 'pT_ll',
         'xlabel': r'$p_{T, \mu\mu}$',
-        'bins': np.linspace(0, 1e3, 150)
+        'bins': ibu_bins['pT_ll'] if use_ibu_bins else np.linspace(0, 1e3, 150)
     },
     'y_ll': {
         'key': 'y_ll',
         'xlabel': r'$y_{\mu\mu}$',
-        'bins': np.linspace(-3, 3, 150)
+        'bins': ibu_bins['y_ll'] if use_ibu_bins else np.linspace(-3, 3, 150)
     },
     'pT_trackj1': {
         'key': 'pT_trackj1',
         'xlabel': r'$p_{T, j1}$',
-        'bins': np.linspace(0, 1e3, 150)
+        'bins': ibu_bins['pT_trackj1'] if use_ibu_bins else np.linspace(0, 1e3, 150)
     },
     'pT_trackj2': {
         'key': 'pT_trackj2',
         'xlabel': r'$p_{T, j2}$',
-        'bins': np.linspace(0, 1e3, 150)
+        'bins': ibu_bins['pT_trackj2'] if use_ibu_bins else np.linspace(0, 1e3, 150)
     },
     'y_trackj1': {
         'key': 'y_trackj1',
         'xlabel': r'$y_{j1}$',
-        'bins': np.linspace(-3, 3, 150)
+        'bins': ibu_bins['y_trackj1'] if use_ibu_bins else np.linspace(-3, 3, 150)
     },
     'y_trackj2': {
         'key': 'y_trackj2',
         'xlabel': r'$y_{j2}$',
-        'bins': np.linspace(-3, 3, 150)
+        'bins': ibu_bins['y_trackj1'] if use_ibu_bins else np.linspace(-3, 3, 150)
     },
     'phi_trackj1': {
         'key': 'phi_trackj1',
         'xlabel': r'$\phi_{j1}$',
-        'bins': np.linspace(-3.2, 3.2, 150),
+        'bins': ibu_bins['phi_trackj1'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
         'ylim': [0, 0.2],
@@ -112,7 +140,7 @@ event_hists = {
     'phi_trackj2': {
         'key': 'phi_trackj2',
         'xlabel': r'$\phi_{j2}$',
-        'bins': np.linspace(-3.2, 3.2, 150),
+        'bins': ibu_bins['phi_trackj2'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
         'ylim': [0, 0.2],
@@ -121,52 +149,52 @@ event_hists = {
     'm_trackj1': {
         'key': 'm_trackj1',
         'xlabel': r'$m_{j1}$',
-        'bins': np.linspace(0, 100, 150)
+        'bins': ibu_bins['m_trackj1'] if use_ibu_bins else np.linspace(0, 100, 150)
     },
     'm_trackj2': {
         'key': 'm_trackj2',
         'xlabel': r'$m_{j2}$',
-        'bins': np.linspace(0, 100, 150)
+        'bins': ibu_bins['m_trackj2'] if use_ibu_bins else np.linspace(0, 100, 150)
     },
     'tau1_trackj1': {
         'key': 'tau1_trackj1',
         'xlabel': r'$\tau_{1,j1}$',
-        'bins': np.linspace(0, 0.9, 150)
+        'bins': ibu_bins['tau1_trackj1'] if use_ibu_bins else np.linspace(0, 0.9, 150)
     },
     'tau1_trackj2': {
         'key': 'tau1_trackj2',
         'xlabel': r'$\tau_{1,j2}$',
-        'bins': np.linspace(0, 0.9, 150)
+        'bins': ibu_bins['tau1_trackj2'] if use_ibu_bins else np.linspace(0, 0.9, 150)
     },
     'tau2_trackj1': {
         'key': 'tau2_trackj1',
         'xlabel': r'$\tau_{2,j1}$',
-        'bins': np.linspace(0, 0.6, 150)
+        'bins': ibu_bins['tau2_trackj1'] if use_ibu_bins else np.linspace(0, 0.6, 150)
     },
     'tau2_trackj2': {
         'key': 'tau2_trackj2',
         'xlabel': r'$\tau_{2,j2}$',
-        'bins': np.linspace(0, 0.6, 150)
+        'bins': ibu_bins['tau2_trackj2'] if use_ibu_bins else np.linspace(0, 0.6, 150)
     },
     'tau3_trackj1': {
         'key': 'tau3_trackj1',
         'xlabel': r'$\tau_{3,j1}$',
-        'bins': np.linspace(0, 0.4, 150)
+        'bins': ibu_bins['tau3_trackj1'] if use_ibu_bins else np.linspace(0, 0.4, 150)
     },
     'tau3_trackj2': {
         'key': 'tau3_trackj2',
         'xlabel': r'$\tau_{3,j2}$',
-        'bins': np.linspace(0, 0.4, 150)
+        'bins': ibu_bins['tau3_trackj2'] if use_ibu_bins else np.linspace(0, 0.4, 150)
     },
     'Ntracks_trackj1': {
         'key': 'Ntracks_trackj1',
         'xlabel': r'$N_{tracks,j1}$',
-        'bins': np.arange(0, 80, 1)
+        'bins': ibu_bins['Ntracks_trackj1'] if use_ibu_bins else np.arange(0, 80, 1)
     },
     'Ntracks_trackj2': {
         'key': 'Ntracks_trackj2',
         'xlabel': r'$N_{tracks,j2}$',
-        'bins': np.arange(0, 80, 1)
+        'bins': ibu_bins['Ntracks_trackj2'] if use_ibu_bins else np.arange(0, 80, 1)
     },
     'Ntracks': {
         'key': 'Ntracks',
