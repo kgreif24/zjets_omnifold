@@ -15,6 +15,7 @@ import numpy as np
 import uproot
 import awkward as ak
 import lightning as L
+import wandb
 from pytorch_lightning.loggers import WandbLogger
 
 from lightning_module import *
@@ -374,6 +375,10 @@ class OfEval:
             self.run_testing()
         print("Run predictions")
         self.run_prediction()
+
+        # Call wandb finish to set run status to finished
+        if self.config.wandb:
+            wandb.finish()
 
 
 ############## MAIN FUNCTION ##############
