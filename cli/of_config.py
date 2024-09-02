@@ -38,30 +38,30 @@ class OfConfig:
         self.parser.add_argument(
             '--mc_train_path', 
             type=str, 
-            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train.root', 
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root', 
             help='Path for the MC training data'
         )
         self.parser.add_argument(
             '--mc_test_path',
             type=str,
-            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test.root',
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root',
             help='Path for the MC testing data'
         )
         self.parser.add_argument(
             '--data_path',
             type=str,
-            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Jan30_Combined_All.root',
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root',
             help='Path for the data'
         )
         self.parser.add_argument(
             '--truth_data_path',
             type=str,
-            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Combined_1-18.root',
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_40_shuffled.root',
             help='Path to the truth pseudodata'
 
         )
-        self.parser.add_argument('--split_seed', type=int, default=420, help='Seed for the train / validation split, set to -1 to produce random seed at train time')
-        self.parser.add_argument('--max_tracks', type=int, default=150, help='Maximum number of tracks to use in the data')
+        self.parser.add_argument('--split_seed', type=int, default=-1, help='Seed for the train / validation split, set to -1 to produce random seed at train time')
+        self.parser.add_argument('--max_tracks', type=int, default=264, help='Maximum number of tracks to use in the data')
         self.parser.add_argument('--max_train_step_one', type=int, default=None, 
                                  help='Maximum number of events to use in step one. Applied to both MC and data')
         self.parser.add_argument('--max_train_step_two', type=int, default=None,
@@ -71,7 +71,7 @@ class OfConfig:
 
         # Training
         self.parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training')
-        self.parser.add_argument('--test_batch_size', type=int, default=1024, help='Batch size for testing')
+        self.parser.add_argument('--test_batch_size', type=int, default=256, help='Batch size for testing')
         self.parser.add_argument('--max_epochs', type=int, default=70, help='Maximum number of epochs to train for')
 
         self.parser.add_argument('--top_k_checkpoints', type=int, default=5, help='Number of top checkpoints to save')
@@ -79,14 +79,14 @@ class OfConfig:
         self.parser.add_argument('--num_gpus', type=int, default=4, help='Number of GPUs to use for training')
 
         # Learning rate schedule
-        self.parser.add_argument('--s1_min_lr', type=float, default=1e-5, help='Minimum learning rate for step one training')
-        self.parser.add_argument('--s1_max_lr', type=float, default=1e-4, help='Maximum learning rate for step one training')
-        self.parser.add_argument('--s2_min_lr', type=float, default=5e-4, help='Minimum learning rate for step two training')
-        self.parser.add_argument('--s2_max_lr', type=float, default=5e-3, help='Maximum learning rate for step two training')
-        self.parser.add_argument('--s1_max_decay', type=float, default=0.6, help='Decay with iteration for step one trainings maximum learning rate')
+        self.parser.add_argument('--s1_min_lr', type=float, default=0.000008, help='Minimum learning rate for step one training')
+        self.parser.add_argument('--s1_max_lr', type=float, default=0.00005, help='Maximum learning rate for step one training')
+        self.parser.add_argument('--s2_min_lr', type=float, default=0.00005, help='Minimum learning rate for step two training')
+        self.parser.add_argument('--s2_max_lr', type=float, default=0.0001, help='Maximum learning rate for step two training')
+        self.parser.add_argument('--s1_max_decay', type=float, default=1.0, help='Decay with iteration for step one trainings maximum learning rate')
         self.parser.add_argument('--s2_max_decay', type=float, default=1.0, help='Decay with iteration for step two trainings maximum learning rate')
-        self.parser.add_argument('--cycle_steps', type=int, default=20000, help='Number of steps in a cycle')
-        self.parser.add_argument('--warmup_steps', type=int, default=4000, help='Number of steps to warm up the learning rate')
+        self.parser.add_argument('--cycle_steps', type=int, default=50000, help='Number of steps in a cycle')
+        self.parser.add_argument('--warmup_steps', type=int, default=10000, help='Number of steps to warm up the learning rate')
         self.parser.add_argument('--gamma', type=float, default=0.85, help='Gamma for the learning rate scheduler')
 
         # Logging
@@ -218,7 +218,10 @@ class OfConfig:
                 comment = self.parser._option_string_actions["--"+arg].help
                 if comment is not None:
                     f.write(f"\n# {comment}\n")
-                f.write(f"{arg}: {getattr(self.args, arg)}\n")
+                if getattr(self.args, arg) is not None:
+                    f.write(f"{arg}: {getattr(self.args, arg)}\n")
+                else:
+                    f.write(f"{arg}: null\n")
 
         print("Created template file at: ", template_path)
 
@@ -230,4 +233,3 @@ if __name__ == '__main__':
     config = OfConfig()
     config.create_template()
     config = OfConfig(config_name="default_of_template.yml")
-    print(config.mc_train_path)
