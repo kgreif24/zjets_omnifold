@@ -53,6 +53,10 @@ class OfTrain:
         if index != -1:
             self.config.group_name = f"{self.config.group_name}_{index}"
 
+        # Make directory for saving checkpoints
+        checkpoint_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
         # Get weights for use in training. Define (but do not make!) the weight directory
         weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
 
@@ -119,7 +123,7 @@ class OfTrain:
                 project=self.config.project_name, 
                 group=self.config.group_name,
                 name=run_name, 
-                save_dir=self.config.checkpoint_dir
+                save_dir=checkpoint_dir
             )
 
             # Get run ID
