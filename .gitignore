@@ -1,6 +1,7 @@
 __pycache__/*
 *.pyc
 plot_storage
+weight_storage
 slurm*
 cli/*.yml
 lightning_logs
