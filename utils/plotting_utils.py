@@ -18,10 +18,10 @@ from collections import OrderedDict
 ############################ Default plotting settings for wandb logging ############################
 
 # IBU binning from first round analysis
-use_ibu_bins = True
+use_ibu_bins = False
 ibu_bins = OrderedDict()
-ibu_bins["pT_l1"] = [25.0, 125.0, 200.0, 300.0, 400.0, 500.0, 800.0]
-ibu_bins["pT_l2"] = [25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 400.0]
+ibu_bins["pT_l1"] = [25.0, 125.0, 200.0, 300.0, 400.0, 600.0, 800.0]
+ibu_bins["pT_l2"] = [25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 400.0]
 ibu_bins["eta_l1"] = [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
 ibu_bins["eta_l2"] = [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
 ibu_bins["phi_l1"] = [-(np.pi + 1e-5), -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, (np.pi + 1e-5)]
@@ -44,6 +44,7 @@ ibu_bins["tau2_trackj1"] = [0.0, 0.025, 0.05, 0.08, 0.12, 0.17, 0.2, 0.5]
 ibu_bins["tau2_trackj2"] = [0.0, 0.025, 0.1, 0.17, 0.25, 0.5]
 ibu_bins["tau3_trackj1"] = [0.0, 0.025, 0.05, 0.1, 0.3]
 ibu_bins["tau3_trackj2"] = [0.0, 0.025, 0.08, 0.14, 0.3]
+ibu_bins["Ntracks"] = np.arange(0, 256, 1)  # Note not yet included in IBU so use Omnifold default binning
 
 # Default settings for histograms
 common_hist_settings = {
@@ -86,8 +87,7 @@ event_hists = {
         'bins': ibu_bins['phi_l1'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2],
-        'w1_eval': False
+        'ylim': [0, 0.2]
     },
     'phi_l2': {
         'key': 'phi_l2',
@@ -95,8 +95,7 @@ event_hists = {
         'bins': ibu_bins['phi_l2'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2],
-        'w1_eval': False
+        'ylim': [0, 0.2]
     },
     'pT_ll': {
         'key': 'pT_ll',
@@ -134,8 +133,7 @@ event_hists = {
         'bins': ibu_bins['phi_trackj1'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2],
-        'w1_eval': False
+        'ylim': [0, 0.2]
     },
     'phi_trackj2': {
         'key': 'phi_trackj2',
@@ -143,8 +141,7 @@ event_hists = {
         'bins': ibu_bins['phi_trackj2'] if use_ibu_bins else np.linspace(-3.2, 3.2, 150),
         'rlim': [0.9, 1.1],
         'linear_scale': True,
-        'ylim': [0, 0.2],
-        'w1_eval': False
+        'ylim': [0, 0.2]
     },
     'm_trackj1': {
         'key': 'm_trackj1',
@@ -601,5 +598,188 @@ def plot_reweighting(
     axr.set_xlabel(xlabel)
     if rlim is not None:
         axr.set_ylim(rlim)
+
+    return fig
+
+
+def construct_hist_and_error(source, source_weight, target, target_weight, bins, bs_weights):
+    """ construct_hist_and_error - This function will construct a histogram comparing source
+    and target distributions. It will also calculate the error on the source distribution using
+    the "bs_weights" argument, which is a list of weights obtained via some ensembling or
+    bootstrap.
+
+    Arguments:
+    source - numpy array of source data (N events,)
+    source_weight - numpy array of source weights (N events,)
+    target - numpy array of target data (N events,)
+    target_weight - numpy array of target weights (N events,)
+    bins - numpy array of bins to use in histogram
+    bs_weights - list of numpy arrays of weights to use in error calculation
+
+    Returns:
+    nom - numpy array of source histogram
+    target - numpy array of target histogram
+    var - numpy array of the standard variance of the source histogram
+    """
+
+    # Construct source and target histograms
+    nom, _ = np.histogram(source, bins=bins, weights=source_weight, density=True)
+    tar, _ = np.histogram(target, bins=bins, weights=target_weight, density=True)
+
+    # Evaluate standard error on source histogram
+    var_hists = []    
+    for bs in bs_weights:
+        varHist, _ = np.histogram(source, bins=bins, weights=bs, density=True)
+        var_hists.append(varHist)
+    var = np.var(var_hists, axis=0) / len(bs_weights)
+
+    return nom, tar, var
+
+
+def unfold_performance_plot(
+        source,
+        source_weight,
+        target,
+        target_weight,
+        bs_weights,
+        plot_params={'color': 'blue', 'linear_scale': False, 'xlabel': 'Obs', 'bins': None}, 
+        err_multiple=1.0):
+    """ unfold_performance_plot - This function will generate a plot showing the performance of
+    a unbinned unfolding (multifold or omnifold) in a given dimension. It accepts the source and target
+    distributions, together with the weights applied to each, as well as the bootstrap weights used to
+    estimate some uncertainties on the unfolding.
+
+    Arguments:
+    source - numpy array of source data (N events,)
+    source_weight - numpy array of source weights (N events,)
+    target - numpy array of target data (N events,)
+    target_weight - numpy array of target weights (N events,)
+    bins - numpy array of bins to use in histogram
+    bs_weights - list of numpy arrays of weights to use in error calculation
+    name - the name of the unfolding method to put in the legend
+    plot_params - dictionary of parameters for the plot, containing:
+        'color' (string) - the color of the markers for the unfolded data
+        'name' (string) - the name of the unfolding method to put in the legend
+        'linear_scale' (bool) - whether to use a linear scale for the y-axis,
+        'xlabel' (string) - the label for the x-axis
+        'bins' (array) - numpy array that gives the binning for the histograms.
+    err_multiple - multiple to scale the error bars by
+
+    Returns:
+    fig - matplotlib figure object
+    """
+
+    # Construct histograms and errors
+    bins = plot_params['bins']
+    nom, tar, var = construct_hist_and_error(source, source_weight, target, target_weight, bins, bs_weights)
+
+    # Calculate the bias squared
+    bias2 = (nom - tar)**2
+
+    # Repeat last bin of target for plotting
+    plot_tar = np.append(tar, tar[-1])
+
+    # Scale the error
+    plot_err = np.sqrt(var) * err_multiple
+
+    # Plot
+    bin_centers = (bins[1:] + bins[:-1]) / 2
+    fig, (ax, rax, vax) = plt.subplots(3, 1, figsize=(6, 7), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1]})
+    plt.subplots_adjust(hspace=0)
+
+    ax.plot(bins, plot_tar, "--", label="Target", color='black', drawstyle='steps-post')
+    ax.errorbar(bin_centers, nom, yerr=plot_err, fmt='.', label=plot_params['name'], color=plot_params['color'])
+    if not plot_params['linear_scale']:
+        ax.set_yscale('log')
+    ax.tick_params(axis='x', direction='in', top=True)
+    ax.set_ylabel('Normalized counts')
+    ax.legend()
+
+    rax.axhline(1, color='black', linestyle='--')
+    rax.errorbar(bin_centers, nom / tar, yerr=plot_err / tar, fmt='.', color=plot_params['color'])
+    rax.set_ylim(0.5, 1.5)
+    rax.set_yticks([0.75, 1.0, 1.25])
+    rax.set_ylabel('Ratio to target')
+    rax.tick_params(axis='x', direction='in', bottom=True, top=False)
+
+    vax.plot(bin_centers, bias2 / tar**2, ".", color='blue', label='Bias^2')
+    vax.plot(bin_centers, var / tar**2, ".", color='red', label='Variance')
+    vax.set_yscale('log')
+    vax.set_ylim(1e-6, 10)
+    vax.set_xlabel(plot_params['xlabel'])
+    vax.set_ylabel('Error / Target^2')
+    vax.legend()
+
+    return fig
+
+
+def ibu_performance_plot(obs_dict, target, target_weight, plot_params):
+    """ ibu_performance_plot - This function produces a plot of the performance of the IBU
+    unfolding method in a given observable. It will show the target distribution, the unfolded
+    distribution, and the bias of the unfolding. (Variance to be added, when I know what exactly
+    that is...)
+
+    Arguments:
+    obs_dict (dictionary) - A dictionary containing all of the information about the IBU unfolding
+        in this dimension
+    target (numpy array) - The target distribution
+    target_weight (numpy array) - The weights for the target distribution
+    plot_params (dictionary) - A dictionary of parameters for the plot, containing:
+        'color' (string) - the color of the markers for the unfolded data
+        'name' (string) - the name of the unfolding method to put in the legend
+        'linear_scale' (bool) - whether to use a linear scale for the y-axis,
+        'xlabel' (string) - the label for the x-axis
+
+    Note bins are taken from the IBU dictionary in this function
+
+    Returns:
+    fig - matplotlib figure object
+    """
+
+    bins = np.array(obs_dict['bins'])
+    bin_centers = (bins[1:] + bins[:-1]) / 2
+    bin_widths = bins[1:] - bins[:-1]
+
+    # Construct target histogram
+    target_hist, _ = np.histogram(target, bins=bins, weights=target_weight, density=True)
+    print(bins)
+    print(target_hist)
+
+    # Repeat last bin of target for plotting
+    plot_tar = np.append(target_hist, target_hist[-1])
+
+    # Normalize IBU histogram
+    ibu_hist = np.array(obs_dict['ibu_bin_counts'])
+    hist_area = np.sum(ibu_hist * bin_widths)
+    ibu_hist = ibu_hist / hist_area
+
+    # Evaluate bias squared
+    bias2 = (ibu_hist - target_hist)**2
+
+    # Plot
+    fig, (ax, rax, vax) = plt.subplots(3, 1, figsize=(6, 7), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1]})
+    plt.subplots_adjust(hspace=0)
+
+    ax.plot(bins, plot_tar, "--", label="Target", color='black', drawstyle='steps-post')
+    ax.plot(bin_centers, ibu_hist, ".", label=plot_params['name'], color=plot_params['color'])
+    if not plot_params['linear_scale']:
+        ax.set_yscale('log')
+    ax.tick_params(axis='x', direction='in', top=True)
+    ax.set_ylabel('Normalized counts')
+    ax.legend()
+
+    rax.axhline(1, color='black', linestyle='--')
+    rax.plot(bin_centers, ibu_hist / target_hist, ".", color=plot_params['color'])
+    rax.set_ylim(0.5, 1.5)
+    rax.set_yticks([0.75, 1.0, 1.25])
+    rax.set_ylabel('Ratio to target')
+    rax.tick_params(axis='x', direction='in', bottom=True, top=False)
+
+    vax.plot(bin_centers, bias2 / target_hist**2, ".", color='blue', label='Bias^2')
+    vax.set_yscale('log')
+    vax.set_ylim(1e-6, 10)
+    vax.set_xlabel(plot_params['xlabel'])
+    vax.set_ylabel('Error / Target^2')
+    vax.legend()
 
     return fig
