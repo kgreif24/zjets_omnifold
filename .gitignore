@@ -12,3 +12,4 @@ eval_plot_storage
 outfiles/*
 dataloc
 fastjet/obj
+*.out
