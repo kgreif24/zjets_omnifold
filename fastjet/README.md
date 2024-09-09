@@ -4,7 +4,14 @@ This is a copy of Jad's omniphysics package: https://github.com/jmsardain/omniph
 1. Plot arbitrary observables defined on the Z+jets final state
 2. Calculate lund jet plane information for adding to slimmed training files, which is necessary for using LundNet blocks as an embedding in omnifold classifiers
 
-Documentation of both of these behaviors is as follows:
+Documentation of both of these is below. To compile the code, it is easiest to use an LCG release obtained from `cvmfs`:
+
+```
+setupATLAS
+lsetup "views LCG_105 x86_64-el9-gcc13-opt"
+```
+
+I am currently trying to get this to work on Perlmutter via shifter containers, but haven't figured it out yet. Will update when it is figured out.
 
 # Calculate observables
 
