@@ -13,3 +13,4 @@ outfiles/*
 dataloc
 fastjet/obj
 *.out
+.vscode
