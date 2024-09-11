@@ -356,10 +356,10 @@ class LOfData(L.LightningDataModule):
 
         # Get the data from files
         source_kinematics, source_indeces, source_weights, source_plotting, self.source_pass190, self.source_truth_pass190 = self.load_data_from_file(
-            self.source_file, self.source_weight_path, max_events=self.max_events_source
+            self.source_file, self.source_weight_path, stop=self.max_events_source
         )
         target_kinematics, target_indeces, target_weights, target_plotting, self.target_pass190, self.target_truth_pass190 = self.load_data_from_file(
-            self.target_file, self.target_weight_path, max_events=self.max_events_target
+            self.target_file, self.target_weight_path, stop=self.max_events_target
         )
 
         # Use the appropriate pass190 flags
@@ -370,11 +370,22 @@ class LOfData(L.LightningDataModule):
             self.source_use190 = self.source_pass190
             self.target_use190 = self.target_pass190
 
-        # Store all weights for use in prediction, then apply filter
+        # Store all weights for use in prediction, then truncate and apply filter
         self.source_all_weights = source_weights
-        source_weights = np.expand_dims(self.source_all_weights[self.source_use190 == 1], axis=1)
+        if len(self.source_all_weights) > self.max_events_source:
+            self.source_use190 = self.source_use190[:self.max_events_source]
+            source_weights = self.source_all_weights[:self.max_events_source]
+            source_weights = np.expand_dims(source_weights[self.source_use190 == 1], axis=1)
+        else:
+            source_weights = np.expand_dims(self.source_all_weights[self.source_use190 == 1], axis=1)
+
         self.target_all_weights = target_weights
-        target_weights = np.expand_dims(self.target_all_weights[self.target_use190 == 1], axis=1)
+        if len(self.target_all_weights) > self.max_events_target:
+            self.target_use190 = self.target_use190[:self.max_events_target]
+            target_weights = self.target_all_weights[:self.max_events_target]
+            target_weights = np.expand_dims(target_weights[self.target_use190 == 1], axis=1)
+        else:
+            target_weights = np.expand_dims(self.target_all_weights[self.target_use190 == 1], axis=1)
 
         # Normalize weights so the class ratio is one but the sum of the weights is
         # the number of events in the whole dataset (so initial loss is log(2))
@@ -382,12 +393,6 @@ class LOfData(L.LightningDataModule):
         target_divisor = 2 * np.sum(target_weights) / (len(source_weights) + len(target_weights))
         source_weights /= source_divisor
         target_weights /= target_divisor
-
-        # Truncate weights if max_events values are set
-        if self.max_events_source is not None:
-            source_weights = source_weights[:self.max_events_source]
-        if self.max_events_target is not None:
-            target_weights = target_weights[:self.max_events_target]
 
         # Labels
         source_labels = np.zeros((len(source_kinematics), 1), dtype=np.float32)
@@ -462,7 +467,6 @@ class LOfData(L.LightningDataModule):
         # Get kinematics
         kinematics, indeces = get_kinematics(
             tree, 
-            filter=use190,
             muon_only=self.muon_only,
             get_truth=self.use_truth,
             **kwargs
@@ -473,7 +477,7 @@ class LOfData(L.LightningDataModule):
 
         # Get plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
-        plotting = get_plotting(tree, vars=plotting_variables, filter=use190, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
+        plotting = get_plotting(tree, vars=plotting_variables, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
 
         return kinematics, indeces, weights, plotting, pass190, truth_pass190
 

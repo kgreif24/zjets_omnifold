@@ -56,7 +56,7 @@ class OfConfig:
         self.parser.add_argument(
             '--truth_data_path',
             type=str,
-            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_40_shuffled.root',
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root',
             help='Path to the truth pseudodata'
 
         )

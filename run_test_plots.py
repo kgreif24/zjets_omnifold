@@ -2,7 +2,7 @@
 target distributions for a given reweighting.
 
 Author: Kevin Greif
-Last updated 07/15/2024
+Last updated 09/11/2024
 python3
 """
 
@@ -43,32 +43,42 @@ if args.passBoth:
     filter1 = np.logical_and(ak.to_numpy(tree1["truth_pass190"].array()), ak.to_numpy(tree1["pass190"].array()))
     filter2 = np.logical_and(ak.to_numpy(tree2["truth_pass190"].array()), ak.to_numpy(tree2["pass190"].array()))
 elif args.step == 1:
-    filter1 = ak.to_numpy(tree1["truth_pass190"].array())
-    filter2 = ak.to_numpy(tree2["truth_pass190"].array())
+    filter1 = ak.to_numpy(tree1["pass190"].array())
+    filter2 = ak.to_numpy(tree2["pass190"].array())
 elif args.step == 2:
     filter1 = ak.to_numpy(tree1["truth_pass190"].array())
     filter2 = ak.to_numpy(tree2["truth_pass190"].array())
 
-# Get start / end weights and filter weights
+# Truncate filters
+if len(filter1) > max_events:
+    filter1 = filter1[:max_events]
+if len(filter2) > max_events:
+    filter2 = filter2[:max_events]
+
+# Get start / end weights, then truncate and filter weights
 if args.start_weights is None:
     start_weights = ak.to_numpy(tree1["weight"].array())
+    if len(start_weights) > max_events:
+        start_weights = start_weights[:max_events]
     start_weights = start_weights[filter1 == 1]
-    start_weights = start_weights[:max_events]
 else:
     start_weight_file = np.load(args.start_weights)
     start_weights = start_weight_file["train" if args.train else "test"]
+    if len(start_weights) > max_events:
+        start_weights = start_weights[:max_events]
     start_weights = start_weights[filter1 == 1]
-    start_weights = start_weights[:max_events]
 
 end_weight_file = np.load(args.end_weights)
 end_weights = end_weight_file["train" if args.train else "test"]
+if len(end_weights) > max_events:
+    end_weights = end_weights[:max_events]
 end_weights = end_weights[filter1 == 1]
-end_weights = end_weights[:max_events]
 
 # Get target weights
 targ_weights = ak.to_numpy(tree2["weight"].array())
+if len(targ_weights) > max_events:
+    targ_weights = targ_weights[:max_events]
 targ_weights = targ_weights[filter2 == 1]
-targ_weights = targ_weights[:max_events]
 
 # Concatenate the weights
 start_weights = np.concatenate([start_weights, targ_weights], axis=0)
@@ -76,13 +86,13 @@ end_weights = np.concatenate([end_weights, targ_weights], axis=0)
 
 # Get the plot data
 plotting_variables = pu.default_settings.keys()
-plotting1 = du.get_plotting(tree1, vars=plotting_variables, filter=filter1, get_truth=True if args.step == 2 else False, max_events=max_events)
-plotting2 = du.get_plotting(tree2, vars=plotting_variables, filter=filter2, get_truth=True if args.step == 2 else False, max_events=max_events)
+plotting1 = du.get_plotting(tree1, vars=plotting_variables, get_truth=True if args.step == 2 else False, stop=max_events, passBoth=args.passBoth)
+plotting2 = du.get_plotting(tree2, vars=plotting_variables, get_truth=True if args.step == 2 else False, stop=max_events, passBoth=args.passBoth)
 plotting = np.concatenate([plotting1, plotting2], axis=0)
 
 # Get the track kinematics
-kinematics1, _ = du.get_kinematics(tree1, filter=filter1, get_truth=True if args.step == 2 else False, max_events=max_events)
-kinematics2, _ = du.get_kinematics(tree2, filter=filter2, get_truth=True if args.step == 2 else False, max_events=max_events)
+kinematics1, _ = du.get_kinematics(tree1, get_truth=True if args.step == 2 else False, stop=max_events, passBoth=args.passBoth)
+kinematics2, _ = du.get_kinematics(tree2, get_truth=True if args.step == 2 else False, stop=max_events, passBoth=args.passBoth)
 
 # Make labels
 labels1 = np.zeros(len(plotting1))
