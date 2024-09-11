@@ -76,37 +76,48 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     return np.stack(one_hots, axis=1)
 
 
-def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_events=None):
+def get_kinematics(tree, muon_only=False, get_truth=False, start=None, stop=None, passBoth=False):
     """ get_kinematics - This function will accept an uproot TTree object, and return the
-    muon and track kinematics concatenated as a single awkward.
+    muon and track kinematics concatenated as a single awkward array.
     
     The function will also return a set of indeces which describe which AK4 track jet
     in the event a given track corresponds to.
 
-    An optional "filter" argument will allow the user to filter events with a boolean array.
+    Note this function filters events by the appropriate pass190 branch, so do not expect
+    to see exactly the number of events requested by the start and stop arguments.
 
     Arguments:
     tree - uproot TTree object
-    filter - boolean array to filter events, optional
     muon_only - boolean to return only muon kinematics, optional
     get_truth - If true, get the truth level data instead of reco, optional
-    max_events - maximum number of events to process, optional
+    start - starting event index, optional
+    stop - stopping event index, optional
+    passBoth - If true, require events pass both reco and truth selection
 
     Returns:
     (ak.Array) - awkward array of the concatenated muon and track kinematics
     (ak.Array) - awkward array of the track jet indeces
     """
 
-    # Muon information, take logarithm of pT values immediately
+    # Set prekey
     prekey = ""
     if get_truth:
         prekey = "truth_"
-    m1_pt = np.log(ak.unflatten(tree[prekey+'pT_l1'].array(), 1, axis=0))
-    m1_eta = ak.unflatten(tree[prekey+'eta_l1'].array(), 1, axis=0)
-    m1_phi = ak.unflatten(tree[prekey+'phi_l1'].array(), 1, axis=0)
-    m2_pt = np.log(ak.unflatten(tree[prekey+'pT_l2'].array(), 1, axis=0))
-    m2_eta = ak.unflatten(tree[prekey+'eta_l2'].array(), 1, axis=0)
-    m2_phi = ak.unflatten(tree[prekey+'phi_l2'].array(), 1, axis=0)
+
+    # Filter information
+    evt_filter = ak.to_numpy(tree[prekey+'pass190'].array(entry_start=start, entry_stop=stop))
+    if passBoth:
+        p190 = ak.to_numpy(tree['pass190'].array(entry_start=start, entry_stop=stop))
+        truth_p190 = ak.to_numpy(tree['truth_pass190'].array(entry_start=start, entry_stop=stop))
+        evt_filter = np.local_and(p190, truth_p190)
+
+    # Muon information, take logarithm of pT values immediately
+    m1_pt = np.log(ak.unflatten(tree[prekey+'pT_l1'].array(entry_start=start, entry_stop=stop), 1, axis=0))
+    m1_eta = ak.unflatten(tree[prekey+'eta_l1'].array(entry_start=start, entry_stop=stop), 1, axis=0)
+    m1_phi = ak.unflatten(tree[prekey+'phi_l1'].array(entry_start=start, entry_stop=stop), 1, axis=0)
+    m2_pt = np.log(ak.unflatten(tree[prekey+'pT_l2'].array(entry_start=start, entry_stop=stop), 1, axis=0))
+    m2_eta = ak.unflatten(tree[prekey+'eta_l2'].array(entry_start=start, entry_stop=stop), 1, axis=0)
+    m2_phi = ak.unflatten(tree[prekey+'phi_l2'].array(entry_start=start, entry_stop=stop), 1, axis=0)
 
     m1_kinematics = ak.concatenate([m1_pt, m1_eta, m1_phi], axis=1)
     m1_kinematics = ak.unflatten(m1_kinematics, 1, axis=1)
@@ -114,53 +125,23 @@ def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_even
     m2_kinematics = ak.unflatten(m2_kinematics, 1, axis=1)
     kinematics = ak.concatenate([m1_kinematics, m2_kinematics], axis=2)
 
-    # Check if filter and kinematics have the same size in 0th dimension
-    # They often don't, so longer one needs to be truncated
-    if filter is not None:
-        if len(filter) != len(kinematics):
-            rank_zero_info("Warning! Filter shape does not match muon kinematics shape!")
-            rank_zero_info(f"Filter shape: {len(filter)}")
-            rank_zero_info(f"Muon kinematics shape: {len(kinematics)}")
-            lesser_shape = min(len(filter), len(kinematics))
-            kinematics = kinematics[:lesser_shape,...]
-            filter = filter[:lesser_shape]
-
-    # Apply filter then truncate if necessary
-    if filter is not None:
-        kinematics = kinematics[filter == 1,...]
-    if max_events is not None:
-        kinematics = kinematics[:int(max_events),...]
+    # Apply filter
+    kinematics = kinematics[evt_filter == 1,...]
 
     # Track information if requested
     indeces = None
     if not muon_only:
 
         # Pull info, note taking log of track pT values here
-        track_pt = np.log(ak.unflatten(tree[prekey+'pT_tracks'].array(), 1, axis=0))
-        track_eta = ak.unflatten(tree[prekey+'eta_tracks'].array(), 1, axis=0)
-        track_phi = ak.unflatten(tree[prekey+'phi_tracks'].array(), 1, axis=0)
+        track_pt = np.log(ak.unflatten(tree[prekey+'pT_tracks'].array(entry_start=start, entry_stop=stop), 1, axis=0))
+        track_eta = ak.unflatten(tree[prekey+'eta_tracks'].array(entry_start=start, entry_stop=stop), 1, axis=0)
+        track_phi = ak.unflatten(tree[prekey+'phi_tracks'].array(entry_start=start, entry_stop=stop), 1, axis=0)
         track_kinematics = ak.concatenate([track_pt, track_eta, track_phi], axis=1)
-        indeces = ak.unflatten(tree[prekey+'trackJetIndex_tracks'].array(), 1, axis=0)
-
-        # Check if filter and track kinematics have the same size in 0th dimension
-        # They often don't, so longer one needs to be truncated
-        if filter is not None:
-            if len(filter) != len(track_kinematics):
-                rank_zero_info("Warning! Filter shape does not match track kinematics shape!")
-                rank_zero_info(f"Filter shape: {len(filter)}")
-                rank_zero_info(f"Track kinematics shape: {len(track_kinematics)}")
-                lesser_shape = min(len(filter), len(track_kinematics))
-                track_kinematics = track_kinematics[:lesser_shape,...]
-                indeces = indeces[:lesser_shape,...]
-                filter = filter[:lesser_shape]
+        indeces = ak.unflatten(tree[prekey+'trackJetIndex_tracks'].array(entry_start=start, entry_stop=stop), 1, axis=0)
 
         # Apply filter then truncate if necessary
-        if filter is not None:
-            track_kinematics = track_kinematics[filter == 1,...]
-            indeces = indeces[filter == 1,...]
-        if max_events is not None:
-            track_kinematics = track_kinematics[:max_events,...]
-            indeces = indeces[:max_events,...]
+        track_kinematics = track_kinematics[evt_filter == 1,...]
+        indeces = indeces[evt_filter == 1,...]
 
         # Concatenate muon and track kinematics + indeces
         kinematics = ak.concatenate([kinematics, track_kinematics], axis=2)
@@ -171,7 +152,7 @@ def get_kinematics(tree, filter=None, muon_only=False, get_truth=False, max_even
     return kinematics, indeces
     
 
-def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, max_events=None, **kwargs):
+def get_plotting(tree, vars=[], muon_only=False, get_truth=False, start=None, stop=None, passBoth=False, **kwargs):
     """ get_plotting - This function will accept an uproot TTree object, and return the
     requested branches as numpy arrays. Branches are passed in as a list of strings to the
     "vars" keyword argument.
@@ -179,11 +160,12 @@ def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, m
     Arguments:
     tree - uproot TTree object
     vars - list of strings of branches to return
-    filter - boolean array to filter events, optional
     muon_only - boolean to return only muon kinematics, in practice just does not
     truncate away the 11k events with missing track information
     get_truth - If true, get the truth level data instead of reco
-    max_events - maximum number of events to process, optional
+    start - starting event index, optional
+    stop - stopping event index, optional
+    passBoth - If true, require events pass both reco and truth selections
 
     Returns:
     plotting - numpy array of requested branches, stacked along the second axis
@@ -192,44 +174,28 @@ def get_plotting(tree, vars=[], filter=None, muon_only=False, get_truth=False, m
     # Initialize empty list to hold requested branches
     plotting = []
 
-    # Compare the number of events with tracks to the number of events with muons
-    # If they are not the same we need to truncate
-    if not muon_only:
-        track_pt_key = 'pT_tracks'
-        if get_truth:
-            track_pt_key = 'truth_pT_tracks'
-        track_pts = tree[track_pt_key].array()
-        num_track_events = len(track_pts)
-        muon_pts = tree['pT_l1'].array()
-        num_muon_events = len(muon_pts)
-        num_good_events = min(num_track_events, num_muon_events)
-    # Else look at the leading muon pT to find the # of good events
-    else:
-        muon_pts = tree['pT_l1'].array()
-        num_good_events = len(muon_pts)
-
-    # Take the minimum of the number of good events and the max events
-    if max_events is not None:
-        take_events = min(num_good_events, max_events)
-    else:
-        take_events = num_good_events
+    # Get filter
+    prekey = ""
+    if get_truth:
+        prekey = "truth_"
+    evt_filter = ak.to_numpy(tree[prekey+'pass190'].array(entry_start=start, entry_stop=stop))
+    if passBoth:
+        p190 = ak.to_numpy(tree['pass190'].array(entry_start=start, entry_stop=stop))
+        truth_p190 = ak.to_numpy(tree['truth_pass190'].array(entry_start=start, entry_stop=stop))
+        evt_filter = np.logical_and(p190, truth_p190)
 
     # Loop over requested branches
     for var in vars:
         if get_truth:
             var = "truth_" + var
-        plotting.append(ak.to_numpy(tree[var].array()))
+        this_var = ak.to_numpy(tree[var].array(entry_start=start, entry_stop=stop))
+        plotting.append(this_var)
 
     # Stack requested branches
     plotting = np.stack(plotting, axis=1)
 
     # Apply filter if passed
-    if filter is not None:
-        plotting = plotting[filter == True,...]
-
-    # Take the correct number of events that pass filter
-    if max_events is not None:
-        plotting = plotting[:take_events,...]
+    plotting = plotting[evt_filter == True,...]
 
     return plotting
 
