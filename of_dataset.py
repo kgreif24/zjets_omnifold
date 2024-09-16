@@ -143,7 +143,7 @@ class OfDataset(torch.utils.data.Dataset):
 
             # Slice and zero pad the object indeces
             object_indeces = self.object_indeces[indeces,...]
-            object_indeces = utils.pad_kinematics(object_indeces, max_tracks=batch_max_tracks, fill=-1)
+            object_indeces = utils.pad_kinematics(object_indeces, max_tracks=batch_max_tracks, fill=999)
 
             # Get one hot encodings
             one_hots = utils.get_one_hot(kinematics, object_indeces, n_jets=self.n_jets)
