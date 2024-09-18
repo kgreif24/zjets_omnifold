@@ -9,12 +9,13 @@ import lightning as L
 import numpy as np
 import uproot
 import awkward as ak
+import pytest
 
 from of_dataset import OfDataset
 from lightning_module import *
 import data_utils as du
 
-
+@pytest.mark.slow
 def test_overfit(tmp_path):
 
     # Get data class
@@ -45,7 +46,7 @@ def test_overfit(tmp_path):
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=200,
+        max_epochs=300,
         enable_progress_bar=False,
         default_root_dir=tmp_path
     )
@@ -84,8 +85,8 @@ def test_lofdata(tmp_path):
 
     # Get data class, both reco and truth, using root weights
     data_module = LOfData(
-        source_file = './assets/small_evt_sample.root',
-        target_file = './assets/small_evt_sample.root',
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
         source_weight_path = 'root',
         target_weight_path = 'root',
         batch_size=10,
@@ -97,8 +98,8 @@ def test_lofdata(tmp_path):
     assert len(data_module.train_dataset) + len(data_module.val_dataset) == len(data_module.all_dataset)
 
     data_module_truth = LOfData(
-        source_file = './assets/small_evt_sample.root',
-        target_file = './assets/small_evt_sample.root',
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
         source_weight_path = 'root',
         target_weight_path = 'root',
         batch_size=10,
