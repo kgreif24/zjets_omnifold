@@ -17,44 +17,56 @@ import data_utils as du
 
 def test_overfit(tmp_path):
 
-    # Make and save some .npz files to use as weights
-    w1 = np.ones(100, dtype=np.float32)
-    w2 = 2 * np.ones(100, dtype=np.float32)
-    np.savez(f"{tmp_path}/source.npz", train=w1)
-    np.savez(f"{tmp_path}/target.npz", train=w2)
-
     # Get data class
     data_module = LOfData(
-        source_file = './assets/small_evt_sample.root',
-        target_file = './assets/small_evt_sample.root',
-        source_weight_path = f'{tmp_path}/source.npz',
-        target_weight_path = f'{tmp_path}/target.npz',
+        source_file='./assets/evts_000_100.root',
+        target_file='./assets/evts_200_300.root',
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=10,
         split_seed=-1,
         load_all=True,
+        muon_only=False,
         n_jets=4
     )
 
     # Get data loader
-    dl = data_module.predict_dataloader()
+    dl_train = data_module.test_dataloader(shuffle=True)
+    dl_pred = data_module.test_dataloader(shuffle=False)
 
     # Initialize model
     model = LOfTransformer(
+        debug=False,
         input_dim=9,
-        min_lr=1e-3,
-        max_lr=2e-3
+        min_lr=1e-4,
+        max_lr=2e-4,
+        no_w1=True
     )
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=10,
-        enable_progress_bar=True
+        max_epochs=200,
+        enable_progress_bar=False,
+        default_root_dir=tmp_path
     )
 
     # Overfit
-    trainer.fit(model, dl)
-    print("Done with quick train!")
-    assert False
+    trainer.fit(model, dl_train)
+
+    # Check that we have a small loss
+    final_loss = trainer.callback_metrics.get("train_loss")
+    assert final_loss < 0.1
+
+    # Run predict
+    predictions = trainer.predict(model, dl_pred)
+    predictions = np.concatenate([p.cpu().numpy().flatten() for p in predictions])
+
+    # Pass predictions through sigmoid and check they are reasonable
+    probs = 1 / (1 + np.exp(-predictions))
+    right_answers_low = np.concatenate([np.zeros(82), np.ones(83)-0.5])
+    right_answers_high = np.concatenate([np.zeros(82)+0.5, np.ones(83)])
+    test = np.logical_and(probs >= right_answers_low, probs <= right_answers_high)
+    assert np.all(test)
 
 
 def test_lofdata(tmp_path):
@@ -64,7 +76,7 @@ def test_lofdata(tmp_path):
     np.savez(f'{tmp_path}/weights.npz', train=random_weights)
 
     # Get standalone event sample
-    sample = './assets/small_evt_sample.root'
+    sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
     p190 = ak.to_numpy(t['pass190'].array())
