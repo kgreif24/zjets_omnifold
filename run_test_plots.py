@@ -40,14 +40,14 @@ tree2 = file2["OmniTree"]
 
 # Get filters
 if args.passBoth:
-    filter1 = np.logical_and(ak.to_numpy(tree1["truth_pass190"].array()), ak.to_numpy(tree1["pass190"].array()))
-    filter2 = np.logical_and(ak.to_numpy(tree2["truth_pass190"].array()), ak.to_numpy(tree2["pass190"].array()))
+    filter1 = np.logical_and(ak.to_numpy(tree1["truth_pass190"].array(entry_stop=max_events)), ak.to_numpy(tree1["pass190"].array(entry_stop=max_events)))
+    filter2 = np.logical_and(ak.to_numpy(tree2["truth_pass190"].array(entry_stop=max_events)), ak.to_numpy(tree2["pass190"].array(entry_stop=max_events)))
 elif args.step == 1:
-    filter1 = ak.to_numpy(tree1["pass190"].array())
-    filter2 = ak.to_numpy(tree2["pass190"].array())
+    filter1 = ak.to_numpy(tree1["pass190"].array(entry_stop=max_events))
+    filter2 = ak.to_numpy(tree2["pass190"].array(entry_stop=max_events))
 elif args.step == 2:
-    filter1 = ak.to_numpy(tree1["truth_pass190"].array())
-    filter2 = ak.to_numpy(tree2["truth_pass190"].array())
+    filter1 = ak.to_numpy(tree1["truth_pass190"].array(entry_stop=max_events))
+    filter2 = ak.to_numpy(tree2["truth_pass190"].array(entry_stop=max_events))
 
 # Truncate filters
 if len(filter1) > max_events:
@@ -57,9 +57,7 @@ if len(filter2) > max_events:
 
 # Get start / end weights, then truncate and filter weights
 if args.start_weights is None:
-    start_weights = ak.to_numpy(tree1["weight"].array())
-    if len(start_weights) > max_events:
-        start_weights = start_weights[:max_events]
+    start_weights = ak.to_numpy(tree1["weight"].array(entry_stop=max_events))
     start_weights = start_weights[filter1 == 1]
 else:
     start_weight_file = np.load(args.start_weights)
@@ -75,9 +73,7 @@ if len(end_weights) > max_events:
 end_weights = end_weights[filter1 == 1]
 
 # Get target weights
-targ_weights = ak.to_numpy(tree2["weight"].array())
-if len(targ_weights) > max_events:
-    targ_weights = targ_weights[:max_events]
+targ_weights = ak.to_numpy(tree2["weight"].array(entry_stop=max_events))
 targ_weights = targ_weights[filter2 == 1]
 
 # Concatenate the weights

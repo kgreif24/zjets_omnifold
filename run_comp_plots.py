@@ -153,9 +153,16 @@ labels = labels[pos_weights]
 plotting = plotting[pos_weights]
 # Track plots can handle negative weights, so leave them
 
-# Make the logged plots, using wasserstein metric class for the pre-computed overservables
+# Calculate the wasserstein distance between MC and pseudodata
+wass_og = WassersteinOne(hist_info=new_settings, draw_plots=False, save_location=args.store)
+wass_og.update(plotting, start_weights, start_weights, labels)
+w1_og, _ = wass_og.compute(from_torch=False, names=names, is_comp=False)
+print(f"Original Wasserstein One: {w1_og}")
+
+# Make the logged plots, using wasserstein metric class for the pre-computed overservables,
+# and also calculate the reweighted wasserstein distance
 wass = WassersteinOne(hist_info=new_settings, draw_plots=True, save_location=args.store)
 wass.update(plotting, start_weights, end_weights, labels)
 w1, plot_dict = wass.compute(from_torch=False, names=names, is_comp=True)
-print(f"Computed Wasserstein One: {w1}")
+print(f"Re-weighted Wasserstein One: {w1}")
 pu.make_inclusive_track_plots(kinematics, labels_track, start_weights_track, end_weights=end_weights_track, definitions=new_track_settings, save_location=args.store, names=names)

@@ -60,11 +60,15 @@ def test_get_kinematics():
     f = uproot.open(sample)
     t = f['OmniTree']
     nt = ak.to_numpy(t['Ntracks'].array())
+    p190 = ak.to_numpy(t['pass190'].array())
 
-    # Assert we have 100 events
+    # Filter the number of tracks
+    nt = nt[p190 == 1]
+
+    # Assert we have the expected number of events
     gk1, ind1 = du.get_kinematics(t)
-    assert len(gk1) == 100
-    assert len(ind1) == 100
+    assert len(gk1) == np.sum(p190)
+    assert len(ind1) == np.sum(p190)
 
     # Assert that we've taken the log of the pT (some negative values)
     assert np.any(gk1[:,0,:] < 0)
@@ -85,10 +89,11 @@ def test_get_plotting():
     sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
+    p190 = ak.to_numpy(t['pass190'].array())
 
     # Assert we have 100 events and 2 vars
     plotting = du.get_plotting(t, vars=['Ntracks', 'pT_ll'])
-    assert plotting.shape == (100, 2)
+    assert plotting.shape == (np.sum(p190), 2)
 
 
 def test_stack():
@@ -97,6 +102,7 @@ def test_stack():
     sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
+    p190 = ak.to_numpy(t['pass190'].array())
 
     # Get kinematics
     gk1, ind1 = du.get_kinematics(t)
@@ -116,4 +122,4 @@ def test_stack():
 
     # Concatenate one hot with kinematics
     gk1 = np.concatenate([gk1, one_hot], axis=1)
-    assert gk1.shape == (100, 10, 20)
+    assert gk1.shape == (np.sum(p190), 10, 20)
