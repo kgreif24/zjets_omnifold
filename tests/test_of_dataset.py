@@ -14,7 +14,7 @@ import numpy as np
 def test_of_dataset():
 
     # Hard code the event sample file
-    sample = './assets/small_evt_sample.root'
+    sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
 

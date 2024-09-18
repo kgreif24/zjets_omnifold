@@ -42,7 +42,8 @@ class LOfTransformer(L.LightningModule):
                  val_plots=None, 
                  test_plots=None,
                  log=False,
-                 debug=False, 
+                 debug=False,
+                 no_w1=False,
                  seed=420,
                  step=1,
                  min_lr=1e-5,
@@ -65,6 +66,7 @@ class LOfTransformer(L.LightningModule):
                 None by default, in which case testing plots will not be drawn
             log {bool} -- Set to true if we want to log plots to wandb. False by default
             debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
+            no_w1 {bool} -- Set to true if we want to disable the wasserstein metric
             seed {int} -- The random seed to use for the train / val split. Only used for logging
             step {int} -- Whether this training is for OF step one or two, only effects plot labeling
             min_lr {float} -- The minimum learning rate
@@ -78,6 +80,7 @@ class LOfTransformer(L.LightningModule):
 
         # Set instance vars
         self.debug = debug
+        self.no_w1 = no_w1
         self.seed = seed
         self.log_things = log
         self.step = step
@@ -107,7 +110,7 @@ class LOfTransformer(L.LightningModule):
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
-        if not self.debug:
+        if not (self.debug or self.no_w1):
             self.wasserstein_train = WassersteinOne(pu.default_settings, draw_plots=False)
             self.draw_val = True if val_plots != None else False
             self.draw_test = True if test_plots != None else False
@@ -141,7 +144,7 @@ class LOfTransformer(L.LightningModule):
         end_weights = network_weights * start_weights
 
         # Update wasserstein metric
-        if not self.debug:
+        if not (self.debug or self.no_w1):
             self.wasserstein_train.update(plotting, start_weights, end_weights, target)
 
         # Log training loss
@@ -153,7 +156,7 @@ class LOfTransformer(L.LightningModule):
     def on_train_epoch_end(self):
             
         # Log wasserstein metric
-        if not self.debug:
+        if not (self.debug or self.no_w1):
             train_wass, _ = self.wasserstein_train.compute()
             if self.log_things:
                 self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
@@ -183,15 +186,15 @@ class LOfTransformer(L.LightningModule):
         self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
 
         # Update wasserstein metric
-        if not self.debug:
+        if not (self.debug or self.no_w1):
             self.wasserstein_val.update(plotting, start_weights, end_weights, target)
 
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
 
-        # Just return if in debug mode
-        if self.debug:
+        # Just return if in debug mode or not update wasserstein metrics
+        if self.debug or self.no_w1:
             return
 
         # Don't do anything but reset metric on validation sanity check
@@ -228,15 +231,15 @@ class LOfTransformer(L.LightningModule):
         self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
 
         # Update wasserstein metric
-        if not self.debug:
+        if not (self.debug or self.no_w1):
             self.wasserstein_test.update(plotting, start_weights, end_weights, target)
 
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
 
-        # Just return if in debug mode
-        if self.debug:
+        # Just return if in debug mode or not using wasserstein metrics
+        if self.debug or self.no_w1:
             return
 
         # Calculate wasserstein metric, and get dictionary of plots to log
@@ -607,9 +610,11 @@ class LOfData(L.LightningDataModule):
 
 
     # Test dataloader
-    def test_dataloader(self):
+    def test_dataloader(self, shuffle=False):
         """ test_dataloader - This method returns a pytorch dataloader for running predictions. It always yeilds the full dataset.
-        Be sure to only use this when testing is set to true.
+
+        Arguments:
+            shuffle {bool} -- Set to true if we want to shuffle the data. Defaults to false.
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
@@ -618,14 +623,14 @@ class LOfData(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.all_dataset,
             batch_size=self.batch_size,
-            shuffle=False,
+            shuffle=shuffle,
             num_workers=self.dataloader_workers,
             collate_fn=custom_collate
         )
 
 
     # Predict dataloader
-    def predict_dataloader(self):
+    def predict_dataloader(self, shuffle=False):
         """ predict_dataloader - This method returns a pytorch dataloader for running predictions. 
         Yields either the validation or the source data set depending on whether "load_all" is set to true.
         If load_all is false then we are running prediction to form validation plots during training.
@@ -639,7 +644,7 @@ class LOfData(L.LightningDataModule):
             return torch.utils.data.DataLoader(
                 self.source_dataset,
                 batch_size=self.batch_size,
-                shuffle=False,
+                shuffle=shuffle,
                 num_workers=self.dataloader_workers,
                 collate_fn=custom_collate
             )
@@ -647,7 +652,7 @@ class LOfData(L.LightningDataModule):
             return torch.utils.data.DataLoader(
                 self.val_dataset,
                 batch_size=self.batch_size,
-                shuffle=False,
+                shuffle=shuffle,
                 num_workers=self.dataloader_workers,
                 collate_fn=custom_collate
             )

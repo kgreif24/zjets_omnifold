@@ -56,7 +56,7 @@ def test_get_one_hot():
 def test_get_kinematics():
 
     # Hardcode the location of the event sample
-    sample = './assets/small_evt_sample.root'
+    sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
     nt = ak.to_numpy(t['Ntracks'].array())
@@ -82,7 +82,7 @@ def test_get_kinematics():
 def test_get_plotting():
 
     # Hardcode the location of the event sample
-    sample = './assets/small_evt_sample.root'
+    sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
 
@@ -94,7 +94,7 @@ def test_get_plotting():
 def test_stack():
 
     # Hardcode the location of the event sample
-    sample = './assets/small_evt_sample.root'
+    sample = './assets/evts_000_100.root'
     f = uproot.open(sample)
     t = f['OmniTree']
 
