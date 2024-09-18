@@ -309,7 +309,8 @@ class LOfData(L.LightningDataModule):
         split_seed=-1,
         load_all=False,
         testing=False,
-        use_truth=False
+        use_truth=False,
+        **kwargs
     ):
         """ __init__ - This method initializes the LOfData class. It takes
         the path to the Monte Carlo and data files as arguments.
@@ -323,8 +324,6 @@ class LOfData(L.LightningDataModule):
                 Defaults to None, which means all events are considered.
             max_events_target {int} -- The maximum number of events to consider for the target data.
                 Defaults to None, which means all events are considered.
-            max_tracks {int} -- The maximum number of tracks to consider.
-                Defaults to None, which means all tracks are considered.
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
@@ -335,6 +334,7 @@ class LOfData(L.LightningDataModule):
             testing {bool} - Set to true for data module to load testing weights (not training)
             use_truth {bool} - Set to true if we want to use truth level information
                 for the data module. Defaults to false.
+            **kwargs - Passed to the OfDataset classes
         """
 
         # Set class attributes
@@ -410,7 +410,7 @@ class LOfData(L.LightningDataModule):
             source_weights,
             source_plotting,
             object_indeces=source_indeces,
-            max_tracks=self.max_tracks
+            **kwargs
         )
         self.all_dataset = OfDataset(
             self.kinematics,
@@ -418,7 +418,7 @@ class LOfData(L.LightningDataModule):
             weights, 
             self.plotting,
             object_indeces=self.indeces,
-            max_tracks=self.max_tracks
+            **kwargs
         )
         rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
