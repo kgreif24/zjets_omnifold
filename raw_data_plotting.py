@@ -42,22 +42,20 @@ tree2 = file2["OmniTree"]
 
 # Get filters
 if args.truth1:
-    filter1 = ak.to_numpy(tree1["truth_pass190"].array())
+    filter1 = ak.to_numpy(tree1["truth_pass190"].array(entry_stop=max_events))
 else:
-    filter1 = ak.to_numpy(tree1["pass190"].array())
+    filter1 = ak.to_numpy(tree1["pass190"].array(entry_stop=max_events))
 
 if args.truth2:
-    filter2 = ak.to_numpy(tree2["truth_pass190"].array())
+    filter2 = ak.to_numpy(tree2["truth_pass190"].array(entry_stop=max_events))
 else:
-    filter2 = ak.to_numpy(tree2["pass190"].array())
+    filter2 = ak.to_numpy(tree2["pass190"].array(entry_stop=max_events))
 
 # Get weights and filter weights
-weights1 = ak.to_numpy(tree1["weight"].array())
+weights1 = ak.to_numpy(tree1["weight"].array(entry_stop=max_events))
 weights1 = weights1[filter1 == 1]
-weights1 = weights1[:max_events]
-weights2 = ak.to_numpy(tree2["weight"].array())
+weights2 = ak.to_numpy(tree2["weight"].array(entry_stop=max_events))
 weights2 = weights2[filter2 == 1]
-weights2 = weights2[:max_events]
 weights = np.concatenate([weights1, weights2], axis=0)
 
 # Make labels
@@ -67,13 +65,13 @@ labels = np.concatenate([labels1, labels2], axis=0)
 
 # Get the plot data
 plotting_variables = pu.default_settings.keys()
-plotting1 = du.get_plotting(tree1, vars=plotting_variables, filter=filter1, get_truth=args.truth1, max_events=max_events)
-plotting2 = du.get_plotting(tree2, vars=plotting_variables, filter=filter2, get_truth=args.truth2, max_events=max_events)
+plotting1 = du.get_plotting(tree1, vars=plotting_variables, get_truth=args.truth1, stop=max_events)
+plotting2 = du.get_plotting(tree2, vars=plotting_variables, get_truth=args.truth2, stop=max_events)
 plotting = np.concatenate([plotting1, plotting2], axis=0)
 
 # Get the track kinematics
-kinematics1, _ = du.get_kinematics(tree1, filter=filter1, get_truth=args.truth1, max_events=max_events)
-kinematics2, _ = du.get_kinematics(tree2, filter=filter2, get_truth=args.truth2, max_events=max_events)
+kinematics1, _ = du.get_kinematics(tree1, get_truth=args.truth1, stop=max_events)
+kinematics2, _ = du.get_kinematics(tree2, get_truth=args.truth2, stop=max_events)
 
 # Zero pad and concatenate kinematics
 kinematics1 = du.pad_kinematics(kinematics1, max_tracks)
@@ -104,5 +102,5 @@ if args.truth2:
 names = (args.name1, args.name2)
 
 # Make the logged plots
-# pu.make_logged_plots(plotting, labels, weights, weights, definitions=new_settings, save_location=args.store, names=names)
+pu.make_logged_plots(plotting, labels, weights, weights, definitions=new_settings, save_location=args.store, names=names)
 pu.make_inclusive_track_plots(kinematics, labels, weights, weights, definitions=new_track_settings, save_location=args.store, names=names)

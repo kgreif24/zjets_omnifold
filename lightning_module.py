@@ -303,8 +303,8 @@ class LOfData(L.LightningDataModule):
         target_file=None,
         source_weight_path=None,
         target_weight_path=None,
-        max_events_source=None,
-        max_events_target=None,
+        max_events_source=np.inf,
+        max_events_target=np.inf,
         max_tracks=None,
         muon_only=False,
         batch_size=256,
@@ -324,9 +324,9 @@ class LOfData(L.LightningDataModule):
             source_weight_path {string} -- Path to a .npz file containing weights for the source data
             target_weight_path {string} -- Path to a .npz file containing weights for the target data
             max_events_source {int} -- The maximum number of events to consider for the source data.
-                Defaults to None, which means all events are considered.
+                Defaults to inf, which means all events are considered.
             max_events_target {int} -- The maximum number of events to consider for the target data.
-                Defaults to None, which means all events are considered.
+                Defaults to inf, which means all events are considered.
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
