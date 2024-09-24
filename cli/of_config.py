@@ -62,11 +62,11 @@ class OfConfig:
         )
         self.parser.add_argument('--split_seed', type=int, default=-1, help='Seed for the train / validation split, set to -1 to produce random seed at train time')
         self.parser.add_argument('--max_tracks', type=int, default=264, help='Maximum number of tracks to use in the data')
-        self.parser.add_argument('--max_train_step_one', type=int, default=None, 
+        self.parser.add_argument('--max_train_step_one', type=int, default=99999999, 
                                  help='Maximum number of events to use in step one. Applied to both MC and data')
-        self.parser.add_argument('--max_train_step_two', type=int, default=None,
+        self.parser.add_argument('--max_train_step_two', type=int, default=99999999,
                                  help='Maximum number of events to use in step two. Applied to both copies of MC')
-        self.parser.add_argument('--max_test_target', type=int, default=None,
+        self.parser.add_argument('--max_test_target', type=int, default=99999999,
                                  help='Maximum number of events to use in testing / prediction for the target. Applied to both steps')
 
         # Training
@@ -120,30 +120,22 @@ class OfConfig:
 
 
 
-    def __init__(self, existing_parser=None, config_name=None):
+    def __init__(self, config_name=None):
         """ init function for the OfConfig class.
 
         Arguments:
-        existing_parser - An existing parser to add arguments to. If this is None, then a new parser is created.
         config_name - The name of the configuration file to load. If this is None, then the default settings are used
 
         Returns:
         None
         """
 
-        # Create a new parser if one is not provided
-        if existing_parser is None:
-            self.parser = argparse.ArgumentParser(description='Omnifold algorithm hyperparameters')
-        else:
-            self.parser = existing_parser
+        # Make a parser
+        self.parser = argparse.ArgumentParser(description='Omnifold algorithm hyperparameters')
 
         # Load and parse command line args
         self.add_default_arguments()
         self.args, unknown = self.parser.parse_known_args()
-
-        # Pull config name from the existing args if it exists
-        if (config_name is None) and (hasattr(self.args, 'config')):
-            config_name = self.args.config
 
         # If a configuration file is provided, load it
         if config_name is not None:
@@ -157,8 +149,8 @@ class OfConfig:
 
     def __getattr__(self, name):
         """ __getattr__ - This function allows the OfConfig object to access the arguments
-        as instance variables. Function first looks for name in command line args that are not default values.
-        Then it looks for name in yaml config. Then it takes the default value. 
+        as instance variables. Function first looks for value in a loaded config file.
+        If none exists, then we take the default 
         
         If the instance variable is not found in any of these places, then the function raises an exception
         and exits.
@@ -170,15 +162,12 @@ class OfConfig:
         The value of the instance variable
         """
 
-        # First look for the name in parsed args that are not default values
-        if (name in vars(self.args).keys()) and (getattr(self.args, name) != self.parser.get_default(name)):
-            return getattr(self.args, name)
-
-        # If there are no non-default values, look for the name in the configuration file
+        # Look for the name in the configuration file
         if self.config is not None and name in self.config:
+            print("Getting ", name, " from config")
             return self.config[name]
             
-        # If both of these fail take the default value
+        # If this fails take the default value
         try:
             return getattr(self.args, name)
         # If the instance variable is not found in the parsed args or the configuration file, raise exception
@@ -188,11 +177,34 @@ class OfConfig:
             sys.exit(1)
 
 
-    def create_template(self, arg_blacklist=None):
+    # def __setattr__(self, name: str, value) -> None:
+    #     """ __setattr__ - This function allows the OfConfig object to set the arguments
+    #     as instance variables. Function first looks for value in a loaded config file.
+    #     If none exists, then we take the default 
+        
+    #     If the instance variable is not found in any of these places, then the function raises an exception
+    #     and exits.
+
+    #     Arguments:
+    #     name - The name of the instance variable to access
+    #     value - The value to set the instance variable to
+
+    #     Returns:
+    #     None
+    #     """
+
+    #     # Look for the name in the configuration file
+    #     assert self.config is not None
+    #     print("Setting ", name, " in config")
+    #     self.config[name] = value
+
+
+    def create_template(self, template_path='./default_of_template.yml', arg_blacklist=None):
         """ create_template - Create a template for the configuration file. This template
         is a YAML file with all of the default arguments set to default values
 
         Arguments:
+        name - The name of the template file
         arg_blacklist - A list of arguments to exclude from the template
 
         Returns:
@@ -202,34 +214,40 @@ class OfConfig:
         # Get a list of all the default arguments
         base_args = vars(self.args).keys()
 
-        # Create a yaml file to store the template
-        template_path = "default_of_template.yml"
-
         # Write the template to the file
         with open(template_path, 'w') as f:
             f.write("# This is a config file for the Omnifold algorithm\n" + \
                     f"# It was created on {datetime.now()}\n\n")
 
-            # Add all of the default arguments to the template, with the help as a comment
-            # if we have it
+            # Look through all of the arguments in the PARSER
             for arg in base_args:
+
+                # If the argument is in the blacklist, skip it
                 if arg_blacklist is not None and arg in arg_blacklist:
                     continue
+
+                # Get the comment for the argument and write
                 comment = self.parser._option_string_actions["--"+arg].help
                 if comment is not None:
                     f.write(f"\n# {comment}\n")
-                if getattr(self.args, arg) is not None:
-                    f.write(f"{arg}: {getattr(self.args, arg)}\n")
+
+                # Write the argument to the file, pulling first from the config
+                # and second from the default settings
+                this_attr = self.__getattr__(arg)
+                if this_attr is not None:
+                    # Also format floating point numbers to avoid scientific notation
+                    if type(this_attr) == float:
+                        this_attr = f"{this_attr:.9f}"
+                    f.write(f"{arg}: {this_attr}\n")
                 else:
                     f.write(f"{arg}: null\n")
 
         print("Created template file at: ", template_path)
 
 
-# Testing code
+# Main function for minting a new configuration file
 if __name__ == '__main__':
 
-    # Create a new OfConfig object
     config = OfConfig()
     config.create_template()
     config = OfConfig(config_name="default_of_template.yml")

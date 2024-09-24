@@ -27,7 +27,7 @@ class Omnifolder():
     classifiers. This is handled in processes spawned by this class.
     """
 
-    def __init__(self, config_path, continue_iteration=0, continue_step_two=False, index=None):
+    def __init__(self, config_path, continue_iteration=0, continue_step_two=False, index=None, use_slurm=True):
         """ __init__ - This function initializes the omnifolder object.
 
         Arguments:
@@ -36,6 +36,7 @@ class Omnifolder():
         continue_step_two - If true, continue from step two
         index - The index of the ensemble to run. Add this number to the end of the group ID
              if it is not None
+        use_slurm - If true, preprend training and evaluation commands with slurm directives
 
         Returns:
         None
@@ -46,9 +47,11 @@ class Omnifolder():
         print("############## Welcome to Omnifold!! ##############")
         print("###################################################\n\n")
 
-        print("Is CUDA available: ", torch.cuda.is_available())
-        print("CUDA device count: ", torch.cuda.device_count())
-        print("CUDA device name: ", torch.cuda.get_device_name(0))
+        cuda_available = torch.cuda.is_available()
+        print("Is CUDA available: ", cuda_available)
+        if cuda_available:
+            print("CUDA device count: ", torch.cuda.device_count())
+            print("CUDA device name: ", torch.cuda.get_device_name(0))
 
         if continue_iteration != 0:
             print("Continuing from iteration ", continue_iteration)
@@ -57,13 +60,17 @@ class Omnifolder():
 
         # Set config path and config object as instance variables
         self.config_path = config_path
+        print("Omnifolder class trying to load config from file", config_path)
         self.cfg = OfConfig(config_name=config_path)
+        print("Max train step 1 from config", self.cfg.max_train_step_one)
+        print("Config path within config lol ", self.cfg.config_path)
 
         # Set some instance variables for tracking progress through the procedure
         self.current_iteration = continue_iteration
         self.continue_step_two = continue_step_two
         self.end_iteration = self.current_iteration + self.cfg.num_iterations
         self.index = index
+        self.use_slurm = use_slurm
 
         # Login to wandb
         if self.cfg.wandb:
@@ -115,12 +122,6 @@ class Omnifolder():
 
         # Run training as a subprocess
         train_args = [
-            "srun",
-            "--ntasks-per-node", str(self.cfg.num_gpus),
-            "-c", "32",
-            "--cpu_bind=cores",
-            "-G", str(self.cfg.num_gpus),
-            "--gpu-bind=none",
             "python", 
             "lightning_train.py", 
             "--config_path", 
@@ -134,6 +135,17 @@ class Omnifolder():
             "--index",
             str(self.index)
         ]
+        if self.use_slurm:
+            slurm_args = [
+                "srun",
+                "--ntasks-per-node", str(self.cfg.num_gpus),
+                "-c", "128",
+                "--cpu_bind=cores",
+                "-G", str(self.cfg.num_gpus),
+                "--gpu-bind=none" 
+            ]
+            train_args = slurm_args + train_args
+        print(train_args)
         train_code, output = capture_subprocess_output(train_args)
         if train_code != 0:
             print("Error running training subprocess!")
@@ -158,12 +170,6 @@ class Omnifolder():
 
         # Run evaluation as a subprocess, no need to keep output
         eval_args = [
-            "srun",
-            "-n", "1",
-            "-c", "32",
-            "--cpu_bind=cores",
-            "-G", "1",
-            "--gpu-bind=none",
             "python", 
             "lightning_eval.py",
             "--check_path",
@@ -179,6 +185,16 @@ class Omnifolder():
             "--index",
             str(self.index)
         ]
+        if self.use_slurm:
+            slurm_args = [
+                "srun",
+                "-n", "1",
+                "-c", "128",
+                "--cpu_bind=cores",
+                "-G", "1",
+                "--gpu-bind=none",
+            ]
+            eval_args = slurm_args + eval_args
         test_code, _ = capture_subprocess_output(eval_args)
         if test_code != 0:
             print("Error running evaluation subprocess!")
