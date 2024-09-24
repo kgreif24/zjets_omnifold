@@ -29,6 +29,18 @@ def test_comp_plot_script(tmp_path):
     # Check that the plots were made
     assert (tmp_path / 'pT_ll.png').exists()
 
+    # Check that we got the correct W1 values
+    output = result.stdout
+    lines = output.splitlines()
+    for line in reversed(lines):
+        if re.search('Original Wasserstein One:', line):
+            ogw1 = float(line.split()[-1])
+        if re.search('Re-weighted Wasserstein One:', line):
+            rw1 = float(line.split()[-1])
+
+    assert ogw1 == pytest.approx(46.3759, rel=1e-3)
+    assert rw1 == pytest.approx(186.8033, rel=1e-3)
+
 
 def test_test_plot_script(tmp_path):
 

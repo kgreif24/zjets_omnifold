@@ -58,7 +58,7 @@ class OfTrain:
         os.makedirs(checkpoint_dir, exist_ok=True)
 
         # Get weights for use in training. Define (but do not make!) the weight directory
-        weight_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights"
+        weight_dir = f"./{checkpoint_dir}/weights"
 
         # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
         # to use (two copies of MC used for step two currently does not fit in memory)
@@ -96,6 +96,14 @@ class OfTrain:
                 target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
             max_events_source = self.config.max_train_step_two
             max_events_target = self.config.max_train_step_two
+
+        try:
+            assert type(max_events_source) == int
+            assert type(max_events_target) == int
+        except:
+            print(f"max_events_source: {max_events_source}")
+            print(f"max_events_target: {max_events_target}")
+            raise ValueError("max_events_source and max_events_target must be integers!")
 
         # Build the data module
         self.d_module = LOfData(
@@ -151,8 +159,8 @@ class OfTrain:
 
         # Build trainer
         self.trainer = L.Trainer(
-            accelerator='gpu',
-            devices=self.config.num_gpus,
+            accelerator='auto' if self.config.debug else 'gpu',
+            devices='auto' if self.config.debug else self.config.num_gpus,
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,

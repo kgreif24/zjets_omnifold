@@ -107,3 +107,13 @@ class BaseMetric(torchmetrics.Metric):
 
         # Return the plot dictionary
         return plot_dict
+
+
+    def reset(self):
+        """ reset - Reset the metric state."""
+        self.plotting = []
+        self.start_weights = []
+        self.end_weights = []
+        self.target = []
+
+        super().reset()

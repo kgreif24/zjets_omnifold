@@ -70,11 +70,12 @@ class OfEval:
         self.max_tracks = 150
 
         # Make directories for storing plots and weights
-        self.test_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/test_plots'
+        checkpoint_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        self.test_dir = f'./{checkpoint_dir}/{self.run_id}/test_plots'
         os.makedirs(self.test_dir, exist_ok=True)
-        self.comp_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/comp_plots'
+        self.comp_dir = f'./{checkpoint_dir}/{self.run_id}/comp_plots'
         os.makedirs(self.comp_dir, exist_ok=True)
-        self.weight_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}/weights'
+        self.weight_dir = f'./{checkpoint_dir}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
 
         # Change the save location if the store argument is set
@@ -102,7 +103,7 @@ class OfEval:
             else:
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
-            max_events_source = None  # Want to use all events!
+            max_events_source = np.inf  # Want to use all events!
             max_events_target = self.config.max_test_target
         # For step two:
         if self.step == 2:
@@ -121,7 +122,7 @@ class OfEval:
             else:
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
-            max_events_source = None  # Want to use all events!
+            max_events_source = np.inf  # Want to use all events!
             max_events_target = self.config.max_test_target
 
 
@@ -171,7 +172,7 @@ class OfEval:
                 project=self.config.project_name, 
                 group=self.config.group_name,
                 name=run_name,
-                save_dir=self.config.checkpoint_dir,
+                save_dir=checkpoint_dir,
                 id=self.run_id,
                 resume="must"
             )
@@ -197,7 +198,7 @@ class OfEval:
 
         # Make lightning trainer for testing
         self.trainer = L.Trainer(
-            accelerator='gpu', 
+            accelerator='cpu' if self.config.debug else 'gpu', 
             devices=1,
             logger=self.wandb_logger,
             enable_progress_bar=self.config.interactive
@@ -303,24 +304,24 @@ class OfEval:
         tree_pd = f_pd["OmniTree"]
 
         # Get the truth level pass190 filters
-        filter_mc = ak.to_numpy(tree_mc["truth_pass190"].array())
-        filter_pd = ak.to_numpy(tree_pd["truth_pass190"].array())
+        filter_mc = ak.to_numpy(tree_mc["truth_pass190"].array(entry_stop=self.n_compare_events))
+        filter_pd = ak.to_numpy(tree_pd["truth_pass190"].array(entry_stop=self.n_compare_events))
 
         # Get the plot data
-        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
-        plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
+        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), get_truth=True, stop=self.n_compare_events)
+        plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), get_truth=True, stop=self.n_compare_events)
 
         # Get the track kinematics
-        kinematics_mc, _ = du.get_kinematics(tree_mc, filter=filter_mc, get_truth=True, max_events=self.n_compare_events)
-        kinematics_pd, _ = du.get_kinematics(tree_pd, filter=filter_pd, get_truth=True, max_events=self.n_compare_events)
+        kinematics_mc, _ = du.get_kinematics(tree_mc, get_truth=True, stop=self.n_compare_events)
+        kinematics_pd, _ = du.get_kinematics(tree_pd, get_truth=True, stop=self.n_compare_events)
 
         # Pad kinematics
         kinematics_mc = du.pad_kinematics(kinematics_mc, max_tracks=self.max_tracks)
         kinematics_pd = du.pad_kinematics(kinematics_pd, max_tracks=self.max_tracks)
 
         # Slice the track kinematics (log pT, eta, cos(phi), sin(phi))
-        kinematics_mc = kinematics_mc[:,:4,2:]
-        kinematics_pd = kinematics_pd[:,:4,2:]
+        kinematics_mc = kinematics_mc[:,:3,2:]
+        kinematics_pd = kinematics_pd[:,:3,2:]
 
         # Concatenate the truth level MC and truth level pseudodata
         plotting = np.concatenate([plotting_mc, plotting_pd], axis=0)
@@ -332,17 +333,17 @@ class OfEval:
         labels = np.concatenate([labels_mc, labels_pd], axis=0)
 
         # Get start weights for MC and truth pseudodata
-        root_weights_mc = ak.to_numpy(tree_mc['weight'].array())
+        root_weights_mc = ak.to_numpy(tree_mc['weight'].array(entry_stop=self.n_compare_events))
         root_weights_mc = root_weights_mc[filter_mc == 1]
-        root_weights_mc = root_weights_mc[:self.n_compare_events]
-        root_weights_pd = ak.to_numpy(tree_pd['weight'].array())
+        root_weights_pd = ak.to_numpy(tree_pd['weight'].array(entry_stop=self.n_compare_events))
         root_weights_pd = root_weights_pd[filter_pd == 1]
-        root_weights_pd = root_weights_pd[:self.n_compare_events]
         start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
 
         # Make end weights
-        mc_end_weights = self.all_updated_weights_test[filter_mc == 1]
-        mc_end_weights = mc_end_weights[:self.n_compare_events]
+        mc_end_weights = self.all_updated_weights_test
+        if len(self.all_updated_weights_test) > self.n_compare_events:
+            mc_end_weights = self.all_updated_weights_test[:self.n_compare_events]
+        mc_end_weights = mc_end_weights[filter_mc == 1]
         end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
 
         # Update and compute metrics, generate plots

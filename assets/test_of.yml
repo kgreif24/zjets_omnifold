@@ -1,0 +1,153 @@
+# This is a config file for the Omnifold algorithm
+# It was created on 2024-09-24 05:31:09.152919
+
+
+# Path to the configuration file
+config_path: 'test_config'
+
+# Run in debug mode (single device, muons only)
+debug: True
+
+# Run in interactive mode with progress bars
+interactive: False
+
+# Number of iterations to run the Omnifold algorithm
+num_iterations: 1
+
+# Path for the MC training data
+mc_train_path: ./assets/evts_000_100.root
+
+# Path for the MC testing data
+mc_test_path: ./assets/evts_100_200.root
+
+# Path for the data
+data_path: ./assets/evts_200_300.root
+
+# Path to the truth pseudodata
+truth_data_path: ./assets/truth_evts_000_100.root
+
+# Seed for the train / validation split, set to -1 to produce random seed at train time
+split_seed: -1
+
+# Maximum number of tracks to use in the data
+max_tracks: 264
+
+# Maximum number of events to use in step one. Applied to both MC and data
+max_train_step_one: 999999999
+
+# Maximum number of events to use in step two. Applied to both copies of MC
+max_train_step_two: 999999999
+
+# Maximum number of events to use in testing / prediction for the target. Applied to both steps
+max_test_target: 999999999
+
+# Batch size for training
+batch_size: 256
+
+# Batch size for testing
+test_batch_size: 256
+
+# Maximum number of epochs to train for
+max_epochs: 1
+
+# Number of top checkpoints to save
+top_k_checkpoints: 1
+
+# Number of epochs to wait before stopping training
+early_stopping_patience: 1
+
+# Number of GPUs to use for training
+num_gpus: 0
+
+# Minimum learning rate for step one training
+s1_min_lr: 0.000008000
+
+# Maximum learning rate for step one training
+s1_max_lr: 0.000050000
+
+# Minimum learning rate for step two training
+s2_min_lr: 0.000050000
+
+# Maximum learning rate for step two training
+s2_max_lr: 0.000100000
+
+# Decay with iteration for step one trainings maximum learning rate
+s1_max_decay: 1.000000000
+
+# Decay with iteration for step two trainings maximum learning rate
+s2_max_decay: 1.000000000
+
+# Number of steps in a cycle
+cycle_steps: 50000
+
+# Number of steps to warm up the learning rate
+warmup_steps: 10000
+
+# Gamma for the learning rate scheduler
+gamma: 0.850000000
+
+# Use wandb for logging
+wandb: False
+
+# Name of the wandb project
+project_name: test-of
+
+# Name of the wandb group for all training runs
+group_name: test-of-run
+
+# Directory in which save model checkpoints
+checkpoint_dir: ./checkpoints
+
+# Plot validation results
+plot_val: False
+
+# Input dimension for the model
+input_dim: 11
+
+# Pair input dimension for the model
+pair_input_dim: 4
+
+# Remove self pair from the model
+remove_self_pair: False
+
+# Use the sequence trimmer in training the model
+run_trimmer: False
+
+# Embedding dimensions for the model
+embed_dims: [128, 512, 128]
+
+# Pair embedding dimensions for the model
+pair_embed_dims: [64, 64, 64]
+
+# Number of heads for the model
+num_heads: 8
+
+# Number of layers for the model
+num_layers: 8
+
+# Dropout rate to use in regular attention blocks
+block_dropout: 0.000000000
+
+# Attention dropout rate to use in regular attention blocks
+block_attn_dropout: 0.000000000
+
+# Activation dropout rate to use in regular attention blocks
+block_activation_dropout: 0.000000000
+
+# Number of classification layers for the model
+num_cls_layers: 2
+
+# Dropout rate to use in classification attention blocks
+cls_block_dropout: 0.000000000
+
+# Attention dropout rate to use in classification attention blocks
+cls_block_attn_dropout: 0.000000000
+
+# Activation dropout rate to use in classification attention blocks
+cls_block_activation_dropout: 0.000000000
+
+# Fully connected nodes for the model
+fc_nodes: [256, 256]
+
+# Dropout rate to use in fully connected layers
+fc_dropout: 0.000000000
