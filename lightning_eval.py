@@ -70,12 +70,12 @@ class OfEval:
         self.max_tracks = 150
 
         # Make directories for storing plots and weights
-        checkpoint_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
-        self.test_dir = f'./{checkpoint_dir}/{self.run_id}/test_plots'
+        checkpoint_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        self.test_dir = f'{checkpoint_dir}/{self.run_id}/test_plots'
         os.makedirs(self.test_dir, exist_ok=True)
-        self.comp_dir = f'./{checkpoint_dir}/{self.run_id}/comp_plots'
+        self.comp_dir = f'{checkpoint_dir}/{self.run_id}/comp_plots'
         os.makedirs(self.comp_dir, exist_ok=True)
-        self.weight_dir = f'./{checkpoint_dir}/weights'
+        self.weight_dir = f'{checkpoint_dir}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
 
         # Change the save location if the store argument is set
