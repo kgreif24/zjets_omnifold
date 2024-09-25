@@ -10,7 +10,7 @@ def test_config(tmp_path):
 
     # Trying to set an attribute without an existing config file should raise an error
     try:
-        config.checkpoint_dir = "test"
+        config.mod_config("checkpoint_dir", "test")
         assert False
     except AttributeError:
         assert True
@@ -19,15 +19,15 @@ def test_config(tmp_path):
     config_name = tmp_path / 'config.yaml'
     config.create_template(template_path=config_name)
 
-    # Load the config and set an attribute
+    # Load the template and set an attribute
     config = OfConfig(config_name=config_name)
-    config.checkpoint_dir = "test"
+    config.mod_config("checkpoint_dir", "test")
     assert config.checkpoint_dir == "test"
 
-    # Write another template
+    # Write the template again
     config.create_template(template_path=config_name)
 
-    # Load this template and check that we have the correct attribute passed down
+    # Load template again and check that we have the correct attribute passed down
     config = OfConfig(config_name=config_name)
     assert config.checkpoint_dir == "test"
 

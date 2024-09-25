@@ -162,10 +162,18 @@ class OfConfig:
         The value of the instance variable
         """
 
+        # Return config object if asked for
+        if name == 'config':
+            return self.config
+
         # Look for the name in the configuration file
-        if self.config is not None and name in self.config:
+        if self.config is not None:
             print("Getting ", name, " from config")
-            return self.config[name]
+            try:
+                val = self.config[name]
+            except:
+                raise AttributeError(f"Config has no field {name}")
+            return val
             
         # If this fails take the default value
         try:
@@ -177,26 +185,27 @@ class OfConfig:
             sys.exit(1)
 
 
-    # def __setattr__(self, name: str, value) -> None:
-    #     """ __setattr__ - This function allows the OfConfig object to set the arguments
-    #     as instance variables. Function first looks for value in a loaded config file.
-    #     If none exists, then we take the default 
-        
-    #     If the instance variable is not found in any of these places, then the function raises an exception
-    #     and exits.
+    def mod_config(self, name: str, value) -> None:
+        """ mod_config - This function modifies the config loaded from a yaml file at a given name and value.
+        If no yaml file has been loaded, then this function raises and exception.
 
-    #     Arguments:
-    #     name - The name of the instance variable to access
-    #     value - The value to set the instance variable to
+        Arguments:
+        name - The name of the field to modify in the config
+        value - The new value of the field
 
-    #     Returns:
-    #     None
-    #     """
+        Returns:
+        None
+        """
 
-    #     # Look for the name in the configuration file
-    #     assert self.config is not None
-    #     print("Setting ", name, " in config")
-    #     self.config[name] = value
+        # Make sure we have a config loaded
+        try:
+            assert self.config is not None
+        except:
+            raise AttributeError("Config object has no yaml file loaded to modify!")
+
+        # If so set the field to the new value
+        print(f"Setting field {name} in config to {value}")
+        self.config[name] = value
 
 
     def create_template(self, template_path='./default_of_template.yml', arg_blacklist=None):
