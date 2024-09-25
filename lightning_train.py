@@ -54,11 +54,11 @@ class OfTrain:
             self.config.group_name = f"{self.config.group_name}_{index}"
 
         # Make directory for saving checkpoints
-        checkpoint_dir = f"./{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        checkpoint_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
         os.makedirs(checkpoint_dir, exist_ok=True)
 
         # Get weights for use in training. Define (but do not make!) the weight directory
-        weight_dir = f"./{checkpoint_dir}/weights"
+        weight_dir = f"{checkpoint_dir}/weights"
 
         # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
         # to use (two copies of MC used for step two currently does not fit in memory)
@@ -168,7 +168,7 @@ class OfTrain:
         )
 
         # Make directories for saving validation plots in the rank zero process
-        val_dir = f'./{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
+        val_dir = f'{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
         if self.trainer.global_rank == 0 and self.config.plot_val:
             os.makedirs(val_dir, exist_ok=True)
         else:

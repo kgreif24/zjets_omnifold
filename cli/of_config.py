@@ -168,7 +168,6 @@ class OfConfig:
 
         # Look for the name in the configuration file
         if self.config is not None:
-            print("Getting ", name, " from config")
             try:
                 val = self.config[name]
             except:
@@ -204,7 +203,6 @@ class OfConfig:
             raise AttributeError("Config object has no yaml file loaded to modify!")
 
         # If so set the field to the new value
-        print(f"Setting field {name} in config to {value}")
         self.config[name] = value
 
 
