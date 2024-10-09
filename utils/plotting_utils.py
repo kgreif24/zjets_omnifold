@@ -742,8 +742,6 @@ def ibu_performance_plot(obs_dict, target, target_weight, plot_params):
 
     # Construct target histogram
     target_hist, _ = np.histogram(target, bins=bins, weights=target_weight, density=True)
-    print(bins)
-    print(target_hist)
 
     # Repeat last bin of target for plotting
     plot_tar = np.append(target_hist, target_hist[-1])

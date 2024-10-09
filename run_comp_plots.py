@@ -82,7 +82,7 @@ else:
 mc_end_weights_track = mc_end_weights_track[mc_track_filter == 1]
 
 # Get pseudodata weights (dropping 3 events that have negative weights)
-pd_weights = ak.to_numpy(pd_tree["weight"].array(entry_stop=max_events))
+pd_weights = ak.to_numpy(pd_tree["weight_mc"].array(entry_stop=max_events))
 
 # Truncate and filter weights
 if len(pd_weights) > max_events:
