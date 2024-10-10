@@ -77,7 +77,10 @@ for key, obs_dict in pu.default_settings.items():
 
     # Set IBU binning if we are comparing to IBU
     if args.compare == 'ibu':
-        obs_dict.update({'bins': np.array(pu.ibu_bins[key])})
+        for ibu_dict in ibu:
+            if ibu_dict['file_label'] == key:
+                obs_dict.update({'bins': np.array(ibu_dict['bins'])})
+                break
 
     # Get the Omnifold data, take care to take the truth data
     obs_of = ak.to_numpy(t_mctest["truth_" + key].array())[filter_of == 1]
@@ -120,7 +123,7 @@ for key, obs_dict in pu.default_settings.items():
 
             # Make IBU plot
             obs_dict.update({'color': 'blue', 'name': 'IBU'})
-            fig = pu.ibu_performance_plot(obs_data, obs_mf_target, target_weights_mf, obs_dict)
+            fig = pu.ibu_performance_plot(obs_data, obs_of_target, target_weights_of, obs_dict)
             fig.savefig(f"{args.store}/ibu_{key}.png", dpi=300)
             plt.close()
 

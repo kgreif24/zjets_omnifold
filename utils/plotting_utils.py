@@ -748,8 +748,7 @@ def ibu_performance_plot(obs_dict, target, target_weight, plot_params):
 
     # Normalize IBU histogram
     ibu_hist = np.array(obs_dict['ibu_bin_counts'])
-    hist_area = np.sum(ibu_hist * bin_widths)
-    ibu_hist = ibu_hist / hist_area
+    ibu_hist = ibu_hist / bin_widths / np.sum(ibu_hist)
 
     # Evaluate bias squared
     bias2 = (ibu_hist - target_hist)**2
