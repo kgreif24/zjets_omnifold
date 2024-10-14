@@ -1,10 +1,5 @@
 
-This is a copy of Jad's omniphysics package: https://github.com/jmsardain/omniphysics. It has been modified to support the following functionality:
-
-1. Plot arbitrary observables defined on the Z+jets final state
-2. Calculate lund jet plane information for adding to slimmed training files, which is necessary for using LundNet blocks as an embedding in omnifold classifiers
-
-Documentation of both of these is below. To compile the code, it is easiest to use an LCG release obtained from `cvmfs`:
+This is a copy of Jad's omniphysics package: https://github.com/jmsardain/omniphysics. It can be used to plot arbitrary observables defined on the Z+jets final state. To compile the code, it is easiest to use an LCG release obtained from `cvmfs`:
 
 ```
 setupATLAS
