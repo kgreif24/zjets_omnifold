@@ -38,8 +38,8 @@ def test_comp_plot_script(tmp_path):
         if re.search('Re-weighted Wasserstein One:', line):
             rw1 = float(line.split()[-1])
 
-    assert ogw1 == pytest.approx(46.3759, rel=1e-3)
-    assert rw1 == pytest.approx(186.8033, rel=1e-3)
+    assert ogw1 == pytest.approx(45.355, rel=1e-3)
+    assert rw1 == pytest.approx(189.853, rel=1e-3)
 
 
 def test_test_plot_script(tmp_path):

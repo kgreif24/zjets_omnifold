@@ -7,6 +7,7 @@ python3
 """
 
 import sys
+import subprocess
 
 import torch
 import lightning as L
@@ -195,9 +196,10 @@ class Omnifolder():
                 "--gpu-bind=none",
             ]
             eval_args = slurm_args + eval_args
-        test_code, _ = capture_subprocess_output(eval_args)
-        if test_code != 0:
+        print(eval_args)
+        test_code = subprocess.run(eval_args)
+        if test_code.returncode != 0:
             print("Error running evaluation subprocess!")
-            sys.exit(test_code)
+            sys.exit(test_code.returncode)
 
         print(f"Finished step {step}!!")
