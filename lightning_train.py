@@ -27,7 +27,7 @@ class OfTrain:
     below.
     """
 
-    def __init__(self, config_path, iteration, step, seed=222, index=-1):
+    def __init__(self, config_path, iteration, step, seed=222, index=-1, unit_test=False):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
 
@@ -38,6 +38,7 @@ class OfTrain:
         seed - The seed to use for the train / val split in this training
         index - The index of the ensemble to run. Add this number to the end of the group ID
              if it is not None
+        unit_test - If true, trainer will just run a few steps of training and exit 
 
         Returns:
         None
@@ -159,12 +160,13 @@ class OfTrain:
 
         # Build trainer
         self.trainer = L.Trainer(
-            accelerator='auto' if self.config.debug else 'gpu',
-            devices='auto' if self.config.debug else self.config.num_gpus,
+            accelerator='auto' if (self.config.debug or unit_test) else 'gpu',
+            devices='auto' if (self.config.debug or unit_test) else self.config.num_gpus,
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
-            enable_progress_bar=self.config.interactive
+            enable_progress_bar=self.config.interactive,
+            fast_dev_run=unit_test,
         )
 
         # Make directories for saving validation plots in the rank zero process

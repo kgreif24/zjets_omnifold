@@ -31,7 +31,7 @@ class OfEval:
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
-    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None, index=-1):
+    def __init__(self, check_path, run_id, config_path, iteration, step, verify=False, store=None, index=-1, unit_test=False):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
@@ -47,6 +47,7 @@ class OfEval:
             location
         index - Defaults -1, the index of the ensemble to run. Add this number to the
             end of the group ID if it is not -1
+        unit_test - If true, trainer will just run a few steps of evaluation and exit 
 
         Returns:
         None
@@ -58,6 +59,7 @@ class OfEval:
         self.iteration = iteration
         self.step = step
         self.verify = verify
+        self.unit_test = unit_test
 
         # Modify the group name of an index is provided
         if index != -1:
@@ -198,10 +200,11 @@ class OfEval:
 
         # Make lightning trainer for testing
         self.trainer = L.Trainer(
-            accelerator='cpu' if self.config.debug else 'gpu', 
+            accelerator='auto' if (self.config.debug or unit_test) else 'gpu', 
             devices=1,
             logger=self.wandb_logger,
-            enable_progress_bar=self.config.interactive
+            enable_progress_bar=self.config.interactive,
+            fast_dev_run=unit_test
         )
 
         # Make wasserstein metric object for comparing derived reweighting
@@ -371,9 +374,14 @@ class OfEval:
         No Arguments or Returns
         """
 
+        # Run testing
         if not self.verify:
             print("Run testing")
             self.run_testing()
+            if self.unit_test:
+                return
+        
+        # Run prediction
         print("Run predictions")
         self.run_prediction()
 
