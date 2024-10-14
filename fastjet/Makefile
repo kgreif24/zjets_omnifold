@@ -19,7 +19,6 @@ LOBJS = $(patsubst %.c,obj/%.o,$(patsubst %.C,obj/%.o,$(patsubst %.cc,obj/%.o,$(
 
 # Target files
 PLOT = doHisto.out
-ADDLJP = addLJP.out
 
 # All target
 all: $(PLOT) $(ADDLJP)
@@ -44,10 +43,6 @@ $(OBJDIR)/%.o: %.cxx | $(OBJDIR)
 # Linking for plot
 $(PLOT): $(OBJDIR) $(OBJS)
 	$(CXX) $(CFLAGS) $(RFLAGS) $(FJFLAGS) -o $(PLOT) $(OBJS)
-
-# Linking for add LJP
-$(ADDLJP): $(OBJDIR) $(LOBJS)
-	$(CXX) $(CFLAGS) $(RFLAGS) $(FJFLAGS) -o $(ADDLJP) $(LOBJS)
 
 # Clean rule
 clean:
