@@ -11,7 +11,6 @@ import uproot
 import awkward as ak
 import pytest
 
-from of_dataset import OfDataset
 from lightning_module import *
 import data_utils as du
 
