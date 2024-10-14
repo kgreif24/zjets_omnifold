@@ -13,10 +13,6 @@ EXTS = .c .C .cc .cxx
 SRCS = doHisto.cc MakeOmni.C MakeTruth.C DoPlots.cxx analysisHelpers.cxx jetHelpers.cxx AtlasLabels.C AtlasStyle.C AtlasUtils.C
 OBJS = $(patsubst %.c,obj/%.o,$(patsubst %.C,obj/%.o,$(patsubst %.cc,obj/%.o,$(patsubst %.cxx,obj/%.o,$(SRCS)))))
 
-# Source files and object files for add LJP
-LSRCS = addLJP.cc
-LOBJS = $(patsubst %.c,obj/%.o,$(patsubst %.C,obj/%.o,$(patsubst %.cc,obj/%.o,$(patsubst %.cxx,obj/%.o,$(LSRCS)))))
-
 # Target files
 PLOT = doHisto.out
 

@@ -6,7 +6,13 @@ setupATLAS
 lsetup "views LCG_105 x86_64-el9-gcc13-opt"
 ```
 
-I am currently trying to get this to work on Perlmutter via shifter containers, but haven't figured it out yet. Will update when it is figured out.
+On perlmutter things aren't so simple because there are no LCG releases built for SUSE OS. Instead use a shifter container:
+
+```
+shifter --module=cvmfs --image=registry.cern.ch/atlasadc/atlas-grid-almalinux9:latest /bin/bash
+```
+
+You can check that everything has worked properly by running `cat /etc/os-release/`. You should see Alma Linux 9. After this proceed as above.
 
 # Calculate observables
 
