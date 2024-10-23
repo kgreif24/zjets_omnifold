@@ -10,7 +10,7 @@ OBJDIR = obj
 EXTS = .c .C .cc .cxx
 
 # Source files and object files for plots
-SRCS = doHisto.cc MakeOmni.C MakeTruth.C DoPlots.cxx analysisHelpers.cxx jetHelpers.cxx AtlasLabels.C AtlasStyle.C AtlasUtils.C
+SRCS = doHisto.cc MakeOmni.C DoPlots.cxx analysisHelpers.cxx jetHelpers.cxx AtlasLabels.C AtlasStyle.C AtlasUtils.C
 OBJS = $(patsubst %.c,obj/%.o,$(patsubst %.C,obj/%.o,$(patsubst %.cc,obj/%.o,$(patsubst %.cxx,obj/%.o,$(SRCS)))))
 
 # Target files

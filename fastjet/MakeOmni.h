@@ -11,6 +11,11 @@
 #include <TROOT.h>
 #include <TChain.h>
 #include <TFile.h>
+#include <TH1D.h>
+#include <TH2D.h>
+#include <vector>
+#include <iostream>
+using namespace std;
 
 // Header file for the classes stored in the TTree if any.
 
@@ -18,6 +23,8 @@ class MakeOmni {
 public :
    TTree          *fChain;   //!pointer to the analyzed TTree or TChain
    Int_t           fCurrent; //!current Tree number in a TChain
+
+   bool isTruth; // Flag to indicate if we are processing truth data
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
@@ -222,22 +229,30 @@ public :
    Int_t           nweight_bs;
    Int_t           weight_bs[100];   //[nweight_bs]
    Int_t           npT_tracks;
-   Float_t         pT_tracks[250];   //[npT_tracks]
+   Double_t         dpT_tracks[309];   //[npT_tracks]
+   Float_t          fpT_tracks[250];   //[npT_tracks]
    Int_t           neta_tracks;
-   Float_t         eta_tracks[250];   //[neta_tracks]
+   Double_t         deta_tracks[309];   //[neta_tracks]
+   Float_t          feta_tracks[250];   //[neta_tracks]
    Int_t           nphi_tracks;
-   Float_t         phi_tracks[250];   //[nphi_tracks]
+   Double_t         dphi_tracks[309];   //[nphi_tracks]
+   Float_t          fphi_tracks[250];   //[nphi_tracks]
    Int_t           ntrackJetIndex_tracks;
-   Float_t         trackJetIndex_tracks[250];   //[ntrackJetIndex_tracks]
+   Double_t         dtrackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
+   Float_t          ftrackJetIndex_tracks[250];   //[ntrackJetIndex_tracks]
    Int_t           ntruth_pT_tracks;
-   Float_t         truth_pT_tracks[278];   //[ntruth_pT_tracks]
+   Double_t         dtruth_pT_tracks[323];   //[ntruth_pT_tracks]
+   Float_t          ftruth_pT_tracks[278];   //[ntruth_pT_tracks]
    Int_t           ntruth_eta_tracks;
-   Float_t         truth_eta_tracks[278];   //[ntruth_eta_tracks]
+   Double_t         dtruth_eta_tracks[323];   //[ntruth_eta_tracks]
+   Float_t          ftruth_eta_tracks[278];   //[ntruth_eta_tracks]
    Int_t           ntruth_phi_tracks;
-   Float_t         truth_phi_tracks[278];   //[ntruth_phi_tracks]
+   Double_t         dtruth_phi_tracks[323];   //[ntruth_phi_tracks]
+   Float_t          ftruth_phi_tracks[278];   //[ntruth_phi_tracks]
    Int_t           ntruth_trackJetIndex_tracks;
-   Float_t         truth_trackJetIndex_tracks[278];   //[ntruth_trackJetIndex_tracks]
-   Float_t         omni_weight_test;
+   Double_t         dtruth_trackJetIndex_tracks[323];   //[ntruth_trackJetIndex_tracks]
+   Float_t          ftruth_trackJetIndex_tracks[278];   //[ntruth_trackJetIndex_tracks]
+   Float_t         omni_weight;
 
    // List of branches
    TBranch        *b_weight;   //!
@@ -440,39 +455,52 @@ public :
    TBranch        *b_nweight_bs;   //!
    TBranch        *b_weight_bs;   //!
    TBranch        *b_npT_tracks;   //!
-   TBranch        *b_pT_tracks;   //!
+   TBranch        *b_dpT_tracks;   //!
+   TBranch        *b_fpT_tracks;   //!
    TBranch        *b_neta_tracks;   //!
-   TBranch        *b_eta_tracks;   //!
+   TBranch        *b_deta_tracks;   //!
+   TBranch        *b_feta_tracks;   //!
    TBranch        *b_nphi_tracks;   //!
-   TBranch        *b_phi_tracks;   //!
+   TBranch        *b_dphi_tracks;   //!
+   TBranch        *b_fphi_tracks;   //!
    TBranch        *b_ntrackJetIndex_tracks;   //!
-   TBranch        *b_trackJetIndex_tracks;   //!
+   TBranch        *b_dtrackJetIndex_tracks;   //!
+   TBranch        *b_ftrackJetIndex_tracks;   //!
    TBranch        *b_ntruth_pT_tracks;   //!
-   TBranch        *b_truth_pT_tracks;   //!
+   TBranch        *b_dtruth_pT_tracks;   //!
+   TBranch        *b_ftruth_pT_tracks;   //!
    TBranch        *b_ntruth_eta_tracks;   //!
-   TBranch        *b_truth_eta_tracks;   //!
+   TBranch        *b_dtruth_eta_tracks;   //!
+   TBranch        *b_ftruth_eta_tracks;   //!
    TBranch        *b_ntruth_phi_tracks;   //!
-   TBranch        *b_truth_phi_tracks;   //!
+   TBranch        *b_dtruth_phi_tracks;   //!
+   TBranch        *b_ftruth_phi_tracks;   //!
    TBranch        *b_ntruth_trackJetIndex_tracks;   //!
-   TBranch        *b_truth_trackJetIndex_tracks;   //!
-   TBranch        *b_omni_weight_test;   //!
+   TBranch        *b_dtruth_trackJetIndex_tracks;   //!
+   TBranch        *b_ftruth_trackJetIndex_tracks;   //!
+   TBranch        *b_omni_weight;   //!
 
-   MakeOmni(TTree *tree=0);
+   MakeOmni(TTree *tree=0, bool runTruth = false);
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
    virtual Long64_t LoadTree(Long64_t entry);
    virtual void     Init(TTree *tree);
-   virtual void     Loop();
+   virtual void     Loop(Long64_t maxEvents = 0);
    virtual Bool_t   Notify();
    virtual void     Show(Long64_t entry = -1);
+   virtual void     FillEEC(unique_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight);
+   virtual void     FillLund(unique_ptr<TH1D>& hz, unique_ptr<TH1D>& hdr, unique_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
 };
 
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, bool runTruth) : fChain(0) 
 {
+
+isTruth = runTruth; // Store the truth flag
+
 // if parameter tree is not specified (or zero), connect the file
 // used to generate this class and read the Tree.
    if (tree == 0) {
@@ -527,20 +555,11 @@ void MakeOmni::Init(TTree *tree)
    fCurrent = -1;
    fChain->SetMakeClass(1);
 
+   // Set branch addresses that are common between reco and truth files
    fChain->SetBranchAddress("weight", &weight, &b_weight);
    fChain->SetBranchAddress("pass190", &pass190, &b_pass190);
    fChain->SetBranchAddress("truth_pass190", &truth_pass190, &b_truth_pass190);
    fChain->SetBranchAddress("weight_mc", &weight_mc, &b_weight_mc);
-   fChain->SetBranchAddress("pass190_syst_ID_Up", &pass190_syst_ID_Up, &b_pass190_syst_ID_Up);
-   fChain->SetBranchAddress("pass190_syst_ID_Down", &pass190_syst_ID_Down, &b_pass190_syst_ID_Down);
-   fChain->SetBranchAddress("pass190_syst_MS_Up", &pass190_syst_MS_Up, &b_pass190_syst_MS_Up);
-   fChain->SetBranchAddress("pass190_syst_MS_Down", &pass190_syst_MS_Down, &b_pass190_syst_MS_Down);
-   fChain->SetBranchAddress("pass190_syst_MSResbias_Up", &pass190_syst_MSResbias_Up, &b_pass190_syst_MSResbias_Up);
-   fChain->SetBranchAddress("pass190_syst_MSResbias_Down", &pass190_syst_MSResbias_Down, &b_pass190_syst_MSResbias_Down);
-   fChain->SetBranchAddress("pass190_syst_MSRho_Up", &pass190_syst_MSRho_Up, &b_pass190_syst_MSRho_Up);
-   fChain->SetBranchAddress("pass190_syst_MSRho_Down", &pass190_syst_MSRho_Down, &b_pass190_syst_MSRho_Down);
-   fChain->SetBranchAddress("pass190_syst_Scale_Up", &pass190_syst_Scale_Up, &b_pass190_syst_Scale_Up);
-   fChain->SetBranchAddress("pass190_syst_Scale_Down", &pass190_syst_Scale_Down, &b_pass190_syst_Scale_Down);
    fChain->SetBranchAddress("pT_ll", &pT_ll, &b_pT_ll);
    fChain->SetBranchAddress("pT_l1", &pT_l1, &b_pT_l1);
    fChain->SetBranchAddress("pT_l2", &pT_l2, &b_pT_l2);
@@ -585,135 +604,7 @@ void MakeOmni::Init(TTree *tree)
    fChain->SetBranchAddress("truth_tau1_trackj2", &truth_tau1_trackj2, &b_truth_tau1_trackj2);
    fChain->SetBranchAddress("truth_tau2_trackj2", &truth_tau2_trackj2, &b_truth_tau2_trackj2);
    fChain->SetBranchAddress("truth_tau3_trackj2", &truth_tau3_trackj2, &b_truth_tau3_trackj2);
-   fChain->SetBranchAddress("syst_prwUp", &syst_prwUp, &b_syst_prwUp);
-   fChain->SetBranchAddress("syst_prwDown", &syst_prwDown, &b_syst_prwDown);
-   fChain->SetBranchAddress("syst_recoSFUp", &syst_recoSFUp, &b_syst_recoSFUp);
-   fChain->SetBranchAddress("syst_recoSFDown", &syst_recoSFDown, &b_syst_recoSFDown);
-   fChain->SetBranchAddress("syst_isoSFUp", &syst_isoSFUp, &b_syst_isoSFUp);
-   fChain->SetBranchAddress("syst_isoSFDown", &syst_isoSFDown, &b_syst_isoSFDown);
-   fChain->SetBranchAddress("syst_TTVASFUp", &syst_TTVASFUp, &b_syst_TTVASFUp);
-   fChain->SetBranchAddress("syst_TTVASFDown", &syst_TTVASFDown, &b_syst_TTVASFDown);
-   fChain->SetBranchAddress("syst_trigSFUp", &syst_trigSFUp, &b_syst_trigSFUp);
-   fChain->SetBranchAddress("syst_trigSFDown", &syst_trigSFDown, &b_syst_trigSFDown);
-   fChain->SetBranchAddress("syst_pT_l1_ID_Up", &syst_pT_l1_ID_Up, &b_syst_pT_l1_ID_Up);
-   fChain->SetBranchAddress("syst_pT_l1_ID_Down", &syst_pT_l1_ID_Down, &b_syst_pT_l1_ID_Down);
-   fChain->SetBranchAddress("syst_pT_l2_ID_Up", &syst_pT_l2_ID_Up, &b_syst_pT_l2_ID_Up);
-   fChain->SetBranchAddress("syst_pT_l2_ID_Down", &syst_pT_l2_ID_Down, &b_syst_pT_l2_ID_Down);
-   fChain->SetBranchAddress("syst_pT_l1_MS_Up", &syst_pT_l1_MS_Up, &b_syst_pT_l1_MS_Up);
-   fChain->SetBranchAddress("syst_pT_l1_MS_Down", &syst_pT_l1_MS_Down, &b_syst_pT_l1_MS_Down);
-   fChain->SetBranchAddress("syst_pT_l2_MS_Up", &syst_pT_l2_MS_Up, &b_syst_pT_l2_MS_Up);
-   fChain->SetBranchAddress("syst_pT_l2_MS_Down", &syst_pT_l2_MS_Down, &b_syst_pT_l2_MS_Down);
-   fChain->SetBranchAddress("syst_pT_l1_MSResbias_Up", &syst_pT_l1_MSResbias_Up, &b_syst_pT_l1_MSResbias_Up);
-   fChain->SetBranchAddress("syst_pT_l1_MSResbias_Down", &syst_pT_l1_MSResbias_Down, &b_syst_pT_l1_MSResbias_Down);
-   fChain->SetBranchAddress("syst_pT_l2_MSResbias_Up", &syst_pT_l2_MSResbias_Up, &b_syst_pT_l2_MSResbias_Up);
-   fChain->SetBranchAddress("syst_pT_l2_MSResbias_Down", &syst_pT_l2_MSResbias_Down, &b_syst_pT_l2_MSResbias_Down);
-   fChain->SetBranchAddress("syst_pT_l1_MSRho_Up", &syst_pT_l1_MSRho_Up, &b_syst_pT_l1_MSRho_Up);
-   fChain->SetBranchAddress("syst_pT_l1_MSRho_Down", &syst_pT_l1_MSRho_Down, &b_syst_pT_l1_MSRho_Down);
-   fChain->SetBranchAddress("syst_pT_l2_MSRho_Up", &syst_pT_l2_MSRho_Up, &b_syst_pT_l2_MSRho_Up);
-   fChain->SetBranchAddress("syst_pT_l2_MSRho_Down", &syst_pT_l2_MSRho_Down, &b_syst_pT_l2_MSRho_Down);
-   fChain->SetBranchAddress("syst_pT_l1_Scale_Up", &syst_pT_l1_Scale_Up, &b_syst_pT_l1_Scale_Up);
-   fChain->SetBranchAddress("syst_pT_l1_Scale_Down", &syst_pT_l1_Scale_Down, &b_syst_pT_l1_Scale_Down);
-   fChain->SetBranchAddress("syst_pT_l2_Scale_Up", &syst_pT_l2_Scale_Up, &b_syst_pT_l2_Scale_Up);
-   fChain->SetBranchAddress("syst_pT_l2_Scale_Down", &syst_pT_l2_Scale_Down, &b_syst_pT_l2_Scale_Down);
-   fChain->SetBranchAddress("syst_pT_ll_ID_Up", &syst_pT_ll_ID_Up, &b_syst_pT_ll_ID_Up);
-   fChain->SetBranchAddress("syst_pT_ll_ID_Down", &syst_pT_ll_ID_Down, &b_syst_pT_ll_ID_Down);
-   fChain->SetBranchAddress("syst_pT_ll_MS_Up", &syst_pT_ll_MS_Up, &b_syst_pT_ll_MS_Up);
-   fChain->SetBranchAddress("syst_pT_ll_MS_Down", &syst_pT_ll_MS_Down, &b_syst_pT_ll_MS_Down);
-   fChain->SetBranchAddress("syst_pT_ll_MSResbias_Up", &syst_pT_ll_MSResbias_Up, &b_syst_pT_ll_MSResbias_Up);
-   fChain->SetBranchAddress("syst_pT_ll_MSResbias_Down", &syst_pT_ll_MSResbias_Down, &b_syst_pT_ll_MSResbias_Down);
-   fChain->SetBranchAddress("syst_pT_ll_MSRho_Up", &syst_pT_ll_MSRho_Up, &b_syst_pT_ll_MSRho_Up);
-   fChain->SetBranchAddress("syst_pT_ll_MSRho_Down", &syst_pT_ll_MSRho_Down, &b_syst_pT_ll_MSRho_Down);
-   fChain->SetBranchAddress("syst_pT_ll_Scale_Up", &syst_pT_ll_Scale_Up, &b_syst_pT_ll_Scale_Up);
-   fChain->SetBranchAddress("syst_pT_ll_Scale_Down", &syst_pT_ll_Scale_Down, &b_syst_pT_ll_Scale_Down);
-   fChain->SetBranchAddress("syst_m_ll_ID_Up", &syst_m_ll_ID_Up, &b_syst_m_ll_ID_Up);
-   fChain->SetBranchAddress("syst_m_ll_ID_Down", &syst_m_ll_ID_Down, &b_syst_m_ll_ID_Down);
-   fChain->SetBranchAddress("syst_m_ll_MS_Up", &syst_m_ll_MS_Up, &b_syst_m_ll_MS_Up);
-   fChain->SetBranchAddress("syst_m_ll_MS_Down", &syst_m_ll_MS_Down, &b_syst_m_ll_MS_Down);
-   fChain->SetBranchAddress("syst_m_ll_MSResbias_Up", &syst_m_ll_MSResbias_Up, &b_syst_m_ll_MSResbias_Up);
-   fChain->SetBranchAddress("syst_m_ll_MSResbias_Down", &syst_m_ll_MSResbias_Down, &b_syst_m_ll_MSResbias_Down);
-   fChain->SetBranchAddress("syst_m_ll_MSRho_Up", &syst_m_ll_MSRho_Up, &b_syst_m_ll_MSRho_Up);
-   fChain->SetBranchAddress("syst_m_ll_MSRho_Down", &syst_m_ll_MSRho_Down, &b_syst_m_ll_MSRho_Down);
-   fChain->SetBranchAddress("syst_m_ll_Scale_Up", &syst_m_ll_Scale_Up, &b_syst_m_ll_Scale_Up);
-   fChain->SetBranchAddress("syst_m_ll_Scale_Down", &syst_m_ll_Scale_Down, &b_syst_m_ll_Scale_Down);
-   fChain->SetBranchAddress("syst_y_ll_ID_Up", &syst_y_ll_ID_Up, &b_syst_y_ll_ID_Up);
-   fChain->SetBranchAddress("syst_y_ll_ID_Down", &syst_y_ll_ID_Down, &b_syst_y_ll_ID_Down);
-   fChain->SetBranchAddress("syst_y_ll_MS_Up", &syst_y_ll_MS_Up, &b_syst_y_ll_MS_Up);
-   fChain->SetBranchAddress("syst_y_ll_MS_Down", &syst_y_ll_MS_Down, &b_syst_y_ll_MS_Down);
-   fChain->SetBranchAddress("syst_y_ll_MSResbias_Up", &syst_y_ll_MSResbias_Up, &b_syst_y_ll_MSResbias_Up);
-   fChain->SetBranchAddress("syst_y_ll_MSResbias_Down", &syst_y_ll_MSResbias_Down, &b_syst_y_ll_MSResbias_Down);
-   fChain->SetBranchAddress("syst_y_ll_MSRho_Up", &syst_y_ll_MSRho_Up, &b_syst_y_ll_MSRho_Up);
-   fChain->SetBranchAddress("syst_y_ll_MSRho_Down", &syst_y_ll_MSRho_Down, &b_syst_y_ll_MSRho_Down);
-   fChain->SetBranchAddress("syst_y_ll_Scale_Up", &syst_y_ll_Scale_Up, &b_syst_y_ll_Scale_Up);
-   fChain->SetBranchAddress("syst_y_ll_Scale_Down", &syst_y_ll_Scale_Down, &b_syst_y_ll_Scale_Down);
-   fChain->SetBranchAddress("syst_TrackFilter_pT_trackj1", &syst_TrackFilter_pT_trackj1, &b_syst_TrackFilter_pT_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_y_trackj1", &syst_TrackFilter_y_trackj1, &b_syst_TrackFilter_y_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_phi_trackj1", &syst_TrackFilter_phi_trackj1, &b_syst_TrackFilter_phi_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_m_trackj1", &syst_TrackFilter_m_trackj1, &b_syst_TrackFilter_m_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_tau1_trackj1", &syst_TrackFilter_tau1_trackj1, &b_syst_TrackFilter_tau1_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_tau2_trackj1", &syst_TrackFilter_tau2_trackj1, &b_syst_TrackFilter_tau2_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_tau3_trackj1", &syst_TrackFilter_tau3_trackj1, &b_syst_TrackFilter_tau3_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_pT_trackj2", &syst_TrackFilter_pT_trackj2, &b_syst_TrackFilter_pT_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_y_trackj2", &syst_TrackFilter_y_trackj2, &b_syst_TrackFilter_y_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_phi_trackj2", &syst_TrackFilter_phi_trackj2, &b_syst_TrackFilter_phi_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_m_trackj2", &syst_TrackFilter_m_trackj2, &b_syst_TrackFilter_m_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_tau1_trackj2", &syst_TrackFilter_tau1_trackj2, &b_syst_TrackFilter_tau1_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_tau2_trackj2", &syst_TrackFilter_tau2_trackj2, &b_syst_TrackFilter_tau2_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_tau3_trackj2", &syst_TrackFilter_tau3_trackj2, &b_syst_TrackFilter_tau3_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_pT_trackj1", &syst_JetTrackFilter_pT_trackj1, &b_syst_JetTrackFilter_pT_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_y_trackj1", &syst_JetTrackFilter_y_trackj1, &b_syst_JetTrackFilter_y_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_phi_trackj1", &syst_JetTrackFilter_phi_trackj1, &b_syst_JetTrackFilter_phi_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_m_trackj1", &syst_JetTrackFilter_m_trackj1, &b_syst_JetTrackFilter_m_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_tau1_trackj1", &syst_JetTrackFilter_tau1_trackj1, &b_syst_JetTrackFilter_tau1_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_tau2_trackj1", &syst_JetTrackFilter_tau2_trackj1, &b_syst_JetTrackFilter_tau2_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_tau3_trackj1", &syst_JetTrackFilter_tau3_trackj1, &b_syst_JetTrackFilter_tau3_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_pT_trackj2", &syst_JetTrackFilter_pT_trackj2, &b_syst_JetTrackFilter_pT_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_y_trackj2", &syst_JetTrackFilter_y_trackj2, &b_syst_JetTrackFilter_y_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_phi_trackj2", &syst_JetTrackFilter_phi_trackj2, &b_syst_JetTrackFilter_phi_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_m_trackj2", &syst_JetTrackFilter_m_trackj2, &b_syst_JetTrackFilter_m_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_tau1_trackj2", &syst_JetTrackFilter_tau1_trackj2, &b_syst_JetTrackFilter_tau1_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_tau2_trackj2", &syst_JetTrackFilter_tau2_trackj2, &b_syst_JetTrackFilter_tau2_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_tau3_trackj2", &syst_JetTrackFilter_tau3_trackj2, &b_syst_JetTrackFilter_tau3_trackj2);
-   fChain->SetBranchAddress("syst_Fake_pT_trackj1", &syst_Fake_pT_trackj1, &b_syst_Fake_pT_trackj1);
-   fChain->SetBranchAddress("syst_Fake_y_trackj1", &syst_Fake_y_trackj1, &b_syst_Fake_y_trackj1);
-   fChain->SetBranchAddress("syst_Fake_phi_trackj1", &syst_Fake_phi_trackj1, &b_syst_Fake_phi_trackj1);
-   fChain->SetBranchAddress("syst_Fake_m_trackj1", &syst_Fake_m_trackj1, &b_syst_Fake_m_trackj1);
-   fChain->SetBranchAddress("syst_Fake_tau1_trackj1", &syst_Fake_tau1_trackj1, &b_syst_Fake_tau1_trackj1);
-   fChain->SetBranchAddress("syst_Fake_tau2_trackj1", &syst_Fake_tau2_trackj1, &b_syst_Fake_tau2_trackj1);
-   fChain->SetBranchAddress("syst_Fake_tau3_trackj1", &syst_Fake_tau3_trackj1, &b_syst_Fake_tau3_trackj1);
-   fChain->SetBranchAddress("syst_Fake_pT_trackj2", &syst_Fake_pT_trackj2, &b_syst_Fake_pT_trackj2);
-   fChain->SetBranchAddress("syst_Fake_y_trackj2", &syst_Fake_y_trackj2, &b_syst_Fake_y_trackj2);
-   fChain->SetBranchAddress("syst_Fake_phi_trackj2", &syst_Fake_phi_trackj2, &b_syst_Fake_phi_trackj2);
-   fChain->SetBranchAddress("syst_Fake_m_trackj2", &syst_Fake_m_trackj2, &b_syst_Fake_m_trackj2);
-   fChain->SetBranchAddress("syst_Fake_tau1_trackj2", &syst_Fake_tau1_trackj2, &b_syst_Fake_tau1_trackj2);
-   fChain->SetBranchAddress("syst_Fake_tau2_trackj2", &syst_Fake_tau2_trackj2, &b_syst_Fake_tau2_trackj2);
-   fChain->SetBranchAddress("syst_Fake_tau3_trackj2", &syst_Fake_tau3_trackj2, &b_syst_Fake_tau3_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_pT_trackj1", &syst_pTScale_pT_trackj1, &b_syst_pTScale_pT_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_y_trackj1", &syst_pTScale_y_trackj1, &b_syst_pTScale_y_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_phi_trackj1", &syst_pTScale_phi_trackj1, &b_syst_pTScale_phi_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_m_trackj1", &syst_pTScale_m_trackj1, &b_syst_pTScale_m_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_tau1_trackj1", &syst_pTScale_tau1_trackj1, &b_syst_pTScale_tau1_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_tau2_trackj1", &syst_pTScale_tau2_trackj1, &b_syst_pTScale_tau2_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_tau3_trackj1", &syst_pTScale_tau3_trackj1, &b_syst_pTScale_tau3_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_pT_trackj2", &syst_pTScale_pT_trackj2, &b_syst_pTScale_pT_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_y_trackj2", &syst_pTScale_y_trackj2, &b_syst_pTScale_y_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_phi_trackj2", &syst_pTScale_phi_trackj2, &b_syst_pTScale_phi_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_m_trackj2", &syst_pTScale_m_trackj2, &b_syst_pTScale_m_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_tau1_trackj2", &syst_pTScale_tau1_trackj2, &b_syst_pTScale_tau1_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_tau2_trackj2", &syst_pTScale_tau2_trackj2, &b_syst_pTScale_tau2_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_tau3_trackj2", &syst_pTScale_tau3_trackj2, &b_syst_pTScale_tau3_trackj2);
    fChain->SetBranchAddress("mcChannelNumber", &mcChannelNumber, &b_mcChannelNumber);
-   fChain->SetBranchAddress("syst_TrackFilter_Ntracks_trackj1", &syst_TrackFilter_Ntracks_trackj1, &b_syst_TrackFilter_Ntracks_trackj1);
-   fChain->SetBranchAddress("syst_TrackFilter_Ntracks_trackj2", &syst_TrackFilter_Ntracks_trackj2, &b_syst_TrackFilter_Ntracks_trackj2);
-   fChain->SetBranchAddress("syst_JetTrackFilter_Ntracks_trackj1", &syst_JetTrackFilter_Ntracks_trackj1, &b_syst_JetTrackFilter_Ntracks_trackj1);
-   fChain->SetBranchAddress("syst_JetTrackFilter_Ntracks_trackj2", &syst_JetTrackFilter_Ntracks_trackj2, &b_syst_JetTrackFilter_Ntracks_trackj2);
-   fChain->SetBranchAddress("syst_Fake_Ntracks_trackj1", &syst_Fake_Ntracks_trackj1, &b_syst_Fake_Ntracks_trackj1);
-   fChain->SetBranchAddress("syst_Fake_Ntracks_trackj2", &syst_Fake_Ntracks_trackj2, &b_syst_Fake_Ntracks_trackj2);
-   fChain->SetBranchAddress("syst_pTScale_Ntracks_trackj1", &syst_pTScale_Ntracks_trackj1, &b_syst_pTScale_Ntracks_trackj1);
-   fChain->SetBranchAddress("syst_pTScale_Ntracks_trackj2", &syst_pTScale_Ntracks_trackj2, &b_syst_pTScale_Ntracks_trackj2);
-   fChain->SetBranchAddress("syst_TrackFilter_NtrackJets20", &syst_TrackFilter_NtrackJets20, &b_syst_TrackFilter_NtrackJets20);
-   fChain->SetBranchAddress("syst_JetTrackFilter_NtrackJets20", &syst_JetTrackFilter_NtrackJets20, &b_syst_JetTrackFilter_NtrackJets20);
-   fChain->SetBranchAddress("syst_Fake_NtrackJets20", &syst_Fake_NtrackJets20, &b_syst_Fake_NtrackJets20);
-   fChain->SetBranchAddress("syst_pTScale_NtrackJets20", &syst_pTScale_NtrackJets20, &b_syst_pTScale_NtrackJets20);
    fChain->SetBranchAddress("EventNumber", &EventNumber, &b_EventNumber);
    fChain->SetBranchAddress("RunNumber", &RunNumber, &b_RunNumber);
    fChain->SetBranchAddress("Ntracks", &Ntracks, &b_Ntracks);
@@ -724,25 +615,174 @@ void MakeOmni::Init(TTree *tree)
    fChain->SetBranchAddress("truth_Ntracks_trackj1", &truth_Ntracks_trackj1, &b_truth_Ntracks_trackj1);
    fChain->SetBranchAddress("truth_Ntracks_trackj2", &truth_Ntracks_trackj2, &b_truth_Ntracks_trackj2);
    fChain->SetBranchAddress("truth_NtrackJets20", &truth_NtrackJets20, &b_truth_NtrackJets20);
-   fChain->SetBranchAddress("nweight_bs", &nweight_bs, &b_nweight_bs);
-   fChain->SetBranchAddress("weight_bs", weight_bs, &b_weight_bs);
    fChain->SetBranchAddress("npT_tracks", &npT_tracks, &b_npT_tracks);
-   fChain->SetBranchAddress("pT_tracks", pT_tracks, &b_pT_tracks);
    fChain->SetBranchAddress("neta_tracks", &neta_tracks, &b_neta_tracks);
-   fChain->SetBranchAddress("eta_tracks", eta_tracks, &b_eta_tracks);
    fChain->SetBranchAddress("nphi_tracks", &nphi_tracks, &b_nphi_tracks);
-   fChain->SetBranchAddress("phi_tracks", phi_tracks, &b_phi_tracks);
    fChain->SetBranchAddress("ntrackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
-   fChain->SetBranchAddress("trackJetIndex_tracks", trackJetIndex_tracks, &b_trackJetIndex_tracks);
    fChain->SetBranchAddress("ntruth_pT_tracks", &ntruth_pT_tracks, &b_ntruth_pT_tracks);
-   fChain->SetBranchAddress("truth_pT_tracks", truth_pT_tracks, &b_truth_pT_tracks);
    fChain->SetBranchAddress("ntruth_eta_tracks", &ntruth_eta_tracks, &b_ntruth_eta_tracks);
-   fChain->SetBranchAddress("truth_eta_tracks", truth_eta_tracks, &b_truth_eta_tracks);
    fChain->SetBranchAddress("ntruth_phi_tracks", &ntruth_phi_tracks, &b_ntruth_phi_tracks);
-   fChain->SetBranchAddress("truth_phi_tracks", truth_phi_tracks, &b_truth_phi_tracks);
    fChain->SetBranchAddress("ntruth_trackJetIndex_tracks", &ntruth_trackJetIndex_tracks, &b_ntruth_trackJetIndex_tracks);
-   fChain->SetBranchAddress("truth_trackJetIndex_tracks", truth_trackJetIndex_tracks, &b_truth_trackJetIndex_tracks);
-   fChain->SetBranchAddress("omni_weight_test", &omni_weight_test, &b_omni_weight_test);
+   // Set branch addresses that are specific to reco files
+   if (!isTruth) {
+      fChain->SetBranchAddress("pass190_syst_ID_Up", &pass190_syst_ID_Up, &b_pass190_syst_ID_Up);
+      fChain->SetBranchAddress("pass190_syst_ID_Down", &pass190_syst_ID_Down, &b_pass190_syst_ID_Down);
+      fChain->SetBranchAddress("pass190_syst_MS_Up", &pass190_syst_MS_Up, &b_pass190_syst_MS_Up);
+      fChain->SetBranchAddress("pass190_syst_MS_Down", &pass190_syst_MS_Down, &b_pass190_syst_MS_Down);
+      fChain->SetBranchAddress("pass190_syst_MSResbias_Up", &pass190_syst_MSResbias_Up, &b_pass190_syst_MSResbias_Up);
+      fChain->SetBranchAddress("pass190_syst_MSResbias_Down", &pass190_syst_MSResbias_Down, &b_pass190_syst_MSResbias_Down);
+      fChain->SetBranchAddress("pass190_syst_MSRho_Up", &pass190_syst_MSRho_Up, &b_pass190_syst_MSRho_Up);
+      fChain->SetBranchAddress("pass190_syst_MSRho_Down", &pass190_syst_MSRho_Down, &b_pass190_syst_MSRho_Down);
+      fChain->SetBranchAddress("pass190_syst_Scale_Up", &pass190_syst_Scale_Up, &b_pass190_syst_Scale_Up);
+      fChain->SetBranchAddress("pass190_syst_Scale_Down", &pass190_syst_Scale_Down, &b_pass190_syst_Scale_Down);
+      fChain->SetBranchAddress("syst_prwUp", &syst_prwUp, &b_syst_prwUp);
+      fChain->SetBranchAddress("syst_prwDown", &syst_prwDown, &b_syst_prwDown);
+      fChain->SetBranchAddress("syst_recoSFUp", &syst_recoSFUp, &b_syst_recoSFUp);
+      fChain->SetBranchAddress("syst_recoSFDown", &syst_recoSFDown, &b_syst_recoSFDown);
+      fChain->SetBranchAddress("syst_isoSFUp", &syst_isoSFUp, &b_syst_isoSFUp);
+      fChain->SetBranchAddress("syst_isoSFDown", &syst_isoSFDown, &b_syst_isoSFDown);
+      fChain->SetBranchAddress("syst_TTVASFUp", &syst_TTVASFUp, &b_syst_TTVASFUp);
+      fChain->SetBranchAddress("syst_TTVASFDown", &syst_TTVASFDown, &b_syst_TTVASFDown);
+      fChain->SetBranchAddress("syst_trigSFUp", &syst_trigSFUp, &b_syst_trigSFUp);
+      fChain->SetBranchAddress("syst_trigSFDown", &syst_trigSFDown, &b_syst_trigSFDown);
+      fChain->SetBranchAddress("syst_pT_l1_ID_Up", &syst_pT_l1_ID_Up, &b_syst_pT_l1_ID_Up);
+      fChain->SetBranchAddress("syst_pT_l1_ID_Down", &syst_pT_l1_ID_Down, &b_syst_pT_l1_ID_Down);
+      fChain->SetBranchAddress("syst_pT_l2_ID_Up", &syst_pT_l2_ID_Up, &b_syst_pT_l2_ID_Up);
+      fChain->SetBranchAddress("syst_pT_l2_ID_Down", &syst_pT_l2_ID_Down, &b_syst_pT_l2_ID_Down);
+      fChain->SetBranchAddress("syst_pT_l1_MS_Up", &syst_pT_l1_MS_Up, &b_syst_pT_l1_MS_Up);
+      fChain->SetBranchAddress("syst_pT_l1_MS_Down", &syst_pT_l1_MS_Down, &b_syst_pT_l1_MS_Down);
+      fChain->SetBranchAddress("syst_pT_l2_MS_Up", &syst_pT_l2_MS_Up, &b_syst_pT_l2_MS_Up);
+      fChain->SetBranchAddress("syst_pT_l2_MS_Down", &syst_pT_l2_MS_Down, &b_syst_pT_l2_MS_Down);
+      fChain->SetBranchAddress("syst_pT_l1_MSResbias_Up", &syst_pT_l1_MSResbias_Up, &b_syst_pT_l1_MSResbias_Up);
+      fChain->SetBranchAddress("syst_pT_l1_MSResbias_Down", &syst_pT_l1_MSResbias_Down, &b_syst_pT_l1_MSResbias_Down);
+      fChain->SetBranchAddress("syst_pT_l2_MSResbias_Up", &syst_pT_l2_MSResbias_Up, &b_syst_pT_l2_MSResbias_Up);
+      fChain->SetBranchAddress("syst_pT_l2_MSResbias_Down", &syst_pT_l2_MSResbias_Down, &b_syst_pT_l2_MSResbias_Down);
+      fChain->SetBranchAddress("syst_pT_l1_MSRho_Up", &syst_pT_l1_MSRho_Up, &b_syst_pT_l1_MSRho_Up);
+      fChain->SetBranchAddress("syst_pT_l1_MSRho_Down", &syst_pT_l1_MSRho_Down, &b_syst_pT_l1_MSRho_Down);
+      fChain->SetBranchAddress("syst_pT_l2_MSRho_Up", &syst_pT_l2_MSRho_Up, &b_syst_pT_l2_MSRho_Up);
+      fChain->SetBranchAddress("syst_pT_l2_MSRho_Down", &syst_pT_l2_MSRho_Down, &b_syst_pT_l2_MSRho_Down);
+      fChain->SetBranchAddress("syst_pT_l1_Scale_Up", &syst_pT_l1_Scale_Up, &b_syst_pT_l1_Scale_Up);
+      fChain->SetBranchAddress("syst_pT_l1_Scale_Down", &syst_pT_l1_Scale_Down, &b_syst_pT_l1_Scale_Down);
+      fChain->SetBranchAddress("syst_pT_l2_Scale_Up", &syst_pT_l2_Scale_Up, &b_syst_pT_l2_Scale_Up);
+      fChain->SetBranchAddress("syst_pT_l2_Scale_Down", &syst_pT_l2_Scale_Down, &b_syst_pT_l2_Scale_Down);
+      fChain->SetBranchAddress("syst_pT_ll_ID_Up", &syst_pT_ll_ID_Up, &b_syst_pT_ll_ID_Up);
+      fChain->SetBranchAddress("syst_pT_ll_ID_Down", &syst_pT_ll_ID_Down, &b_syst_pT_ll_ID_Down);
+      fChain->SetBranchAddress("syst_pT_ll_MS_Up", &syst_pT_ll_MS_Up, &b_syst_pT_ll_MS_Up);
+      fChain->SetBranchAddress("syst_pT_ll_MS_Down", &syst_pT_ll_MS_Down, &b_syst_pT_ll_MS_Down);
+      fChain->SetBranchAddress("syst_pT_ll_MSResbias_Up", &syst_pT_ll_MSResbias_Up, &b_syst_pT_ll_MSResbias_Up);
+      fChain->SetBranchAddress("syst_pT_ll_MSResbias_Down", &syst_pT_ll_MSResbias_Down, &b_syst_pT_ll_MSResbias_Down);
+      fChain->SetBranchAddress("syst_pT_ll_MSRho_Up", &syst_pT_ll_MSRho_Up, &b_syst_pT_ll_MSRho_Up);
+      fChain->SetBranchAddress("syst_pT_ll_MSRho_Down", &syst_pT_ll_MSRho_Down, &b_syst_pT_ll_MSRho_Down);
+      fChain->SetBranchAddress("syst_pT_ll_Scale_Up", &syst_pT_ll_Scale_Up, &b_syst_pT_ll_Scale_Up);
+      fChain->SetBranchAddress("syst_pT_ll_Scale_Down", &syst_pT_ll_Scale_Down, &b_syst_pT_ll_Scale_Down);
+      fChain->SetBranchAddress("syst_m_ll_ID_Up", &syst_m_ll_ID_Up, &b_syst_m_ll_ID_Up);
+      fChain->SetBranchAddress("syst_m_ll_ID_Down", &syst_m_ll_ID_Down, &b_syst_m_ll_ID_Down);
+      fChain->SetBranchAddress("syst_m_ll_MS_Up", &syst_m_ll_MS_Up, &b_syst_m_ll_MS_Up);
+      fChain->SetBranchAddress("syst_m_ll_MS_Down", &syst_m_ll_MS_Down, &b_syst_m_ll_MS_Down);
+      fChain->SetBranchAddress("syst_m_ll_MSResbias_Up", &syst_m_ll_MSResbias_Up, &b_syst_m_ll_MSResbias_Up);
+      fChain->SetBranchAddress("syst_m_ll_MSResbias_Down", &syst_m_ll_MSResbias_Down, &b_syst_m_ll_MSResbias_Down);
+      fChain->SetBranchAddress("syst_m_ll_MSRho_Up", &syst_m_ll_MSRho_Up, &b_syst_m_ll_MSRho_Up);
+      fChain->SetBranchAddress("syst_m_ll_MSRho_Down", &syst_m_ll_MSRho_Down, &b_syst_m_ll_MSRho_Down);
+      fChain->SetBranchAddress("syst_m_ll_Scale_Up", &syst_m_ll_Scale_Up, &b_syst_m_ll_Scale_Up);
+      fChain->SetBranchAddress("syst_m_ll_Scale_Down", &syst_m_ll_Scale_Down, &b_syst_m_ll_Scale_Down);
+      fChain->SetBranchAddress("syst_y_ll_ID_Up", &syst_y_ll_ID_Up, &b_syst_y_ll_ID_Up);
+      fChain->SetBranchAddress("syst_y_ll_ID_Down", &syst_y_ll_ID_Down, &b_syst_y_ll_ID_Down);
+      fChain->SetBranchAddress("syst_y_ll_MS_Up", &syst_y_ll_MS_Up, &b_syst_y_ll_MS_Up);
+      fChain->SetBranchAddress("syst_y_ll_MS_Down", &syst_y_ll_MS_Down, &b_syst_y_ll_MS_Down);
+      fChain->SetBranchAddress("syst_y_ll_MSResbias_Up", &syst_y_ll_MSResbias_Up, &b_syst_y_ll_MSResbias_Up);
+      fChain->SetBranchAddress("syst_y_ll_MSResbias_Down", &syst_y_ll_MSResbias_Down, &b_syst_y_ll_MSResbias_Down);
+      fChain->SetBranchAddress("syst_y_ll_MSRho_Up", &syst_y_ll_MSRho_Up, &b_syst_y_ll_MSRho_Up);
+      fChain->SetBranchAddress("syst_y_ll_MSRho_Down", &syst_y_ll_MSRho_Down, &b_syst_y_ll_MSRho_Down);
+      fChain->SetBranchAddress("syst_y_ll_Scale_Up", &syst_y_ll_Scale_Up, &b_syst_y_ll_Scale_Up);
+      fChain->SetBranchAddress("syst_y_ll_Scale_Down", &syst_y_ll_Scale_Down, &b_syst_y_ll_Scale_Down);
+      fChain->SetBranchAddress("syst_TrackFilter_pT_trackj1", &syst_TrackFilter_pT_trackj1, &b_syst_TrackFilter_pT_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_y_trackj1", &syst_TrackFilter_y_trackj1, &b_syst_TrackFilter_y_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_phi_trackj1", &syst_TrackFilter_phi_trackj1, &b_syst_TrackFilter_phi_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_m_trackj1", &syst_TrackFilter_m_trackj1, &b_syst_TrackFilter_m_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_tau1_trackj1", &syst_TrackFilter_tau1_trackj1, &b_syst_TrackFilter_tau1_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_tau2_trackj1", &syst_TrackFilter_tau2_trackj1, &b_syst_TrackFilter_tau2_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_tau3_trackj1", &syst_TrackFilter_tau3_trackj1, &b_syst_TrackFilter_tau3_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_pT_trackj2", &syst_TrackFilter_pT_trackj2, &b_syst_TrackFilter_pT_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_y_trackj2", &syst_TrackFilter_y_trackj2, &b_syst_TrackFilter_y_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_phi_trackj2", &syst_TrackFilter_phi_trackj2, &b_syst_TrackFilter_phi_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_m_trackj2", &syst_TrackFilter_m_trackj2, &b_syst_TrackFilter_m_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_tau1_trackj2", &syst_TrackFilter_tau1_trackj2, &b_syst_TrackFilter_tau1_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_tau2_trackj2", &syst_TrackFilter_tau2_trackj2, &b_syst_TrackFilter_tau2_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_tau3_trackj2", &syst_TrackFilter_tau3_trackj2, &b_syst_TrackFilter_tau3_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_pT_trackj1", &syst_JetTrackFilter_pT_trackj1, &b_syst_JetTrackFilter_pT_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_y_trackj1", &syst_JetTrackFilter_y_trackj1, &b_syst_JetTrackFilter_y_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_phi_trackj1", &syst_JetTrackFilter_phi_trackj1, &b_syst_JetTrackFilter_phi_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_m_trackj1", &syst_JetTrackFilter_m_trackj1, &b_syst_JetTrackFilter_m_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_tau1_trackj1", &syst_JetTrackFilter_tau1_trackj1, &b_syst_JetTrackFilter_tau1_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_tau2_trackj1", &syst_JetTrackFilter_tau2_trackj1, &b_syst_JetTrackFilter_tau2_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_tau3_trackj1", &syst_JetTrackFilter_tau3_trackj1, &b_syst_JetTrackFilter_tau3_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_pT_trackj2", &syst_JetTrackFilter_pT_trackj2, &b_syst_JetTrackFilter_pT_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_y_trackj2", &syst_JetTrackFilter_y_trackj2, &b_syst_JetTrackFilter_y_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_phi_trackj2", &syst_JetTrackFilter_phi_trackj2, &b_syst_JetTrackFilter_phi_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_m_trackj2", &syst_JetTrackFilter_m_trackj2, &b_syst_JetTrackFilter_m_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_tau1_trackj2", &syst_JetTrackFilter_tau1_trackj2, &b_syst_JetTrackFilter_tau1_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_tau2_trackj2", &syst_JetTrackFilter_tau2_trackj2, &b_syst_JetTrackFilter_tau2_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_tau3_trackj2", &syst_JetTrackFilter_tau3_trackj2, &b_syst_JetTrackFilter_tau3_trackj2);
+      fChain->SetBranchAddress("syst_Fake_pT_trackj1", &syst_Fake_pT_trackj1, &b_syst_Fake_pT_trackj1);
+      fChain->SetBranchAddress("syst_Fake_y_trackj1", &syst_Fake_y_trackj1, &b_syst_Fake_y_trackj1);
+      fChain->SetBranchAddress("syst_Fake_phi_trackj1", &syst_Fake_phi_trackj1, &b_syst_Fake_phi_trackj1);
+      fChain->SetBranchAddress("syst_Fake_m_trackj1", &syst_Fake_m_trackj1, &b_syst_Fake_m_trackj1);
+      fChain->SetBranchAddress("syst_Fake_tau1_trackj1", &syst_Fake_tau1_trackj1, &b_syst_Fake_tau1_trackj1);
+      fChain->SetBranchAddress("syst_Fake_tau2_trackj1", &syst_Fake_tau2_trackj1, &b_syst_Fake_tau2_trackj1);
+      fChain->SetBranchAddress("syst_Fake_tau3_trackj1", &syst_Fake_tau3_trackj1, &b_syst_Fake_tau3_trackj1);
+      fChain->SetBranchAddress("syst_Fake_pT_trackj2", &syst_Fake_pT_trackj2, &b_syst_Fake_pT_trackj2);
+      fChain->SetBranchAddress("syst_Fake_y_trackj2", &syst_Fake_y_trackj2, &b_syst_Fake_y_trackj2);
+      fChain->SetBranchAddress("syst_Fake_phi_trackj2", &syst_Fake_phi_trackj2, &b_syst_Fake_phi_trackj2);
+      fChain->SetBranchAddress("syst_Fake_m_trackj2", &syst_Fake_m_trackj2, &b_syst_Fake_m_trackj2);
+      fChain->SetBranchAddress("syst_Fake_tau1_trackj2", &syst_Fake_tau1_trackj2, &b_syst_Fake_tau1_trackj2);
+      fChain->SetBranchAddress("syst_Fake_tau2_trackj2", &syst_Fake_tau2_trackj2, &b_syst_Fake_tau2_trackj2);
+      fChain->SetBranchAddress("syst_Fake_tau3_trackj2", &syst_Fake_tau3_trackj2, &b_syst_Fake_tau3_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_pT_trackj1", &syst_pTScale_pT_trackj1, &b_syst_pTScale_pT_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_y_trackj1", &syst_pTScale_y_trackj1, &b_syst_pTScale_y_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_phi_trackj1", &syst_pTScale_phi_trackj1, &b_syst_pTScale_phi_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_m_trackj1", &syst_pTScale_m_trackj1, &b_syst_pTScale_m_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_tau1_trackj1", &syst_pTScale_tau1_trackj1, &b_syst_pTScale_tau1_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_tau2_trackj1", &syst_pTScale_tau2_trackj1, &b_syst_pTScale_tau2_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_tau3_trackj1", &syst_pTScale_tau3_trackj1, &b_syst_pTScale_tau3_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_pT_trackj2", &syst_pTScale_pT_trackj2, &b_syst_pTScale_pT_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_y_trackj2", &syst_pTScale_y_trackj2, &b_syst_pTScale_y_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_phi_trackj2", &syst_pTScale_phi_trackj2, &b_syst_pTScale_phi_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_m_trackj2", &syst_pTScale_m_trackj2, &b_syst_pTScale_m_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_tau1_trackj2", &syst_pTScale_tau1_trackj2, &b_syst_pTScale_tau1_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_tau2_trackj2", &syst_pTScale_tau2_trackj2, &b_syst_pTScale_tau2_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_tau3_trackj2", &syst_pTScale_tau3_trackj2, &b_syst_pTScale_tau3_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_Ntracks_trackj1", &syst_TrackFilter_Ntracks_trackj1, &b_syst_TrackFilter_Ntracks_trackj1);
+      fChain->SetBranchAddress("syst_TrackFilter_Ntracks_trackj2", &syst_TrackFilter_Ntracks_trackj2, &b_syst_TrackFilter_Ntracks_trackj2);
+      fChain->SetBranchAddress("syst_JetTrackFilter_Ntracks_trackj1", &syst_JetTrackFilter_Ntracks_trackj1, &b_syst_JetTrackFilter_Ntracks_trackj1);
+      fChain->SetBranchAddress("syst_JetTrackFilter_Ntracks_trackj2", &syst_JetTrackFilter_Ntracks_trackj2, &b_syst_JetTrackFilter_Ntracks_trackj2);
+      fChain->SetBranchAddress("syst_Fake_Ntracks_trackj1", &syst_Fake_Ntracks_trackj1, &b_syst_Fake_Ntracks_trackj1);
+      fChain->SetBranchAddress("syst_Fake_Ntracks_trackj2", &syst_Fake_Ntracks_trackj2, &b_syst_Fake_Ntracks_trackj2);
+      fChain->SetBranchAddress("syst_pTScale_Ntracks_trackj1", &syst_pTScale_Ntracks_trackj1, &b_syst_pTScale_Ntracks_trackj1);
+      fChain->SetBranchAddress("syst_pTScale_Ntracks_trackj2", &syst_pTScale_Ntracks_trackj2, &b_syst_pTScale_Ntracks_trackj2);
+      fChain->SetBranchAddress("syst_TrackFilter_NtrackJets20", &syst_TrackFilter_NtrackJets20, &b_syst_TrackFilter_NtrackJets20);
+      fChain->SetBranchAddress("syst_JetTrackFilter_NtrackJets20", &syst_JetTrackFilter_NtrackJets20, &b_syst_JetTrackFilter_NtrackJets20);
+      fChain->SetBranchAddress("syst_Fake_NtrackJets20", &syst_Fake_NtrackJets20, &b_syst_Fake_NtrackJets20);
+      fChain->SetBranchAddress("syst_pTScale_NtrackJets20", &syst_pTScale_NtrackJets20, &b_syst_pTScale_NtrackJets20);
+      fChain->SetBranchAddress("pT_tracks", &fpT_tracks, &b_fpT_tracks);
+      fChain->SetBranchAddress("eta_tracks", &feta_tracks, &b_feta_tracks);
+      fChain->SetBranchAddress("phi_tracks", &fphi_tracks, &b_fphi_tracks);
+      fChain->SetBranchAddress("trackJetIndex_tracks", &ftrackJetIndex_tracks, &b_ftrackJetIndex_tracks);
+      fChain->SetBranchAddress("truth_pT_tracks", &ftruth_pT_tracks, &b_ftruth_pT_tracks);
+      fChain->SetBranchAddress("truth_eta_tracks", &ftruth_eta_tracks, &b_ftruth_eta_tracks);
+      fChain->SetBranchAddress("truth_phi_tracks", &ftruth_phi_tracks, &b_ftruth_phi_tracks);
+      fChain->SetBranchAddress("truth_trackJetIndex_tracks", &ftruth_trackJetIndex_tracks, &b_ftruth_trackJetIndex_tracks);
+      fChain->SetBranchAddress("omni_weight", &omni_weight, &b_omni_weight);
+   // Set branch addresses that are specific to truth files
+   } else {
+      fChain->SetBranchAddress("pT_tracks", &dpT_tracks, &b_dpT_tracks);
+      fChain->SetBranchAddress("eta_tracks", &deta_tracks, &b_deta_tracks);
+      fChain->SetBranchAddress("phi_tracks", &dphi_tracks, &b_dphi_tracks);
+      fChain->SetBranchAddress("trackJetIndex_tracks", &dtrackJetIndex_tracks, &b_dtrackJetIndex_tracks);
+      fChain->SetBranchAddress("truth_pT_tracks", &dtruth_pT_tracks, &b_dtruth_pT_tracks);
+      fChain->SetBranchAddress("truth_eta_tracks", &dtruth_eta_tracks, &b_dtruth_eta_tracks);
+      fChain->SetBranchAddress("truth_phi_tracks", &dtruth_phi_tracks, &b_dtruth_phi_tracks);
+      fChain->SetBranchAddress("truth_trackJetIndex_tracks", &dtruth_trackJetIndex_tracks, &b_dtruth_trackJetIndex_tracks);
+   }
    Notify();
 }
 

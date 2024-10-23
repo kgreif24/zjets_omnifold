@@ -5,7 +5,7 @@
 #include "TLegend.h"
 #include "TStyle.h"
 #include "TLine.h"
-
+#include <iostream>
 using namespace std;
 
 #ifndef DoPlots_cxx
@@ -30,45 +30,80 @@ void FinalPlots(TFile* outFileOmni, TFile* outFileTruth, TString variable){
 
   pad1->cd();
   gPad->SetLogy();
-  TH1D* hReco_omni = (TH1D*)outFileOmni->Get(variable+"_omni");
+  if (variable.Contains("EEC")) {
+    gPad->SetLogx();
+  }
+  TH1D* hReco = (TH1D*)outFileOmni->Get(variable);
+  TH1D* hOmni = (TH1D*)outFileOmni->Get(variable+"_omni");
   TH1D* hTrue      = (TH1D*)outFileTruth->Get(variable);
-  hReco_omni->SetLineColor(kBlue);
-  hTrue->SetLineColor(kRed);
-  hReco_omni->SetMarkerColor(kBlue);
-  hTrue->SetMarkerColor(kRed);
+  double maxVal = max({hReco->GetMaximum(), hOmni->GetMaximum(), hTrue->GetMaximum()});
+  if (variable.Contains("EEC")) {
+    maxVal *= 10;
+  }
+  double minVal = min({hReco->GetMinimum(), hOmni->GetMinimum(), hTrue->GetMinimum()});
+  hTrue->GetYaxis()->SetRangeUser(minVal, maxVal);
+  hReco->GetYaxis()->SetRangeUser(minVal, maxVal);
+  hOmni->GetYaxis()->SetRangeUser(minVal, maxVal);
+  hReco->SetMarkerStyle(20);
+  hOmni->SetMarkerStyle(20);
+  hTrue->SetMarkerStyle(20);
+  hReco->SetLineColor(kBlue);
+  hOmni->SetLineColor(kRed);
+  hTrue->SetLineColor(kBlack);
+  hReco->SetMarkerColor(kBlue);
+  hOmni->SetMarkerColor(kRed);
+  hTrue->SetMarkerColor(kBlack);
   
-  TLegend*l = new TLegend(0.7, 0.7, 0.9, 0.9);
-  l->AddEntry(hReco_omni, "reco omni", "l");
+  TLegend* l;
+  if (variable.Contains("EEC" || "Lund")) {
+    l = new TLegend(0.3, 0.3, 0.5, 0.5);
+  } else {
+    l = new TLegend(0.7, 0.7, 0.9, 0.9);
+  }
+  l->AddEntry(hReco, "reco", "l");
+  l->AddEntry(hOmni, "omnifold", "l");
   l->AddEntry(hTrue, "truth", "l");
-  hReco_omni->Draw();
-  hTrue->Draw("same");
+  hTrue->Draw("HIST");
+  hReco->Draw("HIST same");
+  hOmni->Draw("HIST same");
   l->Draw("same");
-  pad2->cd();
+  pad1->Update();
 
   // Create the ratio histogram
-  TH1D* ratio = (TH1D*)hReco_omni->Clone("ratio");
-  ratio->Divide(hTrue);
+  pad2->cd();
+  if (variable.Contains("EEC")) {
+    gPad->SetLogx();
+  }
+  TH1D* ratioReco = (TH1D*)hReco->Clone("ratio1");
+  ratioReco->Divide(hTrue);
+  TH1D* ratioOmni = (TH1D*)hOmni->Clone("ratio2");
+  ratioOmni->Divide(hTrue);
 
-  ratio->SetLineColor(kBlack);
-  ratio->SetTitle("");
-  ratio->GetYaxis()->SetTitle("Omni / Truth");
-  ratio->GetYaxis()->SetNdivisions(505);
-  ratio->GetYaxis()->SetTitleSize(0.1);
-  ratio->GetYaxis()->SetTitleOffset(0.5);
-  ratio->GetYaxis()->SetLabelSize(0.1);
-  ratio->GetXaxis()->SetTitleSize(0.1);
-  ratio->GetXaxis()->SetLabelSize(0.1);
-  ratio->GetYaxis()->SetRangeUser(0, 2);
-  ratio->GetXaxis()->SetTitle(variable);
-  ratio->Draw("HIST");
-  double xmin = ratio->GetXaxis()->GetXmin();
-  double xmax = ratio->GetXaxis()->GetXmax();
+  ratioReco->SetLineColor(kBlue);
+  ratioOmni->SetLineColor(kRed);
+  ratioReco->SetTitle("");
+  ratioReco->GetYaxis()->SetTitle("Omni / Truth");
+  ratioReco->GetYaxis()->SetNdivisions(505);
+  ratioOmni->GetYaxis()->SetNdivisions(505);
+  ratioReco->GetYaxis()->SetTitleSize(0.1);
+  ratioReco->GetYaxis()->SetTitleOffset(0.5);
+  ratioReco->GetYaxis()->SetLabelSize(0.1);
+  ratioReco->GetXaxis()->SetTitleSize(0.1);
+  ratioReco->GetXaxis()->SetLabelSize(0.1);
+  ratioReco->GetYaxis()->SetRangeUser(0.75, 1.25);
+  ratioOmni->GetYaxis()->SetRangeUser(0.75, 1.25);
+  ratioReco->GetXaxis()->SetTitle(variable);
+  ratioReco->Draw("HIST");
+  ratioOmni->Draw("HIST same");
+  double xmin = ratioReco->GetXaxis()->GetXmin();
+  double xmax = ratioReco->GetXaxis()->GetXmax();
   TLine* line = new TLine(xmin, 1, xmax, 1);
   line->SetLineStyle(4);
   line->SetLineColor(kBlack);
   line->Draw("same");
   c->Update();
-  c->SaveAs("plots/"+variable+".png");
+  c->SaveAs("out/plots/"+variable+".png");
+  c->SaveAs("out/plots/"+variable+".pdf");
 
 }
 

@@ -1,7 +1,6 @@
 #include <iostream>
 #include "TString.h"
 #include "MakeOmni.h"
-#include "MakeTruth.h"
 #include "DoPlots.h"
 #include "TChain.h"
 #include "TFile.h"
@@ -17,7 +16,7 @@
 using namespace std ;
 
 int main(int argc, char* argv[]){
-// int main(){
+
 	std::string omniOrtrue(argv[1]);
 	TString OmniOrTruth = TString(omniOrtrue.c_str());
 	TString theLink;
@@ -26,42 +25,13 @@ int main(int argc, char* argv[]){
 	// but for omni take tmp_mc.root since omni_test_weights are added as a branch 
 	// file for truth : /global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_40_shuffled.root
 	
-	if (OmniOrTruth=="reco"){ 
-		std::cout << " do plots for omni ... " << std::endl;
-		theLink = "/data/jmsardain/Zjets/data/tmp_mc.root";
-	}
-
-	if (OmniOrTruth=="truth"){ 
-		std::cout << " do plots for truth ... " << std::endl;
-		theLink = "/data/jmsardain/Zjets/data/WithTracks_TruthPseudodata_Mar12_Combined_1_40_shuffled.root";
-	}
-
-	if (OmniOrTruth=="reco" || OmniOrTruth=="truth"){
-		
-		myChain = new TChain( "OmniTree" ) ;
-		cout << theLink << endl ;
-		myChain->Add( theLink );
-		cout << "my chain = " << myChain->GetEntries() << endl ;
-	}
-
-	if (OmniOrTruth=="reco"){
-		MakeOmni * myAnalysis ;
-		myAnalysis =  new MakeOmni( myChain ) ;
-		myAnalysis->Loop();
-	}
-
-	if (OmniOrTruth=="truth"){
-		MakeTruth * myAnalysis ;
-		myAnalysis =  new MakeTruth( myChain ) ;
-		myAnalysis->Loop();
-	}
-
+	// Option to run the final plotting once histograms have been filled
 	if (OmniOrTruth=="plots"){
+
 		SetAtlasStyle();
 		TFile* outputFileOmni  = TFile::Open("out/output_omni.root");
 		TFile* outputFileTruth  = TFile::Open("out/output_truth.root");
 	
-
 		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R06");
 		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R10");
@@ -74,8 +44,40 @@ int main(int argc, char* argv[]){
 		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R06");
 		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R10");
+		FinalPlots(outputFileOmni, outputFileTruth, "hTEEC");
 		FinalPlots(outputFileOmni, outputFileTruth, "h_fracpT_ring");
+
+	// Else we need to build histograms from the MC / truth pseudodata
+	} else {
+
+		// Set input file
+		bool isTruth = false;
+		Long64_t maxEvents = 0;
+		if (OmniOrTruth == "reco") {
+			std::cout << " do plots for omni ... " << std::endl;
+			theLink = "./plotting_mc/test.root";
+		} else if (OmniOrTruth == "truth") {
+			std::cout << " do plots for truth ... " << std::endl;
+			theLink = "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root";
+			isTruth = true;
+			maxEvents = 5000000; // Set a limit for truth events
+		} else {
+			std::cout << "Invalid option. Please choose 'reco'/'truth' or 'plots'." << std::endl;
+			return 1;
+		}
+
+		// Set up the chain
+		myChain = new TChain( "OmniTree" );
+		myChain->Add( theLink );
+		cout << "my link = " << theLink << endl ;
+		cout << "my chain = " << myChain->GetEntries() << endl ;
+
+		// Run the analysis
+		MakeOmni* myAnalysis = new MakeOmni( myChain, isTruth );
+		myAnalysis->Loop(maxEvents);
+
 	}
+
 	return 0;
 
 }
