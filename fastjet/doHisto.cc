@@ -35,15 +35,19 @@ int main(int argc, char* argv[]){
 		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R06");
 		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R10");
+		FinalPlots(outputFileOmni, outputFileTruth, "hpT_CA04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_R04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_R06");
 		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_R10");
+		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_CA04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_R04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_R06");
 		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_R10");
+		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_CA04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R06");
 		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R10");
+		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_CA04");
 		FinalPlots(outputFileOmni, outputFileTruth, "hTEEC");
 		FinalPlots(outputFileOmni, outputFileTruth, "h_fracpT_ring");
 

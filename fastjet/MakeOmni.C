@@ -17,8 +17,8 @@ using namespace std;
 void MakeOmni::Loop( Long64_t maxEvents ) {
 
    // Define log-spaced bin edges for EEC plots
-   Long64_t nbins = 40;
-   Double_t logxmin = -7;
+   Long64_t nbins = 80;
+   Double_t logxmin = -8;
    Double_t logxmax = 0.5;
    Double_t binEdges[nbins+1];
    for (Long64_t i = 0; i <= nbins; ++i) {
@@ -166,6 +166,7 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
       m2_tlv.SetPtEtaPhiM(truth_pT_l2, truth_eta_l2, truth_phi_l2, 0.10566);
       TLorentzVector zboson_tlv = m1_tlv + m2_tlv;
       PseudoJet zboson;
+      cout << "\n Z boson phi: " << zboson_tlv.Phi() << endl;
       zboson.reset_PtYPhiM(zboson_tlv.Pt(), zboson_tlv.Rapidity(), zboson_tlv.Phi(), zboson_tlv.M());
 
       // Create vector of PseudoJets from all tracks in event

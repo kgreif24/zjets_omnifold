@@ -92,7 +92,13 @@ void FinalPlots(TFile* outFileOmni, TFile* outFileTruth, TString variable){
   ratioReco->GetXaxis()->SetLabelSize(0.1);
   ratioReco->GetYaxis()->SetRangeUser(0.75, 1.25);
   ratioOmni->GetYaxis()->SetRangeUser(0.75, 1.25);
-  ratioReco->GetXaxis()->SetTitle(variable);
+  if (variable.Contains("TEEC")) {
+    ratioReco->GetXaxis()->SetTitle("Tau");
+  } else if (variable.Contains("EEC")) {
+    ratioReco->GetXaxis()->SetTitle("z");
+  } else {
+    ratioReco->GetXaxis()->SetTitle(variable);
+  }
   ratioReco->Draw("HIST");
   ratioOmni->Draw("HIST same");
   double xmin = ratioReco->GetXaxis()->GetXmin();
