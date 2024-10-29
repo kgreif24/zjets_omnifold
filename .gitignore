@@ -16,3 +16,4 @@ fastjet/obj
 *.out
 .vscode
 fastjet/out
+experiments
