@@ -2,6 +2,7 @@ __pycache__/*
 *.pyc
 plot_storage
 weight_storage
+plotting_mc
 slurm*
 cli/*.yml
 lightning_logs
@@ -11,4 +12,7 @@ test-of-project
 eval_plot_storage
 outfiles/*
 dataloc
+fastjet/obj
+*.out
 .vscode
+fastjet/out
