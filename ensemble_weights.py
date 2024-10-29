@@ -32,9 +32,9 @@ for vector in vector_names:
 
     # Take mean or median
     if args.reduction == 'mean':
-        results[vector] = np.mean([np.load(file)[vector] for file in weight_files], axis=0)
+        results[vector] = np.mean([np.load(file)[vector] for file in weight_files], axis=0).clip(max=100)
     elif args.reduction == 'median':
-        results[vector] = np.median([np.load(file)[vector] for file in weight_files], axis=0)
+        results[vector] = np.median([np.load(file)[vector] for file in weight_files], axis=0).clip(max=100)
 
 # Save results
 np.savez(args.output, **results)
