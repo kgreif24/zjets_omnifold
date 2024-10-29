@@ -54,17 +54,18 @@ class Omnifolder():
             print("CUDA device count: ", torch.cuda.device_count())
             print("CUDA device name: ", torch.cuda.get_device_name(0))
 
-        if continue_iteration != 0:
-            print("Continuing from iteration ", continue_iteration)
-        if continue_step_two:
-            print("Continuing from step two")
-
         # Set config path and config object as instance variables
         self.config_path = config_path
         print("Omnifolder class trying to load config from file", config_path)
         self.cfg = OfConfig(config_name=config_path)
-        print("Max train step 1 from config", self.cfg.max_train_step_one)
-        print("Config path within config lol ", self.cfg.config_path)
+
+        # Handle paths for warm starting if we are not starting from scratch
+        if continue_iteration != 0:
+            print("Continuing from iteration ", continue_iteration)
+            self.step_one_ws_path = self.cfg.pt_step_one_checkpoint
+            self.step_two_ws_path = self.cfg.pt_step_two_checkpoint
+        if continue_step_two:
+            print("Continuing from step two")
 
         # Set some instance variables for tracking progress through the procedure
         self.current_iteration = continue_iteration
@@ -86,11 +87,16 @@ class Omnifolder():
 
         print("\n############## Running Omnifold ##############\n")
 
-        first_iteration = True
+        # Pre-train step if this is iteration 0
+        if self.current_iteration == 0:
+            self.pre_train()
+            self.current_iteration = 1
 
-        for i in range(self.current_iteration, self.end_iteration):
+        # Omnifold Loop
+        first_iteration = True
+        for i in range(self.current_iteration, self.end_iteration+1):  # 1-indexed
             self.current_iteration = i
-            print(f"\n\n ##### Running iteration {i+1} of {self.end_iteration} #####")
+            print(f"\n\n ##### Running iteration {i} of {self.end_iteration} #####")
             if first_iteration and self.continue_step_two:
                 self.run_step(2)
                 first_iteration = False
@@ -101,12 +107,28 @@ class Omnifolder():
         print("\n############## Omnifold Finished!! ##############\n")
 
 
-    def run_step(self, step):
+    def pre_train(self):
+        """ pre_train - This function runs the pre-training step of the omnifold algorithm.
+        It will train two networks, a step 1 and a step 2 network. These will then be
+        used as the starting point for the trainings in the iterations.
+
+        No arguments or returns
+        """
+
+        print("\n########## Pre-Training ##########\n")
+        for step in [1, 2]:
+            print("Running pre-training for step ", step)
+            self.run_step(step, pt=True)
+
+
+    def run_step(self, step, pt=False):
         """ step_one - This function runs a step of the omnifold algorithm.
         Which step it runs is controlled by the step argument.
 
         Arguments:
             step - The step of the omnifold algorithm to run. 1 or 2.
+            pt - If true, indicates that this is a pre-training step and best model
+                checkpoints will be saved to warm start all subsequent trainings
         Returns: None
         """
 
@@ -114,7 +136,7 @@ class Omnifolder():
         if step not in [1, 2]:
             raise ValueError("Step must be 1 or 2!")
 
-        print(f"\n########## Step {step} Training ##########\n")
+        print(f"\n## Step {step} Training ##\n")
 
         # Determine seed for train / val split
         seed = self.cfg.split_seed
@@ -167,7 +189,14 @@ class Omnifolder():
             if found_id and found_path:
                 break
 
-        print(f"\n########## Step {step} Evaluating ##########\n")
+        # Save best model path to warm start future trainings
+        if pt:
+            if step == 1:
+                self.step_one_ws_path = best_model_path
+            elif step == 2:
+                self.step_two_ws_path = best_model_path
+
+        print(f"\n## Step {step} Evaluating ##\n")
 
         # Run evaluation as a subprocess, no need to keep output
         eval_args = [

@@ -86,23 +86,34 @@ class OfEval:
         else:
             self.save_dir = self.weight_dir
 
-        # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
-        # to use in testing sets (two copies of MC used for step two currently does not fit in memory)
+        # Find the data and weight files to use for this iteration and step
         # For step one:
         if self.step == 1:
             use_truth = False
-            train_source_file = self.config.mc_train_path
-            test_source_file = self.config.mc_test_path
-            train_target_file = self.config.data_path
-            test_target_file = self.config.data_path
+            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            if self.iteration == 0:
+                train_source_file = self.config.mc_train_path
+                test_source_file = self.config.mc_test_path
+                train_target_file = self.config.pretrain_path
+                test_target_file = self.config.pretrain_path
+                source_weight_file = 'root'
+                target_weight_file = 'root'
             # If this is the first iteration, use the weights from the root file for source 
             # and no weights for the target
-            if self.iteration == 0:
+            elif self.iteration == 1:
+                train_source_file = self.config.mc_train_path
+                test_source_file = self.config.mc_test_path
+                train_target_file = self.config.data_path
+                test_target_file = self.config.data_path
                 source_weight_file = 'root'
                 target_weight_file = None
             # Otherwise use the weights from the previous step two for the source, and no
             # weights for the target
             else:
+                train_source_file = self.config.mc_train_path
+                test_source_file = self.config.mc_test_path
+                train_target_file = self.config.data_path
+                test_target_file = self.config.data_path
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
             max_events_source = np.inf  # Want to use all events!
@@ -110,23 +121,34 @@ class OfEval:
         # For step two:
         if self.step == 2:
             use_truth = True
-            train_source_file = self.config.mc_train_path
-            test_source_file = self.config.mc_test_path
-            train_target_file = self.config.mc_train_path
-            test_target_file = self.config.mc_test_path
+            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            if self.iteration == 0:
+                train_source_file = self.config.mc_train_path
+                test_source_file = self.config.mc_test_path
+                train_target_file = self.config.pretrain_path
+                test_target_file = self.config.pretrain_path
+                source_weight_file = 'root'
+                target_weight_file = 'root'
             # If this is the first iteration, use the weights from step one for target, and the
             # weights from the root file as source.
             if self.iteration == 0:
+                train_source_file = self.config.mc_train_path
+                test_source_file = self.config.mc_test_path
+                train_target_file = self.config.mc_train_path
+                test_target_file = self.config.mc_test_path
                 source_weight_file = 'root'
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
             # Otherwise use weights from previous step 2 for source, and the weights
             # from the previous step one for target
             else:
+                train_source_file = self.config.mc_train_path
+                test_source_file = self.config.mc_test_path
+                train_target_file = self.config.mc_train_path
+                test_target_file = self.config.mc_test_path
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
-            max_events_source = np.inf  # Want to use all events!
+            max_events_source = np.inf # Want to use all events!
             max_events_target = self.config.max_test_target
-
 
         # Build a data module. We want to run prediction on every event
         # we have, so need to define two data modules, one for the training / val

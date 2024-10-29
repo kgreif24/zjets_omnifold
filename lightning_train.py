@@ -27,7 +27,7 @@ class OfTrain:
     below.
     """
 
-    def __init__(self, config_path, iteration, step, seed=222, index=-1, unit_test=False):
+    def __init__(self, config_path, iteration, step, ws_path=None, seed=222, index=-1, unit_test=False):
         """ __init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
 
@@ -35,6 +35,8 @@ class OfTrain:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
+        ws_path - The path to a model checkpoint to warm start from, if left as None then model
+            will be initialized from scratch
         seed - The seed to use for the train / val split in this training
         index - The index of the ensemble to run. Add this number to the end of the group ID
              if it is not None
@@ -61,21 +63,28 @@ class OfTrain:
         # Get weights for use in training. Define (but do not make!) the weight directory
         weight_dir = f"{checkpoint_dir}/weights"
 
-        # Find the data and weight files to use for this iteration and step. Also set the maximum number of events
-        # to use (two copies of MC used for step two currently does not fit in memory)
+        # Find the data and weight files to use for this iteration and step
         # For step one:
         if self.step == 1:
             use_truth = False
-            source_file = self.config.mc_train_path
-            target_file = self.config.data_path
+            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            if self.iteration == 0:
+                source_file = self.config.mc_train_path
+                target_file = self.config.pretrain_path
+                source_weight_file = 'root'
+                target_weight_file = 'root'
             # If this is the first iteration, use the weights from the root file for source 
             # and no weights for the target
-            if self.iteration == 0:
+            elif self.iteration == 1:
+                source_file = self.config.mc_train_path
+                target_file = self.config.data_path
                 source_weight_file = 'root'
                 target_weight_file = None
             # Otherwise use the weights from the previous step two for the source, and no
             # weights for the target
             else:
+                source_file = self.config.mc_train_path
+                target_file = self.config.data_path
                 source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
             max_events_source = self.config.max_train_step_one
@@ -83,16 +92,24 @@ class OfTrain:
         # For step two:
         if self.step == 2:
             use_truth = True
-            source_file = self.config.mc_train_path
-            target_file = self.config.mc_train_path
+            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            if self.iteration == 0:
+                source_file = self.config.mc_train_path
+                target_file = self.config.mc_train_path
+                source_weight_file = 'root'
+                target_weight_file = 'root'
             # If this is the first iteration, use the weights from step one for target, and the
             # weights from the root file as source.
             if self.iteration == 0:
+                source_file = self.config.mc_train_path
+                target_file = self.config.mc_train_path
                 source_weight_file = 'root'
                 target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
             # Otherwise use weights from previous step 2 for source, and the weights
             # from the previous step one for target
             else:
+                source_file = self.config.mc_train_path
+                target_file = self.config.mc_train_path
                 source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
             max_events_source = self.config.max_train_step_two
@@ -127,7 +144,10 @@ class OfTrain:
         # Initialise the wandb logger
         if self.config.wandb:
 
-            run_name = f"iteration_{self.iteration}_step_{self.step}"
+            if self.iteration == 0:
+                run_name = f"pretrain_step_{self.step}"
+            else:
+                run_name = f"iteration_{self.iteration}_step_{self.step}"
             self.wandb_logger = WandbLogger(
                 project=self.config.project_name, 
                 group=self.config.group_name,
@@ -177,54 +197,74 @@ class OfTrain:
             val_dir = None
 
         # Get min/max learning rates depending on step
-        if self.step == 1:
-             min_lr = self.config.s1_min_lr
-             max_lr = self.config.s1_max_lr * (self.config.s1_max_decay**self.iteration)
+        if self.iteration == 0:
+            min_lr = self.config.pt_min_lr
+            max_lr = self.config.pt_max_lr
+        elif self.step == 1:
+            min_lr = self.config.s1_min_lr
+            max_lr = self.config.s1_max_lr * (self.config.s1_max_decay**self.iteration)
         else:
-             min_lr = self.config.s2_min_lr
-             max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
+            min_lr = self.config.s2_min_lr
+            max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
 
-        # Build lightning module
-        block_params = {
-            'dropout': self.config.block_dropout,
-            'attn_dropout': self.config.block_attn_dropout,
-            'activation_dropout': self.config.block_activation_dropout
-        }
-        cls_block_params = {
-            'dropout': self.config.cls_block_dropout,
-            'attn_dropout': self.config.cls_block_attn_dropout,
-            'activation_dropout': self.config.cls_block_activation_dropout
-        }
+        # Build lightning module from scratch if we are not given a warm start parth
+        if ws_path is None:
 
-        self.l_module = LOfTransformer(
-            input_dim=self.config.input_dim,
-            val_plots=val_dir,
-            log=self.config.wandb,
-            debug=self.config.debug,
-            # Include the seed just so it is logged to W&B
-            seed=self.config.split_seed,
-            # Include the OF step for plots
-            step=self.step,
-            min_lr=min_lr,
-            max_lr=max_lr,
-            cycle_steps=self.config.cycle_steps,
-            warmup_steps=self.config.warmup_steps,
-            gamma=self.config.gamma,
-            # Everything below here are parameters for the network
-            num_classes=1,
-            trim=self.config.run_trimmer,
-            remove_self_pair=self.config.remove_self_pair,
-            embed_dims=self.config.embed_dims,
-            pair_input_dim=self.config.pair_input_dim,
-            pair_extra_dim=0,
-            pair_embed_dims=self.config.pair_embed_dims,
-            fc_nodes=self.config.fc_nodes,
-            fc_dropout=self.config.fc_dropout,
-            cls_block_params=cls_block_params,
-            num_cls_layers=self.config.num_cls_layers,
-            block_params=block_params,
-            num_layers=self.config.num_layers,
-        )
+            block_params = {
+                'dropout': self.config.block_dropout,
+                'attn_dropout': self.config.block_attn_dropout,
+                'activation_dropout': self.config.block_activation_dropout
+            }
+            cls_block_params = {
+                'dropout': self.config.cls_block_dropout,
+                'attn_dropout': self.config.cls_block_attn_dropout,
+                'activation_dropout': self.config.cls_block_activation_dropout
+            }
+
+            self.l_module = LOfTransformer(
+                input_dim=self.config.input_dim,
+                val_plots=val_dir,
+                log=self.config.wandb,
+                debug=self.config.debug,
+                # Include the seed just so it is logged to W&B
+                seed=self.config.split_seed,
+                # Include the OF step for plots
+                step=self.step,
+                min_lr=min_lr,
+                max_lr=max_lr,
+                cycle_steps=self.config.cycle_steps,
+                warmup_steps=self.config.warmup_steps,
+                gamma=self.config.gamma,
+                # Everything below here are parameters for the network
+                num_classes=1,
+                trim=self.config.run_trimmer,
+                remove_self_pair=self.config.remove_self_pair,
+                embed_dims=self.config.embed_dims,
+                pair_input_dim=self.config.pair_input_dim,
+                pair_extra_dim=0,
+                pair_embed_dims=self.config.pair_embed_dims,
+                fc_nodes=self.config.fc_nodes,
+                fc_dropout=self.config.fc_dropout,
+                cls_block_params=cls_block_params,
+                num_cls_layers=self.config.num_cls_layers,
+                block_params=block_params,
+                num_layers=self.config.num_layers,
+            )
+
+        # Else load the model from the warm start path
+        else:
+            self.l_module = LOfTransformer.load_from_checkpoint(
+                ws_path,
+                val_plots=val_dir,
+                log=self.config.wandb,
+                debug=self.config.debug,
+                step=self.step,
+                min_lr=min_lr,
+                max_lr=max_lr,
+                cycle_steps=self.config.cycle_steps,
+                warmup_steps=self.config.warmup_steps,
+                gamma=self.config.gamma
+            )
 
 
     def run(self):
@@ -257,6 +297,7 @@ if __name__ == '__main__':
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Run the omnifold algorithm')
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
+    parser.add_argument('--ws_path', type=str, default=None, help='Path to a model checkpoint to warm start from')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
     parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run')

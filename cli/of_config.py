@@ -58,7 +58,12 @@ class OfConfig:
             type=str,
             default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root',
             help='Path to the truth pseudodata'
-
+        )
+        self.parser.add_argument(
+            '--pretrain_path',
+            type=str,
+            default='/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root',
+            help='Path to the file to use in pretraining'
         )
         self.parser.add_argument('--split_seed', type=int, default=-1, help='Seed for the train / validation split, set to -1 to produce random seed at train time')
         self.parser.add_argument('--max_tracks', type=int, default=264, help='Maximum number of tracks to use in the data')
@@ -68,6 +73,10 @@ class OfConfig:
                                  help='Maximum number of events to use in step two. Applied to both copies of MC')
         self.parser.add_argument('--max_test_target', type=int, default=99999999,
                                  help='Maximum number of events to use in testing / prediction for the target. Applied to both steps')
+
+        # Pretraining checkpoints, only needed if picking up a run from a checkpoint
+        self.parser.add_argument('--pt_step_one_checkpoint', type=str, default=None, help='Path to the pretraining step one checkpoint')
+        self.parser.add_argument('--pt_step_two_checkpoint', type=str, default=None, help='Path to the pretraining step two checkpoint')
 
         # Training
         self.parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training')
@@ -79,6 +88,8 @@ class OfConfig:
         self.parser.add_argument('--num_gpus', type=int, default=4, help='Number of GPUs to use for training')
 
         # Learning rate schedule
+        self.parser.add_argument('--pt_min_lr', type=float, default=0.00001, help='Minimum learning rate for pre-training')
+        self.parser.add_argument('--pt_max_lr', type=float, default=0.0001, help='Maximum learning rate for pre-training')
         self.parser.add_argument('--s1_min_lr', type=float, default=0.000008, help='Minimum learning rate for step one training')
         self.parser.add_argument('--s1_max_lr', type=float, default=0.00005, help='Maximum learning rate for step one training')
         self.parser.add_argument('--s2_min_lr', type=float, default=0.00005, help='Minimum learning rate for step two training')
@@ -97,7 +108,7 @@ class OfConfig:
         self.parser.add_argument('--plot_val', action='store_true', help='Plot validation results')
 
         # Model
-        self.parser.add_argument('--input_dim', type=int, default=11, help='Input dimension for the model')
+        self.parser.add_argument('--input_dim', type=int, default=10, help='Input dimension for the model')
         self.parser.add_argument('--pair_input_dim', type=int, default=4, help='Pair input dimension for the model')
         self.parser.add_argument('--remove_self_pair', action='store_true', help='Remove self pair from the model')
         self.parser.add_argument('--run_trimmer', action='store_true', help='Use the sequence trimmer in training the model')
