@@ -39,7 +39,6 @@ class LOfTransformer(L.LightningModule):
     # Init function 
     def __init__(self, 
                  input_dim=3,          
-                 val_plots=None, 
                  test_plots=None,
                  log=False,
                  debug=False,
@@ -60,8 +59,6 @@ class LOfTransformer(L.LightningModule):
 
         Arguments:
             input_dim {int} -- The input dimension of the model.
-            val_plots {str} -- The path to the directory where validation plots will be stored for logging,
-                None by default, in which case validation plots will not be drawn
             test_plots {str} -- The path to the directory where testing plots will be stored for logging,
                 None by default, in which case testing plots will not be drawn
             log {bool} -- Set to true if we want to log plots to wandb. False by default
@@ -111,14 +108,12 @@ class LOfTransformer(L.LightningModule):
         self.val_auc = torchmetrics.classification.AUROC(task='binary')
         self.test_auc = torchmetrics.classification.AUROC(task='binary')
         if not (self.debug or self.no_w1):
-            self.wasserstein_train = WassersteinOne(pu.default_settings, draw_plots=False)
-            self.draw_val = True if val_plots != None else False
+            self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=False)
             self.draw_test = True if test_plots != None else False
-            self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=self.draw_val, save_location=val_plots)
             self.wasserstein_test = WassersteinOne(pu.default_settings, draw_plots=self.draw_test, save_location=test_plots)
 
         # Log hyperparameters
-        self.save_hyperparameters(ignore=['val_plots', 'test_plots', 'debug'])
+        self.save_hyperparameters(ignore=['test_plots', 'debug'])
 
 
     # Forward pass
@@ -143,26 +138,10 @@ class LOfTransformer(L.LightningModule):
         network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
-        # Update wasserstein metric
-        if not (self.debug or self.no_w1):
-            self.wasserstein_train.update(plotting, start_weights, end_weights, target)
-
         # Log training loss
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)
 
         return loss
-    
-    # Train epoch end for logging train metrics
-    def on_train_epoch_end(self):
-            
-        # Log wasserstein metric
-        if not (self.debug or self.no_w1):
-            train_wass, _ = self.wasserstein_train.compute()
-            if self.log_things:
-                self.log('train_wasserstein', train_wass, on_epoch=True, prog_bar=False, sync_dist=True)
-
-            # Reset wasserstein metric
-            self.wasserstein_train.reset()
 
 
     # Validation step
@@ -201,15 +180,11 @@ class LOfTransformer(L.LightningModule):
         if not self.trainer.sanity_checking:
 
             # Calculate wasserstein metric, and get dictionary of plots to log
-            val_wass, plot_dict = self.wasserstein_val.compute(names=self.names)
+            val_wass, _ = self.wasserstein_val.compute(names=self.names)
 
             # Logging
             if self.log_things:
                 self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
-                if self.draw_val and self.trainer.is_global_zero:
-                    for key, histpath in plot_dict.items():
-                        log_name = 'val_' + key
-                        self.logger.experiment.log({log_name: wandb.Image(histpath)}, step=self.trainer.global_step)
             
         # Reset metric
         self.wasserstein_val.reset()
@@ -303,14 +278,12 @@ class LOfData(L.LightningDataModule):
         target_file=None,
         source_weight_path=None,
         target_weight_path=None,
-        max_events_source=np.inf,
-        max_events_target=np.inf,
+        data_divisor=1,
         max_tracks=None,
         muon_only=False,
         batch_size=256,
         dataloader_workers=0,
-        split_seed=-1,
-        load_all=False,
+        split_seed=2,
         testing=False,
         use_truth=False,
         **kwargs
@@ -323,17 +296,17 @@ class LOfData(L.LightningDataModule):
             target_file {str} -- The path to the file containing the target data.
             source_weight_path {string} -- Path to a .npz file containing weights for the source data
             target_weight_path {string} -- Path to a .npz file containing weights for the target data
-            max_events_source {int} -- The maximum number of events to consider for the source data.
-                Defaults to inf, which means all events are considered.
-            max_events_target {int} -- The maximum number of events to consider for the target data.
-                Defaults to inf, which means all events are considered.
+            data_divisor {int} -- Divide the whole dataset into this many pieces. Default to 1,
+                in which case the whole dataset is used. If >1, then the dataloaders will be configured
+                to load only one piece of the data for each epoch.
+            max_tracks {int} -- The maximum number of tracks to consider in the data. Defaults to None,
+                in which case all tracks are considered.
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
             dataloader_workers {int} -- The number of workers for the data loaders.
             split_seed {int} - The random seed to use in making train / val split,
                 if set to -1 then a random integer is used.
-            load_all {bool} - Set to true if data loader should load all data, if false it produces train / val split
             testing {bool} - Set to true for data module to load testing weights (not training)
             use_truth {bool} - Set to true if we want to use truth level information
                 for the data module. Defaults to false.
@@ -346,23 +319,67 @@ class LOfData(L.LightningDataModule):
         self.target_file = target_file
         self.source_weight_path = source_weight_path
         self.target_weight_path = target_weight_path
-        self.max_events_source = max_events_source
-        self.max_events_target = max_events_target
+        self.data_divisor = data_divisor
         self.max_tracks = max_tracks
         self.muon_only = muon_only
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
         self.split_seed = split_seed
-        self.load_all = load_all
         self.testing = testing
         self.use_truth = use_truth
 
+        # Find total number of events in source and target
+        self.num_source = uproot.open(self.source_file)['OmniTree'].num_entries
+        self.num_target = uproot.open(self.target_file)['OmniTree'].num_entries
+
+        # Determine start / stop indeces for each data piece
+        source_start_indeces = np.arange(0, self.num_source, self.num_source // self.data_divisor)
+        source_stop_indeces = np.roll(source_start_indeces, -1)
+        source_stop_indeces[source_stop_indeces == 0] = self.num_source
+        target_start_indeces = np.arange(0, self.num_target, self.num_target // self.data_divisor)
+        target_stop_indeces = np.roll(target_start_indeces, -1)
+        target_stop_indeces[target_stop_indeces == 0] = self.num_target
+
+        self.start_indeces = list(zip(source_start_indeces, target_start_indeces))
+        self.stop_indeces = list(zip(source_stop_indeces, target_stop_indeces))
+
+        # By default, load the first piece. In the case where we are not using a data divisor,
+        # this will be the one and only load operation
+        self.current_piece = 0
+        self.rebuild_datasets(piece=self.current_piece)
+
+
+    def rebuild_datasets(self, piece=0):
+        """ build_datasets - This function builds the pytorch datasets for the source and target data.
+        It will load the kinematics, index, weight, label, and plotting info, and use them to build the "source dataset",
+        which is used for prediction, and the "all_dataset", which is used for training / validation / testing.
+        It will load a piece of the data based on the piece argument, and the data divisor set in the init function.
+
+        Arguments:
+            piece {int} -- The piece of the data to load. Defaults to 0, in which case the first piece is loaded.
+
+        Returns:
+            None
+        """
+
+        if piece >= self.data_divisor:
+            raise ValueError("Piece number exceeds data divisor")
+
+        print("Loading piece {}".format(piece))
+
+        # Get start and stops for source and target
+        source_start, target_start = self.start_indeces[piece]
+        source_stop, target_stop = self.stop_indeces[piece]
+
+        print("Source start: {}, Source stop: {}".format(source_start, source_stop))
+        print("Target start: {}, Target stop: {}".format(target_start, target_stop))
+
         # Get the data from files
         source_kinematics, source_indeces, source_weights, source_plotting, self.source_pass190, self.source_truth_pass190 = self.load_data_from_file(
-            self.source_file, self.source_weight_path, stop=self.max_events_source
+            self.source_file, self.source_weight_path, start=source_start, stop=source_stop
         )
         target_kinematics, target_indeces, target_weights, target_plotting, self.target_pass190, self.target_truth_pass190 = self.load_data_from_file(
-            self.target_file, self.target_weight_path, stop=self.max_events_target
+            self.target_file, self.target_weight_path, start=target_start, stop=target_stop
         )
 
         # Use the appropriate pass190 flags
@@ -375,20 +392,10 @@ class LOfData(L.LightningDataModule):
 
         # Store all weights for use in prediction, then truncate and apply filter
         self.source_all_weights = source_weights
-        if len(self.source_all_weights) > self.max_events_source:
-            self.source_use190 = self.source_use190[:self.max_events_source]
-            source_weights = self.source_all_weights[:self.max_events_source]
-            source_weights = np.expand_dims(source_weights[self.source_use190 == 1], axis=1)
-        else:
-            source_weights = np.expand_dims(self.source_all_weights[self.source_use190 == 1], axis=1)
+        source_weights = np.expand_dims(self.source_all_weights[self.source_use190 == 1], axis=1)
 
         self.target_all_weights = target_weights
-        if len(self.target_all_weights) > self.max_events_target:
-            self.target_use190 = self.target_use190[:self.max_events_target]
-            target_weights = self.target_all_weights[:self.max_events_target]
-            target_weights = np.expand_dims(target_weights[self.target_use190 == 1], axis=1)
-        else:
-            target_weights = np.expand_dims(self.target_all_weights[self.target_use190 == 1], axis=1)
+        target_weights = np.expand_dims(self.target_all_weights[self.target_use190 == 1], axis=1)
 
         # Normalize weights so the class ratio is one but the sum of the weights is
         # the number of events in the whole dataset (so initial loss is log(2))
@@ -418,7 +425,7 @@ class LOfData(L.LightningDataModule):
             source_weights,
             source_plotting,
             object_indeces=source_indeces,
-            **kwargs
+            max_tracks=self.max_tracks
         )
         self.all_dataset = OfDataset(
             self.kinematics,
@@ -426,20 +433,21 @@ class LOfData(L.LightningDataModule):
             weights, 
             self.plotting,
             object_indeces=self.indeces,
-            **kwargs
+            max_tracks=self.max_tracks
         )
         rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
         rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 
-    def load_data_from_file(self, path, weight_path, **kwargs):
+    def load_data_from_file(self, path, weight_path, start=None, stop=None):
         """ load_data_from_file - This function loads data from a file using uproot, and applies the relevant preprocessing.
         It returns the kinematics, mask, plotting data, weights, and pass190 filter
 
         Arguments:
             path {str} -- The path to the file to load the data from.
             weight_path {str} -- The path to the weights file. Note this is for all events, without the pass190 filter
-            **kwargs {dict} -- A dictionary of keyword arguments to be passed to the get_kinematics function.
+            start {int} -- The start index for the data. Defaults to None, in which case start from 0
+            stop {int} -- The stop index for the data. Defaults to None, in which case stop at the end of the file.
 
         Returns:
             np.ndarray -- The kinematics data
@@ -453,39 +461,42 @@ class LOfData(L.LightningDataModule):
         f = uproot.open(path)
         tree = f['OmniTree']
 
-        # Set prefix for keys
-        prekey = ""
-        if self.use_truth:
-            prekey = "truth_"
-
         # Get pass 190 flags
-        pass190 = ak.to_numpy(tree['pass190'].array())
-        truth_pass190 = ak.to_numpy(tree['truth_pass190'].array())
+        pass190 = ak.to_numpy(tree['pass190'].array(entry_start=None, entry_stop=None))
+        truth_pass190 = ak.to_numpy(tree['truth_pass190'].array(entry_start=None, entry_stop=None))
         if self.use_truth:
             use190 = truth_pass190
         else:
             use190 = pass190
-        rank_zero_info("We have a fraction {} of good events in this file".format(np.sum(use190) / len(use190)))
+        rank_zero_info("We have a fraction {} of good events in this dataset".format(np.sum(use190) / len(use190)))
 
         # Get kinematics
         kinematics, indeces = get_kinematics(
             tree, 
             muon_only=self.muon_only,
             get_truth=self.use_truth,
-            **kwargs
+            start=start,
+            stop=stop
         )
 
         # Get weights, note this is for all events, without the pass190 filter
-        weights = self.load_weights(tree, path=weight_path, test=self.testing)
+        weights = self.load_weights(tree, path=weight_path, test=self.testing, start=start, stop=stop)
 
         # Get plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
-        plotting = get_plotting(tree, vars=plotting_variables, muon_only=self.muon_only, get_truth=self.use_truth, **kwargs)
+        plotting = get_plotting(
+            tree,
+            vars=plotting_variables,
+            muon_only=self.muon_only,
+            get_truth=self.use_truth,
+            start=start,
+            stop=stop
+        )
 
         return kinematics, indeces, weights, plotting, pass190, truth_pass190
 
 
-    def load_weights(self, tree, path=None, test=False):
+    def load_weights(self, tree, path=None, test=False, start=None, stop=None):
         """ load_weights - This function implements the logic for loading weights to be used both in data loading, and
         in providing access to the weights for the purposes of calculating the next iteration of weights in the evaluation
         routine. The logic is as follows:
@@ -498,13 +509,15 @@ class LOfData(L.LightningDataModule):
             tree {uproot.tree.TTree} -- The uproot tree object
             path {str} -- The path to the weights file. If set to 'root', then we load the weights from the root file.
             test {bool} -- Set to true if we want to load the test weights. Defaults to false.
+            start {int} -- The start index for the weights. Defaults to None, in which case start from 0
+            stop {int} -- The stop index for the weights. Defaults to None, in which case stop at the end of the file.
             
         Returns:
             np.ndarray -- A numpy array of weights
         """
 
         # Get weights from root tree
-        root_weights = ak.to_numpy(tree['weight'].array())
+        root_weights = ak.to_numpy(tree['weight'].array(entry_start=None, entry_stop=None))
 
         # Load weights directly from root file
         if path == 'root':
@@ -513,10 +526,12 @@ class LOfData(L.LightningDataModule):
         # Load weights from the path
         elif path is not None:
             weight_file = np.load(path)
+            np_read_start = 0 if start is None else start
+            np_read_stop = -1 if stop is None else stop
             if test:
-                all_weights = weight_file['test']
+                all_weights = weight_file['test'][np_read_start:np_read_stop]
             else:
-                all_weights = weight_file['train']
+                all_weights = weight_file['train'][np_read_start:np_read_stop]
 
         # Otherwise create a vector of ones
         else:
@@ -554,36 +569,37 @@ class LOfData(L.LightningDataModule):
     def get_target_truth_pass190(self):
         return self.target_truth_pass190
 
-    # Setup function
-    def setup(self, stage: str):
-        """ setup - This method performs the train / validation split on the data
-        loaded in the init function, unless we are using the data module for testing
-        in which case no split is performed.
-
-        No arguments or returns
-        """
-
-        # Make train and validation split if necessary
-        if not self.load_all:
-            generator = torch.Generator().manual_seed(self.split_seed)
-            self.train_dataset, self.val_dataset = torch.utils.data.random_split(
-                self.all_dataset, 
-                [0.8, 0.2],
-                generator=generator
-            )
-
 
     # Train dataloader
     def train_dataloader(self):
         """ train_dataloader - This method returns a pytorch dataloader
         for the training data.
 
+        Arguments:
+            piece {int} -- The piece of the data to load.
+
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader for the training data.
         """
-        assert not self.load_all
+
+        # Rebuild datasets if required by data divisor
+        piece = (self.current_piece + 1) % self.data_divisor
+        if piece != self.current_piece:
+            rank_zero_info("Rebuilding datasets for piece {}".format(piece))
+            self.rebuild_datasets(piece=piece)
+            self.current_piece = piece
+
+        # Make train / val split
+        generator = torch.Generator().manual_seed(self.split_seed)
+        train_dataset, _ = torch.utils.data.random_split(
+            self.all_dataset, 
+            [0.8, 0.2],
+            generator=generator
+        )
+
+        # Return dataloader
         return torch.utils.data.DataLoader(
-            self.train_dataset,
+            train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.dataloader_workers,
@@ -592,18 +608,27 @@ class LOfData(L.LightningDataModule):
     
 
     # Validation dataloader
-    def val_dataloader(self):
+    def val_dataloader(self, piece):
         """ val_dataloader - This method returns a pytorch dataloader
         for the validation data.
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader for the validation data.
         """
-        assert not self.load_all
+
+        # Make train / val split
+        generator = torch.Generator().manual_seed(self.split_seed)
+        _, val_dataset = torch.utils.data.random_split(
+            self.all_dataset, 
+            [0.8, 0.2],
+            generator=generator
+        )
+
+        # Return dataloader
         return torch.utils.data.DataLoader(
-            self.val_dataset,
+            val_dataset,
             batch_size=self.batch_size,
-            shuffle=False,
+            shuffle=True,
             num_workers=self.dataloader_workers,
             collate_fn=custom_collate
         )
@@ -611,7 +636,9 @@ class LOfData(L.LightningDataModule):
 
     # Test dataloader
     def test_dataloader(self, shuffle=False):
-        """ test_dataloader - This method returns a pytorch dataloader for running predictions. It always yeilds the full dataset.
+        """ test_dataloader - This method returns a pytorch dataloader for running predictions. It always yeilds
+        the "all dataset". In the case that we are dividing the data into pieces, this will always just
+        use the current piece since it doesn't matter which part of the data we use for testing.
 
         Arguments:
             shuffle {bool} -- Set to true if we want to shuffle the data. Defaults to false.
@@ -619,7 +646,7 @@ class LOfData(L.LightningDataModule):
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
-        assert self.load_all
+
         return torch.utils.data.DataLoader(
             self.all_dataset,
             batch_size=self.batch_size,
@@ -632,27 +659,20 @@ class LOfData(L.LightningDataModule):
     # Predict dataloader
     def predict_dataloader(self, shuffle=False):
         """ predict_dataloader - This method returns a pytorch dataloader for running predictions. 
-        Yields either the validation or the source data set depending on whether "load_all" is set to true.
-        If load_all is false then we are running prediction to form validation plots during training.
-        If load_all is true then we are running predictions at the end of a training, and only need to 
-        do this for the source data.
+        Only need to run predictions for the source data in general, so can just use the source dataset.
+
+        Note the data modules used for prediction should never divide the data since
+        we always want to predict for every event. Will include assertion that the data divisor is 1. 
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
-        if self.load_all:
-            return torch.utils.data.DataLoader(
-                self.source_dataset,
-                batch_size=self.batch_size,
-                shuffle=shuffle,
-                num_workers=self.dataloader_workers,
-                collate_fn=custom_collate
-            )
-        else:
-            return torch.utils.data.DataLoader(
-                self.val_dataset,
-                batch_size=self.batch_size,
-                shuffle=shuffle,
-                num_workers=self.dataloader_workers,
-                collate_fn=custom_collate
-            )
+
+        assert self.data_divisor == 1
+        return torch.utils.data.DataLoader(
+            self.source_dataset,
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            num_workers=self.dataloader_workers,
+            collate_fn=custom_collate
+        )

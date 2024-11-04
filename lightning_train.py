@@ -129,14 +129,12 @@ class OfTrain:
             target_file=target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            max_events_source=max_events_source,
-            max_events_target=max_events_target,
+            data_divisor=2 if self.iteration == 0 else 1,   # Only need to use data divisor in pretraining
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
             dataloader_workers=10,
-            load_all=False,
             testing=False,
             use_truth=use_truth
         )
@@ -187,14 +185,8 @@ class OfTrain:
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
             fast_dev_run=unit_test,
+            reload_dataloaders_every_n_epochs=1 if self.iteration == 0 else 0   # Only need to reload dataloaders in pretraining
         )
-
-        # Make directories for saving validation plots in the rank zero process
-        val_dir = f'{self.config.checkpoint_dir}/{self.config.project_name}/{self.run_id}/val_plots'
-        if self.trainer.global_rank == 0 and self.config.plot_val:
-            os.makedirs(val_dir, exist_ok=True)
-        else:
-            val_dir = None
 
         # Get min/max learning rates depending on step
         if self.iteration == 0:
@@ -223,7 +215,6 @@ class OfTrain:
 
             self.l_module = LOfTransformer(
                 input_dim=self.config.input_dim,
-                val_plots=val_dir,
                 log=self.config.wandb,
                 debug=self.config.debug,
                 # Include the seed just so it is logged to W&B
@@ -255,7 +246,6 @@ class OfTrain:
         else:
             self.l_module = LOfTransformer.load_from_checkpoint(
                 ws_path,
-                val_plots=val_dir,
                 log=self.config.wandb,
                 debug=self.config.debug,
                 step=self.step,
