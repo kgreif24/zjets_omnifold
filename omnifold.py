@@ -175,10 +175,11 @@ class Omnifolder():
             slurm_args = [
                 "srun",
                 "--ntasks-per-node", str(self.cfg.num_gpus),
-                "-c", "128",
+                "-c", "32",
                 "--cpu_bind=cores",
                 "-G", str(self.cfg.num_gpus),
-                "--gpu-bind=none" 
+                "--gpu-bind=none",
+                "--mem", "256G"
             ]
             train_args = slurm_args + train_args
         print(train_args)
@@ -232,10 +233,11 @@ class Omnifolder():
             slurm_args = [
                 "srun",
                 "-n", "1",
-                "-c", "128",
+                "-c", "64",
                 "--cpu_bind=cores",
                 "-G", "1",
                 "--gpu-bind=none",
+                "--mem", "256G"
             ]
             eval_args = slurm_args + eval_args
         print(eval_args)
