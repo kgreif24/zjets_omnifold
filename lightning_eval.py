@@ -116,8 +116,6 @@ class OfEval:
                 test_target_file = self.config.data_path
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
-            max_events_source = np.inf  # Want to use all events!
-            max_events_target = self.config.max_test_target
         # For step two:
         if self.step == 2:
             use_truth = True
@@ -131,7 +129,7 @@ class OfEval:
                 target_weight_file = 'root'
             # If this is the first iteration, use the weights from step one for target, and the
             # weights from the root file as source.
-            if self.iteration == 0:
+            elif self.iteration == 1:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
                 train_target_file = self.config.mc_train_path
@@ -147,8 +145,6 @@ class OfEval:
                 test_target_file = self.config.mc_test_path
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
-            max_events_source = np.inf # Want to use all events!
-            max_events_target = self.config.max_test_target
 
         # Build a data module. We want to run prediction on every event
         # we have, so need to define two data modules, one for the training / val
@@ -160,8 +156,6 @@ class OfEval:
             target_file=train_target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            max_events_source=max_events_source,
-            max_events_target=max_events_target,
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
@@ -176,8 +170,6 @@ class OfEval:
             target_file=test_target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            max_events_source=max_events_source,
-            max_events_target=max_events_target,
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
@@ -402,9 +394,10 @@ class OfEval:
             if self.unit_test:
                 return
         
-        # Run prediction
-        print("Run predictions")
-        self.run_prediction()
+        # Run prediction, unless this is pretraining
+        if self.iteration > 0:
+            print("Run predictions")
+            self.run_prediction()
 
         # Call wandb finish to set run status to finished
         if self.config.wandb:

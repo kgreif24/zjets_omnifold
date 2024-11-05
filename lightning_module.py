@@ -49,7 +49,7 @@ class LOfTransformer(L.LightningModule):
                  max_lr=1e-4,
                  cycle_steps=30000,
                  warmup_steps=8000,
-                 gamma=0.05,
+                 gamma=0.85,
                  **kwargs):
         """ __init__ - This method initializes the LOfTransformer class.
         There is one required argument which gives the input dimension for the 
@@ -279,6 +279,7 @@ class LOfData(L.LightningDataModule):
         source_weight_path=None,
         target_weight_path=None,
         data_divisor=1,
+        n_jets=5,
         max_tracks=None,
         muon_only=False,
         batch_size=256,
@@ -299,6 +300,7 @@ class LOfData(L.LightningDataModule):
             data_divisor {int} -- Divide the whole dataset into this many pieces. Default to 1,
                 in which case the whole dataset is used. If >1, then the dataloaders will be configured
                 to load only one piece of the data for each epoch.
+            n_jets {int} -- The number of jets to consider in the data. Defaults to 5.
             max_tracks {int} -- The maximum number of tracks to consider in the data. Defaults to None,
                 in which case all tracks are considered.
             muon_only {bool} -- Set to true if we only want to consider muons.
@@ -321,6 +323,7 @@ class LOfData(L.LightningDataModule):
         self.target_weight_path = target_weight_path
         self.data_divisor = data_divisor
         self.max_tracks = max_tracks
+        self.n_jets = n_jets
         self.muon_only = muon_only
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
@@ -365,14 +368,9 @@ class LOfData(L.LightningDataModule):
         if piece >= self.data_divisor:
             raise ValueError("Piece number exceeds data divisor")
 
-        print("Loading piece {}".format(piece))
-
         # Get start and stops for source and target
         source_start, target_start = self.start_indeces[piece]
         source_stop, target_stop = self.stop_indeces[piece]
-
-        print("Source start: {}, Source stop: {}".format(source_start, source_stop))
-        print("Target start: {}, Target stop: {}".format(target_start, target_stop))
 
         # Get the data from files
         source_kinematics, source_indeces, source_weights, source_plotting, self.source_pass190, self.source_truth_pass190 = self.load_data_from_file(
@@ -392,10 +390,10 @@ class LOfData(L.LightningDataModule):
 
         # Store all weights for use in prediction, then truncate and apply filter
         self.source_all_weights = source_weights
-        source_weights = np.expand_dims(self.source_all_weights[self.source_use190 == 1], axis=1)
+        source_weights = np.expand_dims(source_weights[self.source_use190 == 1], axis=1)
 
         self.target_all_weights = target_weights
-        target_weights = np.expand_dims(self.target_all_weights[self.target_use190 == 1], axis=1)
+        target_weights = np.expand_dims(target_weights[self.target_use190 == 1], axis=1)
 
         # Normalize weights so the class ratio is one but the sum of the weights is
         # the number of events in the whole dataset (so initial loss is log(2))
@@ -425,6 +423,7 @@ class LOfData(L.LightningDataModule):
             source_weights,
             source_plotting,
             object_indeces=source_indeces,
+            n_jets=self.n_jets,
             max_tracks=self.max_tracks
         )
         self.all_dataset = OfDataset(
@@ -433,6 +432,7 @@ class LOfData(L.LightningDataModule):
             weights, 
             self.plotting,
             object_indeces=self.indeces,
+            n_jets=self.n_jets,
             max_tracks=self.max_tracks
         )
         rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
@@ -462,8 +462,8 @@ class LOfData(L.LightningDataModule):
         tree = f['OmniTree']
 
         # Get pass 190 flags
-        pass190 = ak.to_numpy(tree['pass190'].array(entry_start=None, entry_stop=None))
-        truth_pass190 = ak.to_numpy(tree['truth_pass190'].array(entry_start=None, entry_stop=None))
+        pass190 = ak.to_numpy(tree['pass190'].array(entry_start=start, entry_stop=stop))
+        truth_pass190 = ak.to_numpy(tree['truth_pass190'].array(entry_start=start, entry_stop=stop))
         if self.use_truth:
             use190 = truth_pass190
         else:
@@ -517,7 +517,7 @@ class LOfData(L.LightningDataModule):
         """
 
         # Get weights from root tree
-        root_weights = ak.to_numpy(tree['weight'].array(entry_start=None, entry_stop=None))
+        root_weights = ak.to_numpy(tree['weight'].array(entry_start=start, entry_stop=stop))
 
         # Load weights directly from root file
         if path == 'root':
@@ -527,10 +527,13 @@ class LOfData(L.LightningDataModule):
         elif path is not None:
             weight_file = np.load(path)
             np_read_start = 0 if start is None else start
-            np_read_stop = -1 if stop is None else stop
             if test:
-                all_weights = weight_file['test'][np_read_start:np_read_stop]
+                all_weights = weight_file['test']
+                np_read_stop = len(all_weights) if stop is None else stop
+                all_weights = all_weights[np_read_start:np_read_stop]
             else:
+                all_weights = weight_file['train']
+                np_read_stop = len(all_weights) if stop is None else stop
                 all_weights = weight_file['train'][np_read_start:np_read_stop]
 
         # Otherwise create a vector of ones
@@ -608,7 +611,7 @@ class LOfData(L.LightningDataModule):
     
 
     # Validation dataloader
-    def val_dataloader(self, piece):
+    def val_dataloader(self):
         """ val_dataloader - This method returns a pytorch dataloader
         for the validation data.
 
@@ -628,20 +631,19 @@ class LOfData(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             val_dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=self.dataloader_workers,
             collate_fn=custom_collate
         )
 
 
     # Test dataloader
-    def test_dataloader(self, shuffle=False):
+    def test_dataloader(self):
         """ test_dataloader - This method returns a pytorch dataloader for running predictions. It always yeilds
         the "all dataset". In the case that we are dividing the data into pieces, this will always just
         use the current piece since it doesn't matter which part of the data we use for testing.
 
-        Arguments:
-            shuffle {bool} -- Set to true if we want to shuffle the data. Defaults to false.
+        No arguments
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
@@ -650,19 +652,21 @@ class LOfData(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.all_dataset,
             batch_size=self.batch_size,
-            shuffle=shuffle,
+            shuffle=False,
             num_workers=self.dataloader_workers,
             collate_fn=custom_collate
         )
 
 
     # Predict dataloader
-    def predict_dataloader(self, shuffle=False):
+    def predict_dataloader(self):
         """ predict_dataloader - This method returns a pytorch dataloader for running predictions. 
         Only need to run predictions for the source data in general, so can just use the source dataset.
 
         Note the data modules used for prediction should never divide the data since
         we always want to predict for every event. Will include assertion that the data divisor is 1. 
+
+        No arguments
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
@@ -672,7 +676,7 @@ class LOfData(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.source_dataset,
             batch_size=self.batch_size,
-            shuffle=shuffle,
+            shuffle=False,
             num_workers=self.dataloader_workers,
             collate_fn=custom_collate
         )

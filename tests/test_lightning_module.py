@@ -25,9 +25,7 @@ def test_overfit(tmp_path):
         target_weight_path=None,
         batch_size=10,
         split_seed=-1,
-        load_all=True,
-        muon_only=False,
-        n_jets=4
+        muon_only=True
     )
 
     # Get data loader
@@ -36,16 +34,16 @@ def test_overfit(tmp_path):
 
     # Initialize model
     model = LOfTransformer(
-        debug=False,
-        input_dim=9,
-        min_lr=1e-4,
-        max_lr=2e-4,
+        debug=True,
+        input_dim=10,
+        min_lr=1e-3,
+        max_lr=2e-3,
         no_w1=True
     )
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=300,
+        max_epochs=200,
         enable_progress_bar=False,
         default_root_dir=tmp_path
     )
@@ -82,30 +80,52 @@ def test_lofdata(tmp_path):
     p190 = ak.to_numpy(t['pass190'].array())
     tp190 = ak.to_numpy(t['truth_pass190'].array())
 
+    # Check data divisor, ensure we can use different chunks of the data
+    data_module = LOfData(
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
+        source_weight_path = 'root',
+        target_weight_path = 'root',
+        batch_size=1,
+        split_seed=1,
+        load_all=False,
+        max_tracks=20,
+        data_divisor=3,
+    )
+    tloader1 = data_module.train_dataloader()
+    vloader1 = data_module.val_dataloader()
+    assert len(tloader1) + len(vloader1) == len(data_module.all_dataset)
+    tloader2 = data_module.train_dataloader()
+    vloader2 = data_module.val_dataloader()
+    assert len(tloader2) + len(vloader2) == len(data_module.all_dataset)
+    b1 = next(iter(tloader1))
+    b2 = next(iter(tloader2))
+    assert b1[0][0,0,0] != b2[0][0,0,0]
+
     # Get data class, both reco and truth, using root weights
     data_module = LOfData(
         source_file = './assets/evts_000_100.root',
         target_file = './assets/evts_000_100.root',
         source_weight_path = 'root',
         target_weight_path = 'root',
-        batch_size=10,
+        batch_size=1,
         split_seed=1,
         load_all=False,
-        max_tracks=20
+        max_tracks=20,
+        data_divisor=1,
     )
-    data_module.setup('train')
-    assert len(data_module.train_dataset) + len(data_module.val_dataset) == len(data_module.all_dataset)
 
     data_module_truth = LOfData(
         source_file = './assets/evts_000_100.root',
         target_file = './assets/evts_000_100.root',
         source_weight_path = 'root',
         target_weight_path = 'root',
-        batch_size=10,
+        batch_size=1,
         split_seed=-1,
         load_all=True,
         use_truth=True,
-        max_tracks=20
+        max_tracks=20,
+        data_divisor=1
     )
 
     # Check attributes

@@ -87,20 +87,18 @@ class OfTrain:
                 target_file = self.config.data_path
                 source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = None
-            max_events_source = self.config.max_train_step_one
-            max_events_target = self.config.max_train_step_one
         # For step two:
         if self.step == 2:
             use_truth = True
             # If this is pre-training (iteration 0), use the MC train file and Sherpa file
             if self.iteration == 0:
                 source_file = self.config.mc_train_path
-                target_file = self.config.mc_train_path
+                target_file = self.config.pretrain_path
                 source_weight_file = 'root'
                 target_weight_file = 'root'
             # If this is the first iteration, use the weights from step one for target, and the
             # weights from the root file as source.
-            if self.iteration == 0:
+            elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.mc_train_path
                 source_weight_file = 'root'
@@ -112,16 +110,6 @@ class OfTrain:
                 target_file = self.config.mc_train_path
                 source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
-            max_events_source = self.config.max_train_step_two
-            max_events_target = self.config.max_train_step_two
-
-        try:
-            assert type(max_events_source) == int
-            assert type(max_events_target) == int
-        except:
-            print(f"max_events_source: {max_events_source}")
-            print(f"max_events_target: {max_events_target}")
-            raise ValueError("max_events_source and max_events_target must be integers!")
 
         # Build the data module
         self.d_module = LOfData(
@@ -168,7 +156,8 @@ class OfTrain:
             monitor='val_loss',
             filename='{epoch}-{val_loss:.4f}',
             save_top_k=self.config.top_k_checkpoints,
-            mode='min'
+            mode='min',
+            dirpath=checkpoint_dir
         )
         self.early_stopping = L.pytorch.callbacks.EarlyStopping(
             monitor='val_loss',

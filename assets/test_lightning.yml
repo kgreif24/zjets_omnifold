@@ -26,20 +26,20 @@ data_path: ./assets/evts_200_300.root
 # Path to the truth pseudodata
 truth_data_path: ./assets/truth_evts_000_100.root
 
+# Path to the file to use in pretraining
+pretrain_path: ./assets/evts_200_300.root
+
 # Seed for the train / validation split, set to -1 to produce random seed at train time
 split_seed: -1
 
 # Maximum number of tracks to use in the data
 max_tracks: 264
 
-# Maximum number of events to use in step one. Applied to both MC and data
-max_train_step_one: 999999999
+# Path to the pretraining step one checkpoint
+pt_step_one_checkpoint: null
 
-# Maximum number of events to use in step two. Applied to both copies of MC
-max_train_step_two: 999999999
-
-# Maximum number of events to use in testing / prediction for the target. Applied to both steps
-max_test_target: 999999999
+# Path to the pretraining step two checkpoint
+pt_step_two_checkpoint: null
 
 # Batch size for training
 batch_size: 256
@@ -58,6 +58,12 @@ early_stopping_patience: 1
 
 # Number of GPUs to use for training
 num_gpus: 0
+
+# Minimum learning rate for pre-training
+pt_min_lr: 0.000008000
+
+# Maximum learning rate for pre-training
+pt_max_lr: 0.000050000
 
 # Minimum learning rate for step one training
 s1_min_lr: 0.000008000

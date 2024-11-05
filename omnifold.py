@@ -58,6 +58,7 @@ class Omnifolder():
         self.config_path = config_path
         print("Omnifolder class trying to load config from file", config_path)
         self.cfg = OfConfig(config_name=config_path)
+        print("Checkpoint path: ", self.cfg.checkpoint_dir)
 
         # Handle paths for warm starting if we are not starting from scratch
         if continue_iteration != 0:
