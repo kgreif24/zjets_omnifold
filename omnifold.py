@@ -175,11 +175,10 @@ class Omnifolder():
             slurm_args = [
                 "srun",
                 "--ntasks-per-node", str(self.cfg.num_gpus),
-                "-c", "32",
+                "-c", "128",
                 "--cpu_bind=cores",
                 "-G", str(self.cfg.num_gpus),
                 "--gpu-bind=none",
-                "--mem", "256G"
             ]
             train_args = slurm_args + train_args
         print(train_args)
@@ -210,40 +209,42 @@ class Omnifolder():
             elif step == 2:
                 self.step_two_ws_path = best_model_path
 
-        print(f"\n## Step {step} Evaluating ##\n")
+        # Only care about running evaluation if this is not a pre-training step
+        if self.current_iteration > 0:
 
-        # Run evaluation as a subprocess, no need to keep output
-        eval_args = [
-            "python", 
-            "lightning_eval.py",
-            "--check_path",
-            best_model_path,
-            "--run_id",
-            run_id,
-            "--config_path", 
-            self.config_path, 
-            "--iteration", 
-            str(self.current_iteration), 
-            "--step", 
-            str(step),
-            "--index",
-            str(self.index)
-        ]
-        if self.use_slurm:
-            slurm_args = [
-                "srun",
-                "-n", "1",
-                "-c", "64",
-                "--cpu_bind=cores",
-                "-G", "1",
-                "--gpu-bind=none",
-                "--mem", "256G"
+            print(f"\n## Step {step} Evaluating ##\n")
+
+            # Run evaluation as a subprocess, no need to keep output
+            eval_args = [
+                "python", 
+                "lightning_eval.py",
+                "--check_path",
+                best_model_path,
+                "--run_id",
+                run_id,
+                "--config_path", 
+                self.config_path, 
+                "--iteration", 
+                str(self.current_iteration), 
+                "--step", 
+                str(step),
+                "--index",
+                str(self.index)
             ]
-            eval_args = slurm_args + eval_args
-        print(eval_args)
-        test_code = subprocess.run(eval_args)
-        if test_code.returncode != 0:
-            print("Error running evaluation subprocess!")
-            sys.exit(test_code.returncode)
+            if self.use_slurm:
+                slurm_args = [
+                    "srun",
+                    "-n", "1",
+                    "-c", "128",
+                    "--cpu_bind=cores",
+                    "-G", "1",
+                    "--gpu-bind=none",
+                ]
+                eval_args = slurm_args + eval_args
+            print(eval_args)
+            test_code = subprocess.run(eval_args)
+            if test_code.returncode != 0:
+                print("Error running evaluation subprocess!")
+                sys.exit(test_code.returncode)
 
         print(f"Finished step {step}!!")

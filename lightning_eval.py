@@ -65,6 +65,13 @@ class OfEval:
         if index != -1:
             self.config.group_name = f"{self.config.group_name}_{index}"
 
+        # Get the run name
+        if self.iteration == 0:
+            # Typically we don't run evaluation for pre-trainings
+            self.run_name = f"pretrain_step_{self.step}"
+        else:
+            self.run_name = f"iteration_{self.iteration}_step_{self.step}"
+
         # Hard code the number of truth pseudodata events to use in step 2 comparison
         self.n_compare_events = 1000000
 
@@ -72,12 +79,14 @@ class OfEval:
         self.max_tracks = 150
 
         # Make directories for storing plots and weights
-        checkpoint_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
-        self.test_dir = f'{checkpoint_dir}/{self.run_id}/test_plots'
+        root_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        self.checkpoint_dir = f'{root_dir}/{self.run_name}'
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        self.test_dir = f'{root_dir}/{self.run_name}/test_plots'
         os.makedirs(self.test_dir, exist_ok=True)
-        self.comp_dir = f'{checkpoint_dir}/{self.run_id}/comp_plots'
+        self.comp_dir = f'{root_dir}/{self.run_name}/comp_plots'
         os.makedirs(self.comp_dir, exist_ok=True)
-        self.weight_dir = f'{checkpoint_dir}/weights'
+        self.weight_dir = f'{root_dir}/weights'
         os.makedirs(self.weight_dir, exist_ok=True)
 
         # Change the save location if the store argument is set
@@ -146,7 +155,7 @@ class OfEval:
                 source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
 
-        # Build a data module. We want to run prediction on every event
+        # Build a data module. In Omnifold iterations, we want to run prediction on every event
         # we have, so need to define two data modules, one for the training / val
         # set and one for the test set. Both of these will be in testing mode.
         # Note the data modules filter data by the relevant pass 190 flag. Need to add in weights for 
@@ -183,12 +192,11 @@ class OfEval:
         # Initialise the wandb logger
         if self.config.wandb:
 
-            run_name = f"iteration_{self.iteration}_step_{self.step}"
             self.wandb_logger = WandbLogger(
                 project=self.config.project_name, 
                 group=self.config.group_name,
-                name=run_name,
-                save_dir=checkpoint_dir,
+                name=self.run_name,
+                save_dir=self.checkpoint_dir,
                 id=self.run_id,
                 resume="must"
             )
@@ -418,7 +426,7 @@ if __name__ == '__main__':
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
     parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
     parser.add_argument('--store', type=str, default=None, help='If set, store weights here instead of in the default location')
-    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run') 
+    parser.add_argument('--index', type=int, default=-1, help='The index of the ensemble to run') 
     args, _ = parser.parse_known_args()
 
     # Run the evaluation

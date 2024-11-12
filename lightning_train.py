@@ -56,12 +56,12 @@ class OfTrain:
         if index != -1:
             self.config.group_name = f"{self.config.group_name}_{index}"
 
-        # Make directory for saving checkpoints
-        checkpoint_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
-        os.makedirs(checkpoint_dir, exist_ok=True)
+        # Make root directory for this run of Omnifold
+        root_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        os.makedirs(root_dir, exist_ok=True)
 
         # Get weights for use in training. Define (but do not make!) the weight directory
-        weight_dir = f"{checkpoint_dir}/weights"
+        weight_dir = f"{root_dir}/weights"
 
         # Find the data and weight files to use for this iteration and step
         # For step one:
@@ -117,7 +117,7 @@ class OfTrain:
             target_file=target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            data_divisor=2 if self.iteration == 0 else 1,   # Only need to use data divisor in pretraining
+            data_divisor=self.config.num_pretrain_pieces if self.iteration == 0 else 1,   # Only need to use data divisor in pretraining
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
@@ -130,10 +130,17 @@ class OfTrain:
         # Initialise the wandb logger
         if self.config.wandb:
 
+            # Set run name
             if self.iteration == 0:
                 run_name = f"pretrain_step_{self.step}"
             else:
                 run_name = f"iteration_{self.iteration}_step_{self.step}"
+
+            # Set the checkpoint directory
+            checkpoint_dir = f"{root_dir}/{run_name}"
+            os.makedirs(checkpoint_dir, exist_ok=True)
+
+            # Build the logger
             self.wandb_logger = WandbLogger(
                 project=self.config.project_name, 
                 group=self.config.group_name,
@@ -144,10 +151,10 @@ class OfTrain:
             # Get run ID
             self.run_id = self.wandb_logger.experiment.id
 
-        # Else we use no logger
+        # Else we use no logger, a dummy run ID, and let lightning handle the checkpoints
         else:
+            checkpoint_dir = None
             self.wandb_logger = None
-            # Set a dummy run ID
             self.run_id = "test_run"
 
         # Initialise the callbacks
@@ -279,7 +286,7 @@ if __name__ == '__main__':
     parser.add_argument('--ws_path', type=str, default=None, help='Path to a model checkpoint to warm start from')
     parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
     parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
-    parser.add_argument('--index', type=int, default=None, help='The index of the ensemble to run')
+    parser.add_argument('--index', type=int, default=-1, help='The index of the ensemble to run')
     parser.add_argument('--split_seed', type=int, default=222, help='The seed to use for the data split')
     args, unknown = parser.parse_known_args()
 

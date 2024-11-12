@@ -7,13 +7,11 @@ Last updated 03/05/2024
 python3
 """
 
-import sys, os
+import os
 # On perlmutter, need to set this environment variable to avoid a conflict
 # between how numpy and torch handle multithreading. See this issue for more:
 # https://github.com/pytorch/pytorch/issues/37377
 os.environ['MKL_THREADING_LAYER'] = 'GNU'
-sys.path.append('of_transformer')
-sys.path.append('utils')
 
 import argparse
 from omnifold import Omnifolder

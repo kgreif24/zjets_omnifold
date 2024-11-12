@@ -263,10 +263,8 @@ class LOfData(L.LightningDataModule):
     the relevant preprocessing. The data is stored in the class as attributes, in the form 
     of pytorch datasets.
 
-    "prepare_data" method is meant for downloading datasets. Since we already have
-    the data in a shared filesystem this should not be necessary.
-
-    "setup" method applies the train / test / val split to the data
+    The "data_divisor" argument is used to divide the data into pieces. This is useful for
+    training on large datasets, where we may not want to load the entire dataset into memory.
     
     DataLoaders are produced in the relevant hook.
     """
@@ -435,8 +433,6 @@ class LOfData(L.LightningDataModule):
             n_jets=self.n_jets,
             max_tracks=self.max_tracks
         )
-        rank_zero_info("We have {} source events and {} target events".format(len(source_kinematics), len(target_kinematics)))
-        rank_zero_info("We have {} events in total".format(len(self.all_dataset)))
 
 
     def load_data_from_file(self, path, weight_path, start=None, stop=None):
@@ -588,7 +584,6 @@ class LOfData(L.LightningDataModule):
         # Rebuild datasets if required by data divisor
         piece = (self.current_piece + 1) % self.data_divisor
         if piece != self.current_piece:
-            rank_zero_info("Rebuilding datasets for piece {}".format(piece))
             self.rebuild_datasets(piece=piece)
             self.current_piece = piece
 
