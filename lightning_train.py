@@ -175,6 +175,7 @@ class OfTrain:
         # Build trainer
         self.trainer = L.Trainer(
             accelerator='auto' if (self.config.debug or unit_test) else 'gpu',
+            num_nodes=self.config.num_nodes,
             devices='auto' if (self.config.debug or unit_test) else self.config.num_gpus,
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],

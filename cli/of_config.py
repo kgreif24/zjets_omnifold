@@ -81,6 +81,7 @@ class OfConfig:
         self.parser.add_argument('--top_k_checkpoints', type=int, default=5, help='Number of top checkpoints to save')
         self.parser.add_argument('--early_stopping_patience', type=int, default=12, help='Number of epochs to wait before stopping training')
         self.parser.add_argument('--num_gpus', type=int, default=4, help='Number of GPUs to use for training')
+        self.parser.add_argument('--num_nodes', type=int, default=1, help='Number of nodes to use for training')
 
         # Learning rate schedule
         self.parser.add_argument('--pt_min_lr', type=float, default=0.00001, help='Minimum learning rate for pre-training')
