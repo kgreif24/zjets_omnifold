@@ -29,31 +29,35 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
    // R=0.4 jets
    unique_ptr<TH1D> hpT_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
+   unique_ptr<TH1D> hm1_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 100));
+   unique_ptr<TH1D> hm2_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 80));
+   unique_ptr<TH1D> hm3_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 50));
+   unique_ptr<TH1D> hm4_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 30));
    unique_ptr<TH1D> hEEC_R04 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
    unique_ptr<TH1D> hLund_z_R04 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 10));
    unique_ptr<TH1D> hLund_dR_R04 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   unique_ptr<TH2D> hLund_plane_R04 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+   unique_ptr<TH2D> hLund_plane_R04 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
    // R=0.6 jets
    unique_ptr<TH1D> hpT_R06 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
    unique_ptr<TH1D> hEEC_R06 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
    unique_ptr<TH1D> hLund_z_R06 = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
    unique_ptr<TH1D> hLund_dR_R06 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   unique_ptr<TH2D> hLund_plane_R06 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+   unique_ptr<TH2D> hLund_plane_R06 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
    // R=1.0 jets
    unique_ptr<TH1D> hpT_R10 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
    unique_ptr<TH1D> hEEC_R10 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
    unique_ptr<TH1D> hLund_z_R10 = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
    unique_ptr<TH1D> hLund_dR_R10 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   unique_ptr<TH2D> hLund_plane_R10 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+   unique_ptr<TH2D> hLund_plane_R10 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
    // CA R=0.4 jets
    unique_ptr<TH1D> hpT_CA04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
    unique_ptr<TH1D> hEEC_CA04 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
    unique_ptr<TH1D> hLund_z_CA04 = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
    unique_ptr<TH1D> hLund_dR_CA04 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   unique_ptr<TH2D> hLund_plane_CA04 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+   unique_ptr<TH2D> hLund_plane_CA04 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
    // ring around 0.6
    unique_ptr<TH1D> h_fracpT_ring = unique_ptr<TH1D>(new TH1D("", "", 100, 0, 1));
@@ -64,6 +68,10 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
    // Histograms for omni if this is reco
    unique_ptr<TH1D> hpT_R04_omni;
+   unique_ptr<TH1D> hm1_R04_omni;
+   unique_ptr<TH1D> hm2_R04_omni;
+   unique_ptr<TH1D> hm3_R04_omni;
+   unique_ptr<TH1D> hm4_R04_omni;
    unique_ptr<TH1D> hEEC_R04_omni;
    unique_ptr<TH1D> hLund_z_R04_omni;
    unique_ptr<TH1D> hLund_dR_R04_omni;
@@ -91,31 +99,35 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
       // R=0.4 jets
       hpT_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
+      hm1_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 100));
+      hm2_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 80));
+      hm3_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 50));
+      hm4_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 30));
       hEEC_R04_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
       hLund_z_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 10));
       hLund_dR_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_R04_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+      hLund_plane_R04_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
       // R=0.6 jets
       hpT_R06_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
       hEEC_R06_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
       hLund_z_R06_omni = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
       hLund_dR_R06_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_R06_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+      hLund_plane_R06_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
       // R=1.0 jets
       hpT_R10_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
       hEEC_R10_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
       hLund_z_R10_omni = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
       hLund_dR_R10_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_R10_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+      hLund_plane_R10_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
       // CA R=0.4 jets
       hpT_CA04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
       hEEC_CA04_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
       hLund_z_CA04_omni = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
       hLund_dR_CA04_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_CA04_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 10, 0, 10));
+      hLund_plane_CA04_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
 
       // Ring
       h_fracpT_ring_omni = unique_ptr<TH1D>(new TH1D("", "", 100, 0, 1));
@@ -166,7 +178,6 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
       m2_tlv.SetPtEtaPhiM(truth_pT_l2, truth_eta_l2, truth_phi_l2, 0.10566);
       TLorentzVector zboson_tlv = m1_tlv + m2_tlv;
       PseudoJet zboson;
-      cout << "\n Z boson phi: " << zboson_tlv.Phi() << endl;
       zboson.reset_PtYPhiM(zboson_tlv.Pt(), zboson_tlv.Rapidity(), zboson_tlv.Phi(), zboson_tlv.M());
 
       // Create vector of PseudoJets from all tracks in event
@@ -249,6 +260,10 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
       // R=0.4 jets
       hpT_R04->Fill(R04_jets[0].pt(), use_weight);
+      hm1_R04->Fill(R04_jets[0].m(), use_weight);
+      hm2_R04->Fill(R04_jets[1].m(), use_weight);
+      hm3_R04->Fill(R04_jets[2].m(), use_weight);
+      hm4_R04->Fill(R04_jets[3].m(), use_weight);
       FillEEC(hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
       FillLund(hLund_z_R04, hLund_dR_R04, hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
@@ -279,6 +294,10 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
          // R=0.4 jets
          hpT_R04_omni->Fill(R04_jets[0].pt(), omni_weight);
+         hm1_R04_omni->Fill(R04_jets[0].m(), omni_weight);
+         hm2_R04_omni->Fill(R04_jets[1].m(), omni_weight);
+         hm3_R04_omni->Fill(R04_jets[2].m(), omni_weight);
+         hm4_R04_omni->Fill(R04_jets[3].m(), omni_weight);
          FillEEC( hEEC_R04_omni, R04_esum, R04_z, R04_Q2, omni_weight);
          FillLund(hLund_z_R04_omni, hLund_dR_R04_omni, hLund_plane_R04_omni, R04_lundz, R04_lundDr, omni_weight);
 
@@ -311,6 +330,7 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
    std::cout << " === normalize histos === " << std::endl;
    normalizeHisto(hpT_R04); normalizeHisto(hpT_R06); normalizeHisto(hpT_R10); normalizeHisto(hpT_CA04);
+   normalizeHisto(hm1_R04); normalizeHisto(hm2_R04); normalizeHisto(hm3_R04); normalizeHisto(hm4_R04);
    normalizeHisto(hEEC_R04); normalizeHisto(hEEC_R06); normalizeHisto(hEEC_R10); normalizeHisto(hEEC_CA04);
    normalizeHisto(hLund_z_R04); normalizeHisto(hLund_z_R06); normalizeHisto(hLund_z_R10); normalizeHisto(hLund_z_CA04);
    normalizeHisto(hLund_dR_R04); normalizeHisto(hLund_dR_R06); normalizeHisto(hLund_dR_R10); normalizeHisto(hLund_dR_CA04);
@@ -320,6 +340,7 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
    std::cout << " === y axis range for 1D histos === " << std::endl;
    YAxisRangeUserName(hpT_R04); YAxisRangeUserName(hpT_R06); YAxisRangeUserName(hpT_R10); YAxisRangeUserName(hpT_CA04);
+   YAxisRangeUserName(hm1_R04); YAxisRangeUserName(hm2_R04); YAxisRangeUserName(hm3_R04); YAxisRangeUserName(hm4_R04);
    SetEECAxisRange(hEEC_R04, "z", "EEC"); SetEECAxisRange(hEEC_R06, "z", "EEC"); SetEECAxisRange(hEEC_R10, "z", "EEC"); SetEECAxisRange(hEEC_CA04, "z", "EEC");
    YAxisRangeUserName(hLund_z_R04); YAxisRangeUserName(hLund_z_R06); YAxisRangeUserName(hLund_z_R10); YAxisRangeUserName(hLund_z_CA04);
    YAxisRangeUserName(hLund_dR_R04); YAxisRangeUserName(hLund_dR_R06); YAxisRangeUserName(hLund_dR_R10); YAxisRangeUserName(hLund_dR_CA04);
@@ -330,6 +351,7 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
    if (!isTruth) {
 
       normalizeHisto(hpT_R04_omni); normalizeHisto(hpT_R06_omni); normalizeHisto(hpT_R10_omni); normalizeHisto(hpT_CA04_omni);
+      normalizeHisto(hm1_R04_omni); normalizeHisto(hm2_R04_omni); normalizeHisto(hm3_R04_omni); normalizeHisto(hm4_R04_omni);
       normalizeHisto(hEEC_R04_omni); normalizeHisto(hEEC_R06_omni); normalizeHisto(hEEC_R10_omni); normalizeHisto(hEEC_CA04_omni);
       normalizeHisto(hLund_z_R04_omni); normalizeHisto(hLund_z_R06_omni); normalizeHisto(hLund_z_R10_omni); normalizeHisto(hLund_z_CA04_omni);
       normalizeHisto(hLund_dR_R04_omni); normalizeHisto(hLund_dR_R06_omni); normalizeHisto(hLund_dR_R10_omni); normalizeHisto(hLund_dR_CA04_omni);
@@ -338,6 +360,7 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
       normalizeHisto(hTEEC_omni);
 
       YAxisRangeUserName(hpT_R04_omni); YAxisRangeUserName(hpT_R06_omni); YAxisRangeUserName(hpT_R10_omni); YAxisRangeUserName(hpT_CA04_omni);
+      YAxisRangeUserName(hm1_R04_omni); YAxisRangeUserName(hm2_R04_omni); YAxisRangeUserName(hm3_R04_omni); YAxisRangeUserName(hm4_R04_omni);
       SetEECAxisRange(hEEC_R04_omni, "z", "EEC"); SetEECAxisRange(hEEC_R06_omni, "z", "EEC"); SetEECAxisRange(hEEC_R10_omni, "z", "EEC"); SetEECAxisRange(hEEC_CA04_omni, "z", "EEC");
       YAxisRangeUserName(hLund_z_R04_omni); YAxisRangeUserName(hLund_z_R06_omni); YAxisRangeUserName(hLund_z_R10_omni); YAxisRangeUserName(hLund_z_CA04_omni);
       YAxisRangeUserName(h_fracpT_ring_omni); YAxisRangeUserName(h_fracE_ring_omni);
@@ -355,6 +378,10 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
    std::cout << " === write in file === " << std::endl;
    // R=0.4 jets
    hpT_R04->Write("hpT_R04");
+   hm1_R04->Write("hm1_R04");
+   hm2_R04->Write("hm2_R04");
+   hm3_R04->Write("hm3_R04");
+   hm4_R04->Write("hm4_R04");
    hEEC_R04->Write("hEEC_R04");
    hLund_z_R04->Write("hLund_z_R04");
    hLund_dR_R04->Write("hLund_dR_R04");
@@ -392,6 +419,10 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
    if (!isTruth) {
 
       hpT_R04_omni->Write("hpT_R04_omni");
+      hm1_R04_omni->Write("hm1_R04_omni");
+      hm2_R04_omni->Write("hm2_R04_omni");
+      hm3_R04_omni->Write("hm3_R04_omni");
+      hm4_R04_omni->Write("hm4_R04_omni");
       hEEC_R04_omni->Write("hEEC_R04_omni");
       hLund_z_R04_omni->Write("hLund_z_R04_omni");
       hLund_dR_R04_omni->Write("hLund_dR_R04_omni");

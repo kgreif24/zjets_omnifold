@@ -32,24 +32,33 @@ int main(int argc, char* argv[]){
 		TFile* outputFileOmni  = TFile::Open("out/output_omni.root");
 		TFile* outputFileTruth  = TFile::Open("out/output_truth.root");
 	
-		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R06");
-		FinalPlots(outputFileOmni, outputFileTruth, "hpT_R10");
-		FinalPlots(outputFileOmni, outputFileTruth, "hpT_CA04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_R04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_R06");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_R10");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_z_CA04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_R04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_R06");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_R10");
-		FinalPlots(outputFileOmni, outputFileTruth, "hLund_dR_CA04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R06");
-		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_R10");
-		FinalPlots(outputFileOmni, outputFileTruth, "hEEC_CA04");
-		FinalPlots(outputFileOmni, outputFileTruth, "hTEEC");
-		FinalPlots(outputFileOmni, outputFileTruth, "h_fracpT_ring");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hpT_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hm1_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hm2_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hm3_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hm4_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hpT_R06");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hpT_R10");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hpT_CA04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_z_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_z_R06");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_z_R10");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_z_CA04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_dR_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_dR_R06");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_dR_R10");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hLund_dR_CA04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hEEC_R04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hEEC_R06");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hEEC_R10");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hEEC_CA04");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "hTEEC");
+		FinalPlots1D(outputFileOmni, outputFileTruth, "h_fracpT_ring");
+
+		FinalPlots2D(outputFileOmni, outputFileTruth, "hLund_plane_R04");
+		FinalPlots2D(outputFileOmni, outputFileTruth, "hLund_plane_R06");
+		FinalPlots2D(outputFileOmni, outputFileTruth, "hLund_plane_R10");
+		FinalPlots2D(outputFileOmni, outputFileTruth, "hLund_plane_CA04");
 
 	// Else we need to build histograms from the MC / truth pseudodata
 	} else {

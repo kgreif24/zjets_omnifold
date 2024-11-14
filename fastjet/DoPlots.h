@@ -9,7 +9,6 @@ using namespace std;
 #ifndef DoPlots_h
 #define DoPlots_h
 
-void FinalPlots(TFile* outFileOmni, TFile* outFileTruth, TString variable);
-void Plot1DDistribution(TH1D *hist);
-void Plot2DDistribution(TH2D *hist);
+void FinalPlots1D(TFile* outFileOmni, TFile* outFileTruth, TString variable);
+void FinalPlots2D(TFile* outFileOmni, TFile* outFileTruth, TString variable);
 #endif

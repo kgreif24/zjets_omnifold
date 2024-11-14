@@ -196,7 +196,7 @@ event_hists = {
     'Ntracks': {
         'key': 'Ntracks',
         'xlabel': '# of tracks',
-        'bins': np.arange(0, 256, 1)
+        'bins': np.arange(0, 256, 3)
     },
 }
 
