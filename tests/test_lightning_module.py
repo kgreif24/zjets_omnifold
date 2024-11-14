@@ -29,8 +29,8 @@ def test_overfit(tmp_path):
     )
 
     # Get data loader
-    dl_train = data_module.test_dataloader(shuffle=True)
-    dl_pred = data_module.test_dataloader(shuffle=False)
+    dl_train = data_module.test_dataloader()
+    dl_pred = data_module.test_dataloader()
 
     # Initialize model
     model = LOfTransformer(
@@ -43,7 +43,7 @@ def test_overfit(tmp_path):
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=200,
+        max_epochs=400,
         enable_progress_bar=False,
         default_root_dir=tmp_path
     )

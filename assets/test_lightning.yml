@@ -35,6 +35,9 @@ split_seed: -1
 # Maximum number of tracks to use in the data
 max_tracks: 264
 
+# Number of pieces to split the pretraining data into
+num_pretrain_pieces: 1
+
 # Path to the pretraining step one checkpoint
 pt_step_one_checkpoint: null
 
@@ -58,6 +61,9 @@ early_stopping_patience: 1
 
 # Number of GPUs to use for training
 num_gpus: 0
+
+# Number of nodes to use for training
+num_nodes: 1
 
 # Minimum learning rate for pre-training
 pt_min_lr: 0.000008000

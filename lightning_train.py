@@ -127,18 +127,18 @@ class OfTrain:
             use_truth=use_truth
         )
 
+        # Set run name
+        if self.iteration == 0:
+            run_name = f"pretrain_step_{self.step}"
+        else:
+            run_name = f"iteration_{self.iteration}_step_{self.step}"
+
+        # Set the checkpoint directory
+        checkpoint_dir = f"{root_dir}/{run_name}"
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
         # Initialise the wandb logger
         if self.config.wandb:
-
-            # Set run name
-            if self.iteration == 0:
-                run_name = f"pretrain_step_{self.step}"
-            else:
-                run_name = f"iteration_{self.iteration}_step_{self.step}"
-
-            # Set the checkpoint directory
-            checkpoint_dir = f"{root_dir}/{run_name}"
-            os.makedirs(checkpoint_dir, exist_ok=True)
 
             # Build the logger
             self.wandb_logger = WandbLogger(
@@ -151,9 +151,8 @@ class OfTrain:
             # Get run ID
             self.run_id = self.wandb_logger.experiment.id
 
-        # Else we use no logger, a dummy run ID, and let lightning handle the checkpoints
+        # Else we use no logger and set a dummy run ID
         else:
-            checkpoint_dir = None
             self.wandb_logger = None
             self.run_id = "test_run"
 

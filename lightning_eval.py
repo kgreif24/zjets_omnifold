@@ -221,7 +221,8 @@ class OfEval:
 
         # Make lightning trainer for testing
         self.trainer = L.Trainer(
-            accelerator='auto' if (self.config.debug or unit_test) else 'gpu', 
+            accelerator='auto' if (self.config.debug or unit_test) else 'gpu',
+            num_nodes=1,
             devices=1,
             logger=self.wandb_logger,
             enable_progress_bar=self.config.interactive,

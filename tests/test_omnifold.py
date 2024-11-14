@@ -36,8 +36,14 @@ def test_omnifold(tmp_path):
     assert (tmp_path / 'test-of' / 'test-of-run_1' / 'weights' / 'iteration_1_step_2.npz').exists()
     assert (tmp_path / 'test-of' / 'test-of-run_1' / 'weights' / 'iteration_2_step_1.npz').exists()
     assert (tmp_path / 'test-of' / 'test-of-run_1' / 'weights' / 'iteration_2_step_2.npz').exists()
-    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'test_run' / 'test_plots').exists()
-    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'test_run' / 'comp_plots').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'pretrain_step_1').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'pretrain_step_2').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'iteration_1_step_1').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'iteration_1_step_1' / 'comp_plots').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'iteration_1_step_1' / 'test_plots').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'iteration_1_step_2').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'iteration_2_step_1').exists()
+    assert (tmp_path / 'test-of' / 'test-of-run_1' / 'iteration_2_step_2').exists()
 
     # Get root weights
     mc_test = uproot.open('./assets/evts_100_200.root')

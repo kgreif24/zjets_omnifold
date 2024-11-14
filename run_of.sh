@@ -6,15 +6,15 @@
 #SBATCH -C gpu
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
-#SBATCH -q debug
-#SBATCH -J pretrain
+#SBATCH -q regular
+#SBATCH -J pretrain_ens01
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
-#SBATCH -t 0-00:20:00
+#SBATCH -t 0-12:00:00
 
 # Make job array
-#SBATCH --array=1-1
+#SBATCH --array=1-10
 
 # Redirect stdout and stderr to output directory separated by job number
 #SBATCH -o ./outfiles/%x-%A-%a.out
