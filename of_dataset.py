@@ -124,6 +124,8 @@ class OfDataset(torch.utils.data.Dataset):
             plotting - the plotting data for the event
         """
 
+        print(indeces)
+
         ################ Kinematics + One Hots ################
 
         # Slice kinematics

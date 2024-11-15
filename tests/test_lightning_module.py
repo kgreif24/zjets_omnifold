@@ -12,6 +12,7 @@ import awkward as ak
 import pytest
 
 from lightning_module import *
+from lightning_data_module import *
 import data_utils as du
 
 @pytest.mark.slow
@@ -80,28 +81,6 @@ def test_lofdata(tmp_path):
     p190 = ak.to_numpy(t['pass190'].array())
     tp190 = ak.to_numpy(t['truth_pass190'].array())
 
-    # Check data divisor, ensure we can use different chunks of the data
-    data_module = LOfData(
-        source_file = './assets/evts_000_100.root',
-        target_file = './assets/evts_000_100.root',
-        source_weight_path = 'root',
-        target_weight_path = 'root',
-        batch_size=1,
-        split_seed=1,
-        load_all=False,
-        max_tracks=20,
-        data_divisor=3,
-    )
-    tloader1 = data_module.train_dataloader()
-    vloader1 = data_module.val_dataloader()
-    assert len(tloader1) + len(vloader1) == len(data_module.all_dataset)
-    tloader2 = data_module.train_dataloader()
-    vloader2 = data_module.val_dataloader()
-    assert len(tloader2) + len(vloader2) == len(data_module.all_dataset)
-    b1 = next(iter(tloader1))
-    b2 = next(iter(tloader2))
-    assert b1[0][0,0,0] != b2[0][0,0,0]
-
     # Get data class, both reco and truth, using root weights
     data_module = LOfData(
         source_file = './assets/evts_000_100.root',
@@ -154,5 +133,100 @@ def test_lofdata(tmp_path):
     assert np.all(one_wgts == np.ones(100))
 
 
-    
-    
+def test_data_pieces():
+
+    # Get standalone event sample
+    sample = './assets/evts_000_100.root'
+    f = uproot.open(sample)
+    t = f['OmniTree']
+
+    # Check data divisor, ensure we can use different chunks of the data
+    data_module = LOfData(
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
+        source_weight_path = 'root',
+        target_weight_path = 'root',
+        batch_size=1,
+        split_seed=1,
+        load_all=False,
+        max_tracks=20,
+        data_divisor=3,
+    )
+    tloader1 = data_module.train_dataloader()
+    vloader1 = data_module.val_dataloader()
+    assert len(tloader1) + len(vloader1) == len(data_module.all_dataset)
+    tloader2 = data_module.train_dataloader()
+    vloader2 = data_module.val_dataloader()
+    assert len(tloader2) + len(vloader2) == len(data_module.all_dataset)
+    b1 = next(iter(tloader1))
+    b2 = next(iter(tloader2))
+    assert b1[0][0,0,0] != b2[0][0,0,0]
+
+
+def test_data_sharding():
+
+    # Get event sample
+    sample = './assets/evts_000_100.root'
+    f = uproot.open(sample)
+    t = f['OmniTree']
+    p190 = ak.to_numpy(t['pass190'].array())
+
+    # Check data divisor, ensure we can use different chunks of the data
+    data_module1 = LOfData(
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
+        source_weight_path = 'root',
+        target_weight_path = 'root',
+        batch_size=1,
+        split_seed=1,
+        load_all=False,
+        max_tracks=20,
+        data_divisor=1,
+        total_rank=3,
+        rank=0
+    )
+    data_module2 = LOfData(
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
+        source_weight_path = 'root',
+        target_weight_path = 'root',
+        batch_size=1,
+        split_seed=1,
+        load_all=False,
+        max_tracks=20,
+        data_divisor=1,
+        total_rank=3,
+        rank=1
+    )
+    data_module3 = LOfData(
+        source_file = './assets/evts_000_100.root',
+        target_file = './assets/evts_000_100.root',
+        source_weight_path = 'root',
+        target_weight_path = 'root',
+        batch_size=1,
+        split_seed=1,
+        load_all=False,
+        max_tracks=20,
+        data_divisor=1,
+        total_rank=3,
+        rank=2
+    )
+    tloader1 = data_module1.train_dataloader()
+    tloader2 = data_module2.train_dataloader()
+    tloader3 = data_module3.train_dataloader()
+
+    # Check that all training data loaders have the same length
+    assert len(tloader1) == len(tloader2) == len(tloader3)
+
+    # Check that they are all different
+    b1 = next(iter(tloader1))
+    b2 = next(iter(tloader2))
+    b3 = next(iter(tloader3))
+    assert b1[0][0,0,0] != b2[0][0,0,0] != b3[0][0,0,0]
+
+    # Check that the sum of the lengths is no less than the # good events
+    # minus the number of ranks - 2
+    aloader1 = data_module1.test_dataloader()
+    aloader2 = data_module2.test_dataloader()
+    aloader3 = data_module3.test_dataloader()
+    assert len(aloader1) + len(aloader2) + len(aloader3) >= np.sum(p190) - 2

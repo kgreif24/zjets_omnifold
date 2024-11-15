@@ -18,6 +18,7 @@ from pytorch_lightning.utilities.rank_zero import *
 
 from cli.of_config import OfConfig
 from lightning_module import *
+from lightning_data_module import *
 from utils.plotting_utils import *
 
 
@@ -46,6 +47,8 @@ class OfTrain:
         None
         """
 
+        #################### Config and directory setup ####################
+
         # Store the configuration
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
@@ -60,73 +63,6 @@ class OfTrain:
         root_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
         os.makedirs(root_dir, exist_ok=True)
 
-        # Get weights for use in training. Define (but do not make!) the weight directory
-        weight_dir = f"{root_dir}/weights"
-
-        # Find the data and weight files to use for this iteration and step
-        # For step one:
-        if self.step == 1:
-            use_truth = False
-            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
-            if self.iteration == 0:
-                source_file = self.config.mc_train_path
-                target_file = self.config.pretrain_path
-                source_weight_file = 'root'
-                target_weight_file = 'root'
-            # If this is the first iteration, use the weights from the root file for source 
-            # and no weights for the target
-            elif self.iteration == 1:
-                source_file = self.config.mc_train_path
-                target_file = self.config.data_path
-                source_weight_file = 'root'
-                target_weight_file = None
-            # Otherwise use the weights from the previous step two for the source, and no
-            # weights for the target
-            else:
-                source_file = self.config.mc_train_path
-                target_file = self.config.data_path
-                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
-                target_weight_file = None
-        # For step two:
-        if self.step == 2:
-            use_truth = True
-            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
-            if self.iteration == 0:
-                source_file = self.config.mc_train_path
-                target_file = self.config.pretrain_path
-                source_weight_file = 'root'
-                target_weight_file = 'root'
-            # If this is the first iteration, use the weights from step one for target, and the
-            # weights from the root file as source.
-            elif self.iteration == 1:
-                source_file = self.config.mc_train_path
-                target_file = self.config.mc_train_path
-                source_weight_file = 'root'
-                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
-            # Otherwise use weights from previous step 2 for source, and the weights
-            # from the previous step one for target
-            else:
-                source_file = self.config.mc_train_path
-                target_file = self.config.mc_train_path
-                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
-                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
-
-        # Build the data module
-        self.d_module = LOfData(
-            source_file=source_file,
-            target_file=target_file,
-            source_weight_path=source_weight_file,
-            target_weight_path=target_weight_file,
-            data_divisor=self.config.num_pretrain_pieces if self.iteration == 0 else 1,   # Only need to use data divisor in pretraining
-            max_tracks=self.config.max_tracks,
-            muon_only=self.config.debug,
-            batch_size=self.config.batch_size,
-            split_seed=self.split_seed,
-            dataloader_workers=10,
-            testing=False,
-            use_truth=use_truth
-        )
-
         # Set run name
         if self.iteration == 0:
             run_name = f"pretrain_step_{self.step}"
@@ -136,6 +72,9 @@ class OfTrain:
         # Set the checkpoint directory
         checkpoint_dir = f"{root_dir}/{run_name}"
         os.makedirs(checkpoint_dir, exist_ok=True)
+
+
+        #################### Lightning setup ####################
 
         # Initialise the wandb logger
         if self.config.wandb:
@@ -172,6 +111,8 @@ class OfTrain:
         )
 
         # Build trainer
+        # Only need to reload dataloaders if we are pretraining and request in config
+        reload_dataloaders = True if (self.iteration == 0 and self.config.num_pretrain_pieces > 1) else False
         self.trainer = L.Trainer(
             accelerator='auto' if (self.config.debug or unit_test) else 'gpu',
             num_nodes=self.config.num_nodes,
@@ -181,7 +122,8 @@ class OfTrain:
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
             fast_dev_run=unit_test,
-            reload_dataloaders_every_n_epochs=1 if self.iteration == 0 else 0   # Only need to reload dataloaders in pretraining
+            reload_dataloaders_every_n_epochs=reload_dataloaders,
+            use_distributed_sampler=False
         )
 
         # Get min/max learning rates depending on step
@@ -251,6 +193,78 @@ class OfTrain:
                 warmup_steps=self.config.warmup_steps,
                 gamma=self.config.gamma
             )
+
+
+        #################### Data setup ####################
+
+        # Get weights for use in training. Define (but do not make!) the weight directory
+        weight_dir = f"{root_dir}/weights"
+
+        # Find the data and weight files to use for this iteration and step
+        # For step one:
+        if self.step == 1:
+            use_truth = False
+            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            if self.iteration == 0:
+                source_file = self.config.mc_train_path
+                target_file = self.config.pretrain_path
+                source_weight_file = 'root'
+                target_weight_file = 'root'
+            # If this is the first iteration, use the weights from the root file for source 
+            # and no weights for the target
+            elif self.iteration == 1:
+                source_file = self.config.mc_train_path
+                target_file = self.config.data_path
+                source_weight_file = 'root'
+                target_weight_file = None
+            # Otherwise use the weights from the previous step two for the source, and no
+            # weights for the target
+            else:
+                source_file = self.config.mc_train_path
+                target_file = self.config.data_path
+                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                target_weight_file = None
+        # For step two:
+        if self.step == 2:
+            use_truth = True
+            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            if self.iteration == 0:
+                source_file = self.config.mc_train_path
+                target_file = self.config.pretrain_path
+                source_weight_file = 'root'
+                target_weight_file = 'root'
+            # If this is the first iteration, use the weights from step one for target, and the
+            # weights from the root file as source.
+            elif self.iteration == 1:
+                source_file = self.config.mc_train_path
+                target_file = self.config.mc_train_path
+                source_weight_file = 'root'
+                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+            # Otherwise use weights from previous step 2 for source, and the weights
+            # from the previous step one for target
+            else:
+                source_file = self.config.mc_train_path
+                target_file = self.config.mc_train_path
+                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+
+        # Build the data module
+        self.d_module = LOfData(
+            source_file=source_file,
+            target_file=target_file,
+            source_weight_path=source_weight_file,
+            target_weight_path=target_weight_file,
+            data_divisor=self.config.num_pretrain_pieces if self.iteration == 0 else 1,   # Only need to use data divisor in pretraining
+            total_rank=int(self.config.num_nodes * self.config.num_gpus),
+            rank=self.trainer.global_rank,
+            max_tracks=self.config.max_tracks,
+            muon_only=self.config.debug,
+            batch_size=self.config.batch_size,
+            split_seed=self.split_seed,
+            dataloader_workers=10,
+            testing=False,
+            use_truth=use_truth
+        )
 
 
     def run(self):
