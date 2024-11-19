@@ -6,11 +6,10 @@ Last updated 03/06/2024
 python3
 """
 
-import sys
+import sys, time
 import subprocess
 
 import torch
-import lightning as L
 from lightning_module import *
 from pytorch_lightning.utilities.rank_zero import *
 import wandb
@@ -178,16 +177,21 @@ class Omnifolder():
                 "--ntasks-per-node", str(self.cfg.num_gpus),
                 "--cpus-per-task", "30",
                 "--cpu_bind=cores",
-                f"--gres=gpu:{self.cfg.num_gpus}",
+                "--gpus-per-task", "1",
                 "--gpu-bind=none",
             ]
             train_args = slurm_args + train_args
         print(train_args)
         train_code, output = capture_subprocess_output(train_args)
+
+        # Exit on non-zero return code
         if train_code != 0:
-            print("Error running training subprocess!")
+            print(f"Error running training subprocess! Code {train_code}")
             sys.exit(train_code)
 
+        # Sleep for a bit to ensure all resources are released
+        print("Sleeping for 2 minutes")
+        time.sleep(120)
 
         # Reverse search output for run_id and best model path
         lines = output.split("\n")
@@ -239,7 +243,7 @@ class Omnifolder():
                     "--ntasks-per-node", "1",
                     "--cpus-per-task", "128",
                     "--cpu_bind=cores",
-                    "--gres=gpu:1",
+                    "--gpus-per-task", "1",
                     "--gpu-bind=none",
                 ]
                 eval_args = slurm_args + eval_args

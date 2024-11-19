@@ -8,8 +8,9 @@ Last updated 03/08/2024
 python3
 """
 
-import sys, os, time
+import os, time
 import argparse
+import atexit
 
 import lightning as L
 import wandb
@@ -20,6 +21,7 @@ from cli.of_config import OfConfig
 from lightning_module import *
 from lightning_data_module import *
 from utils.plotting_utils import *
+from utils.subprocess_utils import cleanup_resources
 
 
 class OfTrain:
@@ -294,6 +296,9 @@ class OfTrain:
 
 if __name__ == '__main__':
 
+    # Register GPU cleanup at exit
+    atexit.register(cleanup_resources)
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Run the omnifold algorithm')
     parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
@@ -312,6 +317,6 @@ if __name__ == '__main__':
     rank_zero_info(f"\n###RUN ID###\n{run_id}")
     rank_zero_info(f"\n###BEST MODEL PATH###\n{best_path}")
 
-    # Sleep for a bit to ensure the tail end of the output is captured
+    # Print something and sleep a bit to flush the output
     print("...")
-    time.sleep(20)
+    time.sleep(10)

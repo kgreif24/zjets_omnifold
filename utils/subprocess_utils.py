@@ -6,6 +6,9 @@ import io
 import selectors
 import subprocess
 import sys
+import gc
+
+import torch
 
 def capture_subprocess_output(subprocess_args):
     # Start subprocess
@@ -47,3 +50,8 @@ def capture_subprocess_output(subprocess_args):
     buf.close()
 
     return (return_code, output)
+
+
+def cleanup_resources():
+    torch.cuda.empty_cache()
+    gc.collect()

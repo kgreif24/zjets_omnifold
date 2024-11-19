@@ -4,8 +4,9 @@
 
 #SBATCH --nodes=4
 #SBATCH -C gpu
-#SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
+#SBATCH --gpus-per-task=1
+#SBATCH --gpu-bind=none
 #SBATCH -q regular
 #SBATCH -J pretrain_ens01
 #SBATCH --mail-user=kgreif@uci.edu

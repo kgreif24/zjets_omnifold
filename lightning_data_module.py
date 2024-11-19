@@ -386,11 +386,9 @@ class LOfData(L.LightningDataModule):
 
         # Get the pass190 filter for the piece
         use190_piece = use190[start:stop]
-        print(use190)
 
         # Get total number of good events in the piece
         good_events = np.sum(use190_piece)
-        print(f"Have {good_events} good events in this piece")
 
         # Truncate the good events to be divisible by the total rank
         # This is needed to make sure that each epoch is the same length across all GPUs
@@ -404,7 +402,6 @@ class LOfData(L.LightningDataModule):
         # Get start / stop index for this shard in space of events that pass the filter
         min_idx = start_idx[self.rank]
         max_idx = stop_idx[self.rank]
-        print(f"Looking for good events {min_idx} to {max_idx}")
 
         # Conver to space of all events
         min_idx = self.pass_to_all(use190, start, min_idx)
