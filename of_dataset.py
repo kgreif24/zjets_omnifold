@@ -3,7 +3,7 @@ dataset class and implements a custom procedure for promoting data loaded as awk
 arrays to the format needed for training and evaluating models.
 
 Authors: Kevin Greif
-Last updated 05/24/2024
+Last updated 11/20/2024
 python3
 """
 
@@ -73,6 +73,38 @@ class OfDataset(torch.utils.data.Dataset):
             assert len(self.kinematics) == len(self.weights) == len(self.labels) == len(self.plotting)
         except:
             raise Exception("Arguments passed to OfDataset class don't have the same number of events!")
+
+
+    def set_weights(self, weights):
+        """ set_weights - Set the weights for the dataset
+
+        Arguments:
+        weights (np.ndarray) - The weights for the events
+
+        Returns:
+        none
+        """
+
+        self.weights = torch.from_numpy(weights.astype(np.float32))
+
+
+    def concatenate(self, dataset):
+        """ concatenate - Concatenate the data from another dataset to this dataset
+
+        Arguments:
+        dataset (OfDataset) - The dataset to concatenate to this dataset
+
+        Returns:
+        none
+        """
+
+        # Concatenate all of the data
+        self.kinematics = ak.concatenate([self.kinematics, dataset.kinematics], axis=0)
+        if self.object_indeces is not None:
+            self.object_indeces = ak.concatenate([self.object_indeces, dataset.object_indeces], axis=0)
+        self.labels = torch.cat([self.labels, dataset.labels], dim=0)
+        self.weights = torch.cat([self.weights, dataset.weights], dim=0)
+        self.plotting = torch.cat([self.plotting, dataset.plotting], dim=0)
 
 
     def __len__(self):

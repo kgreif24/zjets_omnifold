@@ -10,6 +10,7 @@ import torch
 import lightning as L
 from pytorch_lightning.utilities.rank_zero import *
 
+import copy
 import numpy as np
 import uproot
 import awkward as ak
@@ -42,7 +43,7 @@ class LOfData(L.LightningDataModule):
     # Init function
     def __init__(
         self,
-        source_file=None,
+        source_file,
         target_file=None,
         source_weight_path=None,
         target_weight_path=None,
@@ -64,7 +65,7 @@ class LOfData(L.LightningDataModule):
 
         Arguments:
             source_file {str} -- The path to the file containing the source data.
-            target_file {str} -- The path to the file containing the target data.
+            target_file {str} -- The path to the file containing the target data. Optional, defaults to None.
             source_weight_path {string} -- Path to a .npz file containing weights for the source data
             target_weight_path {string} -- Path to a .npz file containing weights for the target data
             data_divisor {int} -- Divide the whole dataset into this many pieces. Default to 1,
@@ -106,41 +107,46 @@ class LOfData(L.LightningDataModule):
         self.use_truth = use_truth
 
         # Find total number of events in source and target, and get the pass190 filters
+        # for the source dataset
         self.source_tree = uproot.open(self.source_file)['OmniTree']
         self.num_source = self.source_tree.num_entries
         self.source_pass190 = ak.to_numpy(self.source_tree['pass190'].array())
         self.source_truth_pass190 = ak.to_numpy(self.source_tree['truth_pass190'].array())
-
-        self.target_tree = uproot.open(self.target_file)['OmniTree']
-        self.num_target = self.target_tree.num_entries
-        self.target_pass190 = ak.to_numpy(self.target_tree['pass190'].array())
-        self.target_truth_pass190 = ak.to_numpy(self.target_tree['truth_pass190'].array())
-
-        rank_zero_info(f"We have {self.num_source} source events and {self.num_target} target events")
-
-        # Determine which filter to use
         if self.use_truth:
             self.source_use190 = self.source_truth_pass190
-            self.target_use190 = self.target_truth_pass190
         else:
             self.source_use190 = self.source_pass190
-            self.target_use190 = self.target_pass190
+
+        # If we have a target file, do the same for the target, else set to None
+        if self.target_file is not None:
+            self.target_tree = uproot.open(self.target_file)['OmniTree']
+            self.num_target = self.target_tree.num_entries
+            self.target_pass190 = ak.to_numpy(self.target_tree['pass190'].array())
+            self.target_truth_pass190 = ak.to_numpy(self.target_tree['truth_pass190'].array())
+            if self.use_truth:
+                self.target_use190 = self.target_truth_pass190
+            else:
+                self.target_use190 = self.target_pass190
+        else:
+            self.num_target = None
+            self.target_pass190 = None
+            self.target_truth_pass190 = None
+            self.target_use190 = None
+
+        rank_zero_info(f"We have {self.num_source} source events")
+        if self.target_file is not None:
+            rank_zero_info(f"We have {self.num_target} target events")
 
         # Calculate number of good events
         rank_zero_info(f"We have a fraction {np.sum(self.source_use190) / self.num_source} of good events in the source dataset")
-        rank_zero_info(f"We have a fraction {np.sum(self.target_use190) / self.num_target} of good events in the target dataset")
+        if self.target_file is not None:
+            rank_zero_info(f"We have a fraction {np.sum(self.target_use190) / self.num_target} of good events in the target dataset")
 
         # Determine start / stop indeces for each data piece, note we don't trucate in the 
         # case of non-divisible data, since it is fine if epochs have slightly different lengths
-        source_indeces = np.linspace(0, self.num_source, self.data_divisor + 1, dtype=int)
-        source_start_indeces = source_indeces[:-1]
-        source_stop_indeces = source_indeces[1:]
-        target_indeces = np.linspace(0, self.num_target, self.data_divisor + 1, dtype=int)
-        target_start_indeces = target_indeces[:-1]
-        target_stop_indeces = target_indeces[1:]
-
-        self.start_indeces = list(zip(source_start_indeces, target_start_indeces))
-        self.stop_indeces = list(zip(source_stop_indeces, target_stop_indeces))
+        self.source_indeces = self._setup_pieces(self.num_source)
+        if self.target_file is not None:
+            self.target_indeces = self._setup_pieces(self.num_target)
 
         # If we are sharding, make sure we didn't request a nonsensical rank
         if self.total_rank > 1:
@@ -149,11 +155,35 @@ class LOfData(L.LightningDataModule):
         # By default, load the first piece. In the case where we are not using a data divisor,
         # this will be the one and only load operation
         self.current_piece = 0
-        self.rebuild_datasets(piece=self.current_piece)
+        self._rebuild_dataset('source', piece=self.current_piece)
+        if self.target_file is not None:
+            self._rebuild_dataset('target', piece=self.current_piece)
+            self._concatenate_datasets(piece=self.current_piece)
 
 
-    def rebuild_datasets(self, piece=0):
-        """ build_datasets - This function builds the pytorch datasets for the source and target data.
+    def _setup_pieces(self, num_events):
+        """ _setup_pieces - This function sets up the pieces for the data module. It is called
+        in the __init__ function for the source data set by default, and optionally for the 
+        target data set if one is given to the module. It returns the start and stop indeces
+        for the pieces of the data.
+
+        Arguments:
+            num_events {int} -- The total number of events in the dataset, this is either source
+                or target.
+
+        Returns:
+            {list} - A list of tuples containing the start and stop indeces for each piece
+        """
+
+        indeces = np.linspace(0, num_events, self.data_divisor + 1, dtype=int)
+        start_indeces = indeces[:-1]
+        stop_indeces = indeces[1:]
+
+        return list(zip(start_indeces, stop_indeces))
+    
+
+    def _rebuild_dataset(self, filename, piece=0):
+        """ rebuild_dataset - This function builds the pytorch datasets for the source or target data.
         It will load the kinematics, index, weight, label, and plotting info, and use them to build the "source dataset",
         which is used for prediction, and the "all_dataset", which is used for training / validation / testing.
         It will load a piece of the data based on the piece argument, and the data divisor set in the init function.
@@ -163,116 +193,131 @@ class LOfData(L.LightningDataModule):
         to the rank of the current GPU.
 
         Arguments:
+            filename {str} -- The file to load data from. Can be 'source' or 'target'
             piece {int} -- The piece of the data to load. Defaults to 0, in which case the first piece is loaded.
 
         Returns:
             None
         """
 
+        # Make sure we don't ask for target data if it doesn't exist
+        if filename == 'target' and self.target_file is None:
+            raise ValueError("Target file not provided")
+
         ####################### Configure which data to read ########################
 
         if piece >= self.data_divisor:
             raise ValueError("Piece number exceeds data divisor")
 
-        # Get start and stops for source and target
-        source_start, target_start = self.start_indeces[piece]
-        source_stop, target_stop = self.stop_indeces[piece]
+        # Get start and stop indeces for the piece
+        if filename == 'source':
+            start, stop = self.source_indeces[piece]
+        elif filename == 'target':
+            start, stop = self.target_indeces[piece]
 
         # If we are using more than one GPU, further shard the data depending on the rank
         # Calculate the start / stop indeces here
         if self.total_rank > 1:
-            source_start, source_stop = self.calc_shard_indeces(source_start, source_stop, file='source')
-            target_start, target_stop = self.calc_shard_indeces(target_start, target_stop, file='target')
-
+            start, stop = self._calc_shard_indeces(start, stop, file=filename)
 
         ####################### Load the data ########################
 
-        # Get the data from files
-        source_kinematics, source_indeces, source_weights, source_plotting = self.load_data_from_file(
-            'source', self.source_weight_path, start=source_start, stop=source_stop
+        # Get the data from file
+        kinematics, indeces, weights, plotting = self._load_data_from_file(
+            filename, self.source_weight_path, start=start, stop=stop
         )
-        target_kinematics, target_indeces, target_weights, target_plotting = self.load_data_from_file(
-            'target', self.target_weight_path, start=target_start, stop=target_stop
-        )
-
-        # Use the appropriate pass190 flags
-        if self.use_truth:
-            self.source_use190 = self.source_truth_pass190
-            self.target_use190 = self.target_truth_pass190
-        else:
-            self.source_use190 = self.source_pass190
-            self.target_use190 = self.target_pass190
 
         ####################### Process weights ##########################
 
-        # Store all weights for use in prediction, then apply filter
-        self.source_all_weights = source_weights.copy()
-        self.target_all_weights = target_weights.copy()
+        # Store all weights for use in prediction, then truncate and apply filter
+        if filename == 'source':
+            self.source_all_weights = weights.copy()
+            weights = weights[start:stop]
+            piece190 = self.source_use190[start:stop]
+            weights = weights[piece190 == 1]
+        elif filename == 'target':
+            self.target_all_weights = weights.copy()
+            weights = weights[start:stop]
+            piece190 = self.target_use190[start:stop]
+            weights = weights[piece190 == 1]
 
-        # Apply filter
-        source_weights_filtered = source_weights[self.source_use190 == 1]
-        target_weights_filtered = target_weights[self.target_use190 == 1]
+        ####################### Process labels ##########################
 
-        # Normalize weights so the class ratio is one but the sum of the weights is
-        # the number of events in the whole dataset (so initial loss is log(2))
-        source_divisor = 2 * np.sum(source_weights_filtered) / (len(source_weights_filtered) + len(target_weights_filtered))
-        target_divisor = 2 * np.sum(target_weights_filtered) / (len(source_weights_filtered) + len(target_weights_filtered))
-        source_weights_rescaled = source_weights_filtered / source_divisor
-        target_weights_rescaled = target_weights_filtered / target_divisor
+        if filename == 'source':
+            labels = np.zeros((len(kinematics), 1), dtype=np.float32)
+        elif filename == 'target':
+            labels = np.ones((len(kinematics), 1), dtype=np.float32)
 
-        # Push rescaling back to the full weights
-        source_weights[self.source_use190 == 1] = source_weights_rescaled
-        target_weights[self.target_use190 == 1] = target_weights_rescaled
+        ####################### Build dataset ##########################
+
+        # Build pytorch datasets
+        if filename == 'source':
+            self.source_kinematics = kinematics
+            self.source_labels = labels
+            self.source_plotting = plotting
+            self.source_dataset = OfDataset(
+                kinematics,
+                labels,
+                weights,
+                plotting,
+                object_indeces=indeces,
+                n_jets=self.n_jets,
+                max_tracks=self.max_tracks
+            )
+        elif filename == 'target':
+            self.target_kinematics = kinematics
+            self.target_labels = labels
+            self.target_plotting = plotting
+            self.target_dataset = OfDataset(
+                kinematics,
+                labels,
+                weights,
+                plotting,
+                object_indeces=indeces,
+                n_jets=self.n_jets,
+                max_tracks=self.max_tracks
+            )
+
+
+    def _concatenate_datasets(self, piece=0):
+        """ _concatenate_datasets - This function concatenates the source and target datasets
+        into a single dataset. This is used for training and validation, where we want to use
+        both source and target data.
+
+        Arguments:
+            piece {int} -- The piece of the data for which we need to concatenate the datasets.
+                Defaults to 0, in which case the first piece is used.
+
+        Returns:
+            None
+        """
+
+        # Calculate normalized weights across the entire source + target dataset
+        source_weights, target_weights = self._weight_norm()
 
         # Truncate both the weights and pass190 filters to this particular piece
+        source_start, source_stop = self.source_indeces[piece]
+        target_start, target_stop = self.target_indeces[piece]
         source_weights = source_weights[source_start:source_stop]
         target_weights = target_weights[target_start:target_stop]
         source_use190 = self.source_use190[source_start:source_stop]
         target_use190 = self.target_use190[target_start:target_stop]
 
-        # Then finally filter out the weights within this piece, these we use
+        # Then finally filter out the weights within this piece
         source_weights = np.expand_dims(source_weights[source_use190 == 1], axis=1)
         target_weights = np.expand_dims(target_weights[target_use190 == 1], axis=1)
 
-        ####################### Process labels ##########################
+        # Replace weights in data sets with the normalized ones
+        self.source_dataset.set_weights(source_weights)
+        self.target_dataset.set_weights(target_weights)
 
-        source_labels = np.zeros((len(source_kinematics), 1), dtype=np.float32)
-        target_labels = np.ones((len(target_kinematics), 1), dtype=np.float32)
-
-        ####################### Concatentate data and build datasets ##########################
-
-        # Concatenate source and target data
-        self.kinematics = ak.concatenate([source_kinematics, target_kinematics], axis=0)
-        if not self.muon_only:  # Since we don't use one-hot encodings in debug mode
-            self.indeces = ak.concatenate([source_indeces, target_indeces], axis=0)
-        else:
-            self.indeces = None
-        weights = np.concatenate([source_weights, target_weights], axis=0)
-        self.labels = np.concatenate([source_labels, target_labels], axis=0)
-        self.plotting = np.concatenate([source_plotting, target_plotting], axis=0)
-
-        # Build pytorch datasets
-        self.source_dataset = OfDataset(
-            source_kinematics,
-            source_labels,
-            source_weights,
-            source_plotting,
-            object_indeces=source_indeces,
-            n_jets=self.n_jets,
-            max_tracks=self.max_tracks
-        )
-        self.all_dataset = OfDataset(
-            self.kinematics,
-            self.labels,
-            weights, 
-            self.plotting,
-            object_indeces=self.indeces,
-            n_jets=self.n_jets,
-            max_tracks=self.max_tracks
-        )
+        # Concatenate the datasets
+        self.all_dataset = copy.deepcopy(self.source_dataset)
+        self.all_dataset.concatenate(self.target_dataset)
+        print("Have all dataset with length ", len(self.all_dataset))
 
 
-    def load_data_from_file(self, which_file='source', weight_path='root', start=None, stop=None):
+    def _load_data_from_file(self, which_file='source', weight_path='root', start=None, stop=None):
         """ load_data_from_file - This function loads data from a file using uproot, and applies the relevant preprocessing.
         It returns the kinematics, mask, plotting data, weights, and pass190 filter
 
@@ -308,7 +353,7 @@ class LOfData(L.LightningDataModule):
         )
 
         # Get weights, note this is for all events, without the pass190 filter
-        weights = self.load_weights(tree, path=weight_path, test=self.testing)
+        weights = self._load_weights(tree, path=weight_path, test=self.testing)
 
         # Get plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
@@ -324,8 +369,8 @@ class LOfData(L.LightningDataModule):
         return kinematics, indeces, weights, plotting
 
 
-    def load_weights(self, tree, path=None, test=False):
-        """ load_weights - This function implements the logic for loading weights to be used both in data loading, and
+    def _load_weights(self, tree, path=None, test=False):
+        """ _load_weights - This function implements the logic for loading weights to be used both in data loading, and
         in providing access to the weights for the purposes of calculating the next iteration of weights in the evaluation
         routine. The logic is as follows:
         
@@ -364,8 +409,48 @@ class LOfData(L.LightningDataModule):
         return all_weights
 
 
-    def calc_shard_indeces(self, start, stop, file='source'):
-        """ calc_shard_indeces - This function calculates the indeces of some shard within either
+    def _weight_norm(self):
+        """ _weight_norm - This function normalizes the source
+        and target weights so that the sum of the weights is equal to the number of 
+        events in the dataset. This is done so that the initial loss is log(2), 
+        and the class ratio is one.
+
+        Note this function acts on ALL weights that pass the appropriate filter,
+        not just the weights within a particular piece.
+
+        Arguments:
+            None
+
+        Returns:
+            {np.ndarray} - The normalized weights for the source dataset
+            {np.ndarray} - The normalized weights for the target dataset
+        """
+
+        # Make sure we have target data, else this function doesn't make sense
+        assert self.target_file is not None
+
+        # Apply appropriate filter to the weights
+        source_weights_filtered = self.source_all_weights[self.source_use190 == 1]
+        target_weights_filtered = self.target_all_weights[self.target_use190 == 1]
+
+        # Get divisors and normalize
+        source_divisor = 2 * np.sum(source_weights_filtered) / (len(source_weights_filtered) + len(target_weights_filtered))
+        target_divisor = 2 * np.sum(target_weights_filtered) / (len(source_weights_filtered) + len(target_weights_filtered))
+        source_weights_rescaled = source_weights_filtered / source_divisor
+        target_weights_rescaled = target_weights_filtered / target_divisor
+
+        # Push rescaling back to the full weights
+        source_weights = self.source_all_weights.copy()
+        target_weights = self.target_all_weights.copy()
+        source_weights[self.source_use190 == 1] = source_weights_rescaled
+        target_weights[self.target_use190 == 1] = target_weights_rescaled
+
+        # Return full weights
+        return source_weights, target_weights
+
+
+    def _calc_shard_indeces(self, start, stop, file='source'):
+        """ _calc_shard_indeces - This function calculates the indeces of some shard within either
         the source or target root file, given the start and stop indeces of the piece, and a string
         argument specifying the whether to calculate for source or target.
 
@@ -404,14 +489,14 @@ class LOfData(L.LightningDataModule):
         max_idx = stop_idx[self.rank]
 
         # Conver to space of all events
-        min_idx = self.pass_to_all(use190, start, min_idx)
-        max_idx = self.pass_to_all(use190, start, max_idx)
+        min_idx = self._pass_to_all(use190, start, min_idx)
+        max_idx = self._pass_to_all(use190, start, max_idx)
 
         return min_idx, max_idx
 
     
-    def pass_to_all(self, pass190, start, idx):
-        """ pass_to_all - This function calculates an index within the space of all events
+    def _pass_to_all(self, pass190, start, idx):
+        """ _pass_to_all - This function calculates an index within the space of all events
         based on a start index of a piece (in the space of all events) and an index within the space of 
         only good events in the piece.
         
@@ -430,22 +515,23 @@ class LOfData(L.LightningDataModule):
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts
-            return self.pass_to_all(pass190, start, idx)
+            return self._pass_to_all(pass190, start, idx)
         else:
             return start + idx
 
 
     # Method for getting the labels
     def get_labels(self):
-        return self.labels.flatten()
+        return np.concatenate([self.source_labels, self.target_labels], axis=0).flatten()
 
     # Method for getting track kinematics
     def get_track_kinematics(self):
-        return self.kinematics[:,:3,2:]  # Gets pT, eta, phi, for all tracks (not muons)
+        all_kinematics = ak.concatenate([self.source_kinematics, self.target_kinematics], axis=0)
+        return all_kinematics[:,:3,2:]  # Gets pT, eta, phi, for all tracks (not muons)
 
     # Method for getting plotting data
     def get_plotting(self):
-        return self.plotting
+        return np.concatenate([self.source_plotting, self.target_plotting], axis=0)
 
     # Method for getting source root weights
     def get_source_all_weights(self):
@@ -481,7 +567,9 @@ class LOfData(L.LightningDataModule):
         # Rebuild datasets if required by data divisor
         piece = (self.current_piece + 1) % self.data_divisor
         if piece != self.current_piece:
-            self.rebuild_datasets(piece=piece)
+            self._rebuild_dataset('source', piece=piece)
+            self._rebuild_dataset('target', piece=piece)
+            self._concatenate_datasets(piece=piece)
             self.current_piece = piece
 
         # Make train / val split
@@ -498,7 +586,7 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.RandomSampler(train_dataset, generator=generator),
             num_workers=self.dataloader_workers,
-            collate_fn=custom_collate
+            collate_fn=null_collate
         )
     
 
@@ -525,7 +613,7 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.SequentialSampler(val_dataset),
             num_workers=self.dataloader_workers,
-            collate_fn=custom_collate
+            collate_fn=null_collate
         )
 
 
@@ -546,7 +634,7 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.SequentialSampler(self.all_dataset),
             num_workers=self.dataloader_workers,
-            collate_fn=custom_collate
+            collate_fn=null_collate
         )
 
 
@@ -570,5 +658,5 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.SequentialSampler(self.source_dataset),
             num_workers=self.dataloader_workers,
-            collate_fn=custom_collate
+            collate_fn=null_collate
         )

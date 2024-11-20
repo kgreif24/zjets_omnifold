@@ -6,6 +6,7 @@ Author: Kevin Greif
 python3
 """
 
+import torch
 import numpy as np
 import awkward as ak
 from pytorch_lightning.utilities.rank_zero import *
@@ -200,8 +201,8 @@ def get_plotting(tree, vars=[], muon_only=False, get_truth=False, start=None, st
     return plotting
 
 
-def custom_collate(batch):
-    """ custom_collate - This is a custom collate function for passing to the Pytorch
+def null_collate(batch):
+    """ null_collate - This is a custom collate function for passing to the Pytorch
     DataLoader objects. Since the OfDataset is already designed to use batched data,
     this is just the identity function.
 

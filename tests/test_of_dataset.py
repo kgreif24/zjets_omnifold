@@ -3,6 +3,7 @@ test_of_dataset.py - Test suite for the OfDataset class.
 """
 
 import sys
+import copy
 sys.path.append('.')
 sys.path.append('../utils')
 import of_dataset as ofd
@@ -48,3 +49,8 @@ def test_of_dataset():
     assert label2.numpy()[0] == labels[1]
     assert np.count_nonzero(mask1) == plotting1[0,0] + 2 if plotting1[0,0] < 20 else 20
     assert np.all(np.count_nonzero(mask2[:,0,:], axis=1) == plotting2[:,0].numpy() + 2)
+
+    # Check the concatenate function
+    c1 = copy.deepcopy(d1)
+    c1.concatenate(d2)
+    assert len(c1) == len(d1) + len(d2)

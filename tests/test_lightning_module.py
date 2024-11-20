@@ -125,11 +125,11 @@ def test_lofdata(tmp_path):
     assert len(src_weights) == 100
 
     # Check load weights
-    root_wgts = data_module.load_weights(t, path='root')
+    root_wgts = data_module._load_weights(t, path='root')
     assert np.all(root_wgts == src_weights)
-    save_wgts = data_module.load_weights(t, path=f'{tmp_path}/weights.npz')
+    save_wgts = data_module._load_weights(t, path=f'{tmp_path}/weights.npz')
     assert np.all(save_wgts == random_weights)
-    one_wgts = data_module.load_weights(t, path=None)
+    one_wgts = data_module._load_weights(t, path=None)
     assert np.all(one_wgts == np.ones(100))
 
 

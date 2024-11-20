@@ -5,7 +5,7 @@ derived from each training, which are written to disk.
 Meant to be run as a subprocesss from the Omnifolder class.
 
 Author: Kevin Greif
-Last updated 03/08/2024
+Last updated 11/20/2024
 python3
 """
 
