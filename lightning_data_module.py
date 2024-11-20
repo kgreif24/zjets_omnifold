@@ -47,6 +47,7 @@ class LOfData(L.LightningDataModule):
         target_file=None,
         source_weight_path=None,
         target_weight_path=None,
+        max_events_target=np.inf,
         data_divisor=1,
         total_rank=1,
         rank=0,
@@ -68,6 +69,8 @@ class LOfData(L.LightningDataModule):
             target_file {str} -- The path to the file containing the target data. Optional, defaults to None.
             source_weight_path {string} -- Path to a .npz file containing weights for the source data
             target_weight_path {string} -- Path to a .npz file containing weights for the target data
+            max_events_target {int} -- The maximum number of events to consider in the target data. Defaults to np.inf
+                which means all events are considered.
             data_divisor {int} -- Divide the whole dataset into this many pieces. Default to 1,
                 in which case the whole dataset is used. If >1, then the dataloaders will be configured
                 to load only one piece of the data for each epoch.
@@ -94,6 +97,7 @@ class LOfData(L.LightningDataModule):
         self.target_file = target_file
         self.source_weight_path = source_weight_path
         self.target_weight_path = target_weight_path
+        self.max_events_target = max_events_target
         self.data_divisor = data_divisor
         self.total_rank = total_rank
         self.rank = rank
@@ -121,8 +125,10 @@ class LOfData(L.LightningDataModule):
         if self.target_file is not None:
             self.target_tree = uproot.open(self.target_file)['OmniTree']
             self.num_target = self.target_tree.num_entries
-            self.target_pass190 = ak.to_numpy(self.target_tree['pass190'].array())
-            self.target_truth_pass190 = ak.to_numpy(self.target_tree['truth_pass190'].array())
+            if self.num_target > self.max_events_target:
+                self.num_target = self.max_events_target
+            self.target_pass190 = ak.to_numpy(self.target_tree['pass190'].array(entry_stop=self.num_target))
+            self.target_truth_pass190 = ak.to_numpy(self.target_tree['truth_pass190'].array(entry_stop=self.num_target))
             if self.use_truth:
                 self.target_use190 = self.target_truth_pass190
             else:
@@ -314,7 +320,6 @@ class LOfData(L.LightningDataModule):
         # Concatenate the datasets
         self.all_dataset = copy.deepcopy(self.source_dataset)
         self.all_dataset.concatenate(self.target_dataset)
-        print("Have all dataset with length ", len(self.all_dataset))
 
 
     def _load_data_from_file(self, which_file='source', weight_path='root', start=None, stop=None):
@@ -353,7 +358,7 @@ class LOfData(L.LightningDataModule):
         )
 
         # Get weights, note this is for all events, without the pass190 filter
-        weights = self._load_weights(tree, path=weight_path, test=self.testing)
+        weights = self._load_weights(tree, which_file=which_file, path=weight_path, test=self.testing)
 
         # Get plotting data
         plotting_variables = [hist_dict['key'] for hist_dict in pu.default_settings.values()]
@@ -369,7 +374,7 @@ class LOfData(L.LightningDataModule):
         return kinematics, indeces, weights, plotting
 
 
-    def _load_weights(self, tree, path=None, test=False):
+    def _load_weights(self, tree, which_file='source', path=None, test=False):
         """ _load_weights - This function implements the logic for loading weights to be used both in data loading, and
         in providing access to the weights for the purposes of calculating the next iteration of weights in the evaluation
         routine. The logic is as follows:
@@ -377,6 +382,8 @@ class LOfData(L.LightningDataModule):
         1. If the path is 'root', then we load the weights from the root file
         2. If the path is not None, then we load the weights from the .npz file at the given path
         3. If the path is None, then we return a vector of ones
+
+        Note if we are loading weights from source, then we truncate the weights by max_events_target
         
         Arguments:
             tree {uproot.tree.TTree} -- The uproot tree object
@@ -388,7 +395,8 @@ class LOfData(L.LightningDataModule):
         """
 
         # Get weights from root tree
-        root_weights = ak.to_numpy(tree['weight'].array())
+        max_read = self.max_events_target if which_file == 'target' else None
+        root_weights = ak.to_numpy(tree['weight'].array(entry_stop=max_read))
 
         # Load weights directly from root file
         if path == 'root':
@@ -401,6 +409,8 @@ class LOfData(L.LightningDataModule):
                 all_weights = weight_file['test']
             else:
                 all_weights = weight_file['train']
+                if which_file == 'target':
+                    all_weights = all_weights[:self.max_events_target]
 
         # Otherwise create a vector of ones
         else:
@@ -476,7 +486,6 @@ class LOfData(L.LightningDataModule):
         good_events = np.sum(use190_piece)
 
         # Truncate the good events to be divisible by the total rank
-        # This is needed to make sure that each epoch is the same length across all GPUs
         good_events = (good_events // self.total_rank) * self.total_rank
 
         # Create shards out of the number of events that pass the filter

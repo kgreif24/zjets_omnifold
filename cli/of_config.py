@@ -68,6 +68,7 @@ class OfConfig:
         self.parser.add_argument('--split_seed', type=int, default=-1, help='Seed for the train / validation split, set to -1 to produce random seed at train time')
         self.parser.add_argument('--max_tracks', type=int, default=264, help='Maximum number of tracks to use in the data')
         self.parser.add_argument('--num_pretrain_pieces', type=int, default=3, help='Number of pieces to split the pretraining data into')
+        self.parser.add_argument('--max_events_target', type=int, default=500000, help='Maximum number of events to use in the target data')
 
         # Pretraining checkpoints, only needed if picking up a run from a checkpoint
         self.parser.add_argument('--pt_step_one_checkpoint', type=str, default=None, help='Path to the pretraining step one checkpoint')
