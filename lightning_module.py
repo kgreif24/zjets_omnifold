@@ -122,14 +122,10 @@ class LOfTransformer(L.LightningModule):
     def training_step(self, batch, batch_idx):
 
         # Separate batch, make forward pass, calculate loss
-        inputs, target, mask, start_weights, plotting = batch
+        inputs, target, mask, start_weights, _ = batch
         output = self(inputs, mask)
         loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
-
-        # Calculate new weights
-        network_weights = torch.exp(output)
-        end_weights = network_weights * start_weights
 
         # Log training loss
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)

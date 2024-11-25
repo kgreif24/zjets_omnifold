@@ -156,6 +156,9 @@ class OfDataset(torch.utils.data.Dataset):
             plotting - the plotting data for the event
         """
 
+        # Flatten the indeces if necessary
+        indeces = np.array(indeces).flatten()
+
         ################ Kinematics + One Hots ################
 
         # Slice kinematics

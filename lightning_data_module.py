@@ -120,6 +120,7 @@ class LOfData(L.LightningDataModule):
             self.source_use190 = self.source_truth_pass190
         else:
             self.source_use190 = self.source_pass190
+        rank_zero_info(f"Loading source data from {self.source_file}")
 
         # If we have a target file, do the same for the target, else set to None
         if self.target_file is not None:
@@ -133,6 +134,7 @@ class LOfData(L.LightningDataModule):
                 self.target_use190 = self.target_truth_pass190
             else:
                 self.target_use190 = self.target_pass190
+            rank_zero_info(f"Loading target data from {self.target_file}")
         else:
             self.num_target = None
             self.target_pass190 = None
@@ -301,15 +303,20 @@ class LOfData(L.LightningDataModule):
         # Calculate normalized weights across the entire source + target dataset
         source_weights, target_weights = self._weight_norm()
 
-        # Truncate both the weights and pass190 filters to this particular piece
+        # Calculate start / stop indeces for this piece / shard
         source_start, source_stop = self.source_indeces[piece]
         target_start, target_stop = self.target_indeces[piece]
+        if self.total_rank > 1:
+            source_start, source_stop = self._calc_shard_indeces(source_start, source_stop, file='source')
+            target_start, target_stop = self._calc_shard_indeces(target_start, target_stop, file='target')
+
+        # Truncate the weights and pass190 filters to the piece / shard
         source_weights = source_weights[source_start:source_stop]
         target_weights = target_weights[target_start:target_stop]
         source_use190 = self.source_use190[source_start:source_stop]
         target_use190 = self.target_use190[target_start:target_stop]
 
-        # Then finally filter out the weights within this piece
+        # Filter out the weights within this piece
         source_weights = np.expand_dims(source_weights[source_use190 == 1], axis=1)
         target_weights = np.expand_dims(target_weights[target_use190 == 1], axis=1)
 
