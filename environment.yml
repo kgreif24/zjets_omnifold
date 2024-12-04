@@ -4,6 +4,7 @@ channels:
   - nvidia
   - conda-forge
   - defaults
+  - pkgs/main
 dependencies:
   - anyio=4.2.0=py311hca03da5_0
   - appdirs=1.4.4=pyhd3eb1b0_0
