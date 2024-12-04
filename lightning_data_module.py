@@ -47,7 +47,7 @@ class LOfData(L.LightningDataModule):
         target_file=None,
         source_weight_path=None,
         target_weight_path=None,
-        max_events_target=np.inf,
+        max_events_target=99999999,
         data_divisor=1,
         total_rank=1,
         rank=0,
@@ -417,7 +417,7 @@ class LOfData(L.LightningDataModule):
             else:
                 all_weights = weight_file['train']
                 if which_file == 'target':
-                    all_weights = all_weights[:self.max_events_target]
+                    all_weights = all_weights[:int(self.max_events_target)]
 
         # Otherwise create a vector of ones
         else:
