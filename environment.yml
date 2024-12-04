@@ -196,6 +196,4 @@ dependencies:
   - zlib=1.2.13
   - zstandard=0.22.0
   - zstd=1.5.5
-  - pip:
-      - cosine-annealing-warmup==2.0
 prefix: /Users/kevingreif/anaconda3/envs/zjets
