@@ -27,24 +27,24 @@ from wasserstein_metric import WassersteinOne
 
 
 class OfEval:
-    """ OfEval - This class handles the evaluation and prediction for an
+    """OfEval - This class handles the evaluation and prediction for an
     Omnifold classifier. It is run by the driver function below, which
     is meant to be called as a subprocess from the Omnifolder class.
     """
 
     def __init__(
-            self, 
-            check_path, 
-            run_id, 
-            config_path, 
-            iteration, 
-            step, 
-            verify=False, 
-            store=None, 
-            index=-1, 
-            unit_test=False
-        ):
-        """ __init__ - The init function for this class. It takes the OfConfig object
+        self,
+        check_path,
+        run_id,
+        config_path,
+        iteration,
+        step,
+        verify=False,
+        store=None,
+        index=-1,
+        unit_test=False,
+    ):
+        """__init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
         Arguments:
@@ -59,7 +59,7 @@ class OfEval:
             location
         index - Defaults -1, the index of the ensemble to run. Add this number to the
             end of the group ID if it is not -1
-        unit_test - If true, trainer will just run a few steps of evaluation and exit 
+        unit_test - If true, trainer will just run a few steps of evaluation and exit
 
         Returns:
         None
@@ -94,13 +94,13 @@ class OfEval:
 
         # Make directories for storing plots and weights
         root_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
-        self.checkpoint_dir = f'{root_dir}/{self.run_name}'
+        self.checkpoint_dir = f"{root_dir}/{self.run_name}"
         os.makedirs(self.checkpoint_dir, exist_ok=True)
-        self.test_dir = f'{root_dir}/{self.run_name}/test_plots'
+        self.test_dir = f"{root_dir}/{self.run_name}/test_plots"
         os.makedirs(self.test_dir, exist_ok=True)
-        self.comp_dir = f'{root_dir}/{self.run_name}/comp_plots'
+        self.comp_dir = f"{root_dir}/{self.run_name}/comp_plots"
         os.makedirs(self.comp_dir, exist_ok=True)
-        self.weight_dir = f'{root_dir}/weights'
+        self.weight_dir = f"{root_dir}/weights"
         os.makedirs(self.weight_dir, exist_ok=True)
 
         # Change the save location if the store argument is set
@@ -115,12 +115,12 @@ class OfEval:
         if self.config.wandb:
 
             self.wandb_logger = WandbLogger(
-                project=self.config.project_name, 
+                project=self.config.project_name,
                 group=self.config.group_name,
                 name=self.run_name,
                 save_dir=self.checkpoint_dir,
                 id=self.run_id,
-                resume="must"
+                resume="must",
             )
 
             # Get run ID
@@ -138,23 +138,25 @@ class OfEval:
             test_plots=self.test_dir,
             log=self.config.wandb,
             debug=self.config.debug,
-            step=self.step
+            step=self.step,
         )
 
         # Make lightning trainer for testing
         self.trainer = L.Trainer(
-            accelerator='auto' if (self.config.debug or unit_test) else 'gpu',
+            accelerator="auto" if (self.config.debug or unit_test) else "gpu",
             num_nodes=1,
             devices=1,
             logger=self.wandb_logger,
             enable_progress_bar=self.config.interactive,
             fast_dev_run=unit_test,
-            use_distributed_sampler=False
+            use_distributed_sampler=False,
         )
 
         # Make wasserstein metric object for comparing derived reweighting
         # to truth level pseudo data
-        self.wasserstein = WassersteinOne(pu.default_settings, draw_plots=True, save_location=self.comp_dir)
+        self.wasserstein = WassersteinOne(
+            pu.default_settings, draw_plots=True, save_location=self.comp_dir
+        )
 
         #################### Data setup ####################
 
@@ -168,16 +170,16 @@ class OfEval:
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.pretrain_path
-                source_weight_file = 'root'
-                target_weight_file = 'root'
-            # If this is the first iteration, use the weights from the root file for source 
+                source_weight_file = "root"
+                target_weight_file = "root"
+            # If this is the first iteration, use the weights from the root file for source
             # and no weights for the target
             elif self.iteration == 1:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.data_path
-                source_weight_file = 'root'
+                source_weight_file = "root"
                 target_weight_file = None
             # Otherwise use the weights from the previous step two for the source, and no
             # weights for the target
@@ -186,7 +188,9 @@ class OfEval:
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.data_path
-                source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                source_weight_file = (
+                    f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                )
                 target_weight_file = None
         # For step two:
         if self.step == 2:
@@ -197,8 +201,8 @@ class OfEval:
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.pretrain_path
-                source_weight_file = 'root'
-                target_weight_file = 'root'
+                source_weight_file = "root"
+                target_weight_file = "root"
             # If this is the first iteration, use the weights from step one for target, and the
             # weights from the root file as source.
             elif self.iteration == 1:
@@ -206,8 +210,10 @@ class OfEval:
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.mc_test_path
-                source_weight_file = 'root'
-                target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
+                source_weight_file = "root"
+                target_weight_file = (
+                    f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
+                )
             # Otherwise use weights from previous step 2 for source, and the weights
             # from the previous step one for target
             else:
@@ -215,13 +221,17 @@ class OfEval:
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.mc_test_path
-                source_weight_file = f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
-                target_weight_file = f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
+                source_weight_file = (
+                    f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                )
+                target_weight_file = (
+                    f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
+                )
 
         # Build a data module. In Omnifold iterations, we want to run prediction on every event
         # we have, so need to define two data modules, one for the training / val
         # set and one for the test set. Both of these will be in testing mode.
-        # Note the data modules filter data by the relevant pass 190 flag. Need to add in weights for 
+        # Note the data modules filter data by the relevant pass 190 flag. Need to add in weights for
         # events which fail these flags after prediction.
         self.d_module_train = LOfData(
             source_file=train_source_file,
@@ -237,7 +247,7 @@ class OfEval:
             dataloader_workers=30,
             load_all=True,
             testing=False,
-            use_truth=use_truth
+            use_truth=use_truth,
         )
         self.d_module_test = LOfData(
             source_file=test_source_file,
@@ -253,12 +263,11 @@ class OfEval:
             dataloader_workers=30,
             load_all=True,
             testing=True,
-            use_truth=use_truth
+            use_truth=use_truth,
         )
 
-    
     def run_testing(self):
-        """ run_testing - Run testing over the test data module.
+        """run_testing - Run testing over the test data module.
         The point here is to get performance metrics (AUC and test loss)
 
         No arguments or returns
@@ -266,13 +275,12 @@ class OfEval:
 
         self.trainer.test(self.model, self.d_module_test)
 
-
     def run_prediction(self):
-        """ run_prediction - Run predictions over every data point in the train / test datamodules.
+        """run_prediction - Run predictions over every data point in the train / test datamodules.
         Then calculate the updated weights. Also need to think about how to handle the events
         which do not pass the pass190 flags. For now just assign the starting weight to these events,
         using the "get_source_all_weights" method of the data modules.
-        
+
         Then save the updated weights as .npz files
 
         No arguments or returns
@@ -283,8 +291,12 @@ class OfEval:
         predictions_test = self.trainer.predict(self.model, self.d_module_test)
 
         # Send predictions to CPU, convert to numpy, and concatenate
-        predictions_train = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_train])
-        predictions_test = np.concatenate([pred.cpu().numpy().flatten() for pred in predictions_test])
+        predictions_train = np.concatenate(
+            [pred.cpu().numpy().flatten() for pred in predictions_train]
+        )
+        predictions_test = np.concatenate(
+            [pred.cpu().numpy().flatten() for pred in predictions_test]
+        )
 
         # Calculate network weights, can just take the exponential
         network_weights_train = np.exp(predictions_train)
@@ -330,16 +342,15 @@ class OfEval:
             target_pass190_train=target_pass190_train,
             target_pass190_test=target_pass190_test,
             target_truth_pass190_train=target_truth_pass190_train,
-            target_truth_pass190_test=target_truth_pass190_test
+            target_truth_pass190_test=target_truth_pass190_test,
         )
 
         # Evaluate difference between reweighted truth MC and truth data if this is step 2
         if self.step == 2:
             self.compare()
 
-
     def compare(self):
-        """ compare - Compare the reweighted truth MC to the truth pseudodata. Will draw all relevant plots,
+        """compare - Compare the reweighted truth MC to the truth pseudodata. Will draw all relevant plots,
         calculate the wasserstein metric, and upload all results to wandb using the WassersteinOne class.
 
         No arguments or returns
@@ -352,24 +363,42 @@ class OfEval:
         tree_pd = f_pd["OmniTree"]
 
         # Get the truth level pass190 filters
-        filter_mc = ak.to_numpy(tree_mc["truth_pass190"].array(entry_stop=self.n_compare_events))
-        filter_pd = ak.to_numpy(tree_pd["truth_pass190"].array(entry_stop=self.n_compare_events))
+        filter_mc = ak.to_numpy(
+            tree_mc["truth_pass190"].array(entry_stop=self.n_compare_events)
+        )
+        filter_pd = ak.to_numpy(
+            tree_pd["truth_pass190"].array(entry_stop=self.n_compare_events)
+        )
 
         # Get the plot data
-        plotting_mc = du.get_plotting(tree_mc, vars=pu.default_settings.keys(), get_truth=True, stop=self.n_compare_events)
-        plotting_pd = du.get_plotting(tree_pd, vars=pu.default_settings.keys(), get_truth=True, stop=self.n_compare_events)
+        plotting_mc = du.get_plotting(
+            tree_mc,
+            vars=pu.default_settings.keys(),
+            get_truth=True,
+            stop=self.n_compare_events,
+        )
+        plotting_pd = du.get_plotting(
+            tree_pd,
+            vars=pu.default_settings.keys(),
+            get_truth=True,
+            stop=self.n_compare_events,
+        )
 
         # Get the track kinematics
-        kinematics_mc, _ = du.get_kinematics(tree_mc, get_truth=True, stop=self.n_compare_events)
-        kinematics_pd, _ = du.get_kinematics(tree_pd, get_truth=True, stop=self.n_compare_events)
+        kinematics_mc, _ = du.get_kinematics(
+            tree_mc, get_truth=True, stop=self.n_compare_events
+        )
+        kinematics_pd, _ = du.get_kinematics(
+            tree_pd, get_truth=True, stop=self.n_compare_events
+        )
 
         # Pad kinematics
         kinematics_mc = du.pad_kinematics(kinematics_mc, max_tracks=self.max_tracks)
         kinematics_pd = du.pad_kinematics(kinematics_pd, max_tracks=self.max_tracks)
 
         # Slice the track kinematics (log pT, eta, cos(phi), sin(phi))
-        kinematics_mc = kinematics_mc[:,:3,2:]
-        kinematics_pd = kinematics_pd[:,:3,2:]
+        kinematics_mc = kinematics_mc[:, :3, 2:]
+        kinematics_pd = kinematics_pd[:, :3, 2:]
 
         # Concatenate the truth level MC and truth level pseudodata
         plotting = np.concatenate([plotting_mc, plotting_pd], axis=0)
@@ -381,23 +410,31 @@ class OfEval:
         labels = np.concatenate([labels_mc, labels_pd], axis=0)
 
         # Get start weights for MC and truth pseudodata
-        root_weights_mc = ak.to_numpy(tree_mc['weight'].array(entry_stop=self.n_compare_events))
+        root_weights_mc = ak.to_numpy(
+            tree_mc["weight"].array(entry_stop=self.n_compare_events)
+        )
         root_weights_mc = root_weights_mc[filter_mc == 1]
-        root_weights_pd = ak.to_numpy(tree_pd['weight'].array(entry_stop=self.n_compare_events))
+        root_weights_pd = ak.to_numpy(
+            tree_pd["weight"].array(entry_stop=self.n_compare_events)
+        )
         root_weights_pd = root_weights_pd[filter_pd == 1]
         start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
 
         # Make end weights
         mc_end_weights = self.all_updated_weights_test
         if len(self.all_updated_weights_test) > self.n_compare_events:
-            mc_end_weights = self.all_updated_weights_test[:self.n_compare_events]
+            mc_end_weights = self.all_updated_weights_test[: self.n_compare_events]
         mc_end_weights = mc_end_weights[filter_mc == 1]
         end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
 
         # Update and compute metrics, generate plots
         self.wasserstein.update(plotting, start_weights, end_weights, labels)
-        comp_wass, plot_dict = self.wasserstein.compute(from_torch=False, names=('TruthMC', 'TruthPD'), is_comp=True)
-        track_dict = pu.make_inclusive_track_plots(kinematics, labels, start_weights, end_weights, save_location=self.comp_dir)
+        comp_wass, plot_dict = self.wasserstein.compute(
+            from_torch=False, names=("TruthMC", "TruthPD"), is_comp=True
+        )
+        track_dict = pu.make_inclusive_track_plots(
+            kinematics, labels, start_weights, end_weights, save_location=self.comp_dir
+        )
         plot_dict = {**plot_dict, **track_dict}
         print("Reweighted truth MC to truth PD Wasserstein metric:", comp_wass)
 
@@ -411,10 +448,8 @@ class OfEval:
         # Reset metric
         self.wasserstein.reset()
 
-
-
     def run(self):
-        """ run - This function runs the evaluation routine for an omnifold classifier
+        """run - This function runs the evaluation routine for an omnifold classifier
 
         No Arguments or Returns
         """
@@ -425,7 +460,7 @@ class OfEval:
             self.run_testing()
             if self.unit_test or (not self.trainer.is_global_zero):
                 return
-        
+
         # Run prediction, unless this is pretraining
         if self.iteration > 0:
             print("Run predictions")
@@ -437,31 +472,58 @@ class OfEval:
 
 
 ############## MAIN FUNCTION ##############
-        
+
 # This function will be called as a subprocess from the Omnifolder class
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Run the omnifold evaluation')
-    parser.add_argument('--check_path', type=str, default=None, help='Path to the checkpoint to evaluate')
-    parser.add_argument('--run_id', type=str, default=None, help='ID of the run for evaluation')
-    parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
-    parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
-    parser.add_argument('--step', type=int, default=None, help='The step number for this training run')
-    parser.add_argument('--verify', action='store_true', help='If set, do not run testing, just run prediction.')
-    parser.add_argument('--store', type=str, default=None, help='If set, store weights here instead of in the default location')
-    parser.add_argument('--index', type=int, default=-1, help='The index of the ensemble to run') 
+    parser = argparse.ArgumentParser(description="Run the omnifold evaluation")
+    parser.add_argument(
+        "--check_path",
+        type=str,
+        default=None,
+        help="Path to the checkpoint to evaluate",
+    )
+    parser.add_argument(
+        "--run_id", type=str, default=None, help="ID of the run for evaluation"
+    )
+    parser.add_argument(
+        "--config_path", type=str, default=None, help="Path to the configuration file"
+    )
+    parser.add_argument(
+        "--iteration",
+        type=int,
+        default=None,
+        help="The iteration number for this training run",
+    )
+    parser.add_argument(
+        "--step", type=int, default=None, help="The step number for this training run"
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="If set, do not run testing, just run prediction.",
+    )
+    parser.add_argument(
+        "--store",
+        type=str,
+        default=None,
+        help="If set, store weights here instead of in the default location",
+    )
+    parser.add_argument(
+        "--index", type=int, default=-1, help="The index of the ensemble to run"
+    )
     args, _ = parser.parse_known_args()
 
     # Run the evaluation
     evaluator = OfEval(
-        check_path=args.check_path, 
-        run_id=args.run_id, 
-        config_path=args.config_path, 
-        iteration=args.iteration, 
+        check_path=args.check_path,
+        run_id=args.run_id,
+        config_path=args.config_path,
+        iteration=args.iteration,
         step=args.step,
         verify=args.verify,
         store=args.store,
-        index=args.index
+        index=args.index,
     )
     evaluator.run()

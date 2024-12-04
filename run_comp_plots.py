@@ -18,13 +18,23 @@ import utils.plotting_utils as pu
 import utils.data_utils as du
 from wasserstein_metric import WassersteinOne
 
-parser = argparse.ArgumentParser(description="Generate comp plots for reweighted MC and truth pseudodata comparison.")
+parser = argparse.ArgumentParser(
+    description="Generate comp plots for reweighted MC and truth pseudodata comparison."
+)
 parser.add_argument("--mc", type=str, help="The path to MC file")
 parser.add_argument("--weights", type=str, help="The path to the weights file")
 parser.add_argument("--pd", type=str, help="The path to PD file")
 parser.add_argument("--store", type=str, help="The path to store the plots")
-parser.add_argument("--use_test", action="store_true", help="If true, will use the weights for the testing MC rather than training")
-parser.add_argument("--passBoth", action="store_true", help="If true, will require that the MC events pass the reco filter in addition to truth")
+parser.add_argument(
+    "--use_test",
+    action="store_true",
+    help="If true, will use the weights for the testing MC rather than training",
+)
+parser.add_argument(
+    "--passBoth",
+    action="store_true",
+    help="If true, will require that the MC events pass the reco filter in addition to truth",
+)
 args = parser.parse_args()
 
 # Set max events and max tracks to use for plotting
@@ -44,8 +54,12 @@ pd_filter = ak.to_numpy(pd_tree["truth_pass190"].array(entry_stop=max_events))
 
 # If we only want to use events that pass both reco and truth filters, take and here
 if args.passBoth:
-    mc_filter = np.logical_and(mc_filter, ak.to_numpy(mc_tree["pass190"].array(entry_stop=max_events)))
-    pd_filter = np.logical_and(pd_filter, ak.to_numpy(pd_tree["pass190"].array(entry_stop=max_events)))
+    mc_filter = np.logical_and(
+        mc_filter, ak.to_numpy(mc_tree["pass190"].array(entry_stop=max_events))
+    )
+    pd_filter = np.logical_and(
+        pd_filter, ak.to_numpy(pd_tree["pass190"].array(entry_stop=max_events))
+    )
 
 # Get original MC weights
 mc_start_weights = ak.to_numpy(mc_tree["weight"].array(entry_stop=max_events))
@@ -116,17 +130,33 @@ labels_track = np.concatenate([mc_labels_track, pd_labels_track], axis=0)
 
 # Get the plot data, always want the truth level for this script. Take all events for event level observables
 plotting_variables = pu.default_settings.keys()
-mc_plotting = du.get_plotting(mc_tree, vars=plotting_variables, get_truth=True, stop=max_events, passBoth=args.passBoth)
-pd_plotting = du.get_plotting(pd_tree, vars=plotting_variables, get_truth=True, stop=max_events, passBoth=args.passBoth)
+mc_plotting = du.get_plotting(
+    mc_tree,
+    vars=plotting_variables,
+    get_truth=True,
+    stop=max_events,
+    passBoth=args.passBoth,
+)
+pd_plotting = du.get_plotting(
+    pd_tree,
+    vars=plotting_variables,
+    get_truth=True,
+    stop=max_events,
+    passBoth=args.passBoth,
+)
 plotting = ak.concatenate([mc_plotting, pd_plotting], axis=0)
 
 # Get the track kinematics
-mc_kinematics, _ = du.get_kinematics(mc_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth)
-pd_kinematics, _ = du.get_kinematics(pd_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth)
+mc_kinematics, _ = du.get_kinematics(
+    mc_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth
+)
+pd_kinematics, _ = du.get_kinematics(
+    pd_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth
+)
 kinematics = ak.concatenate([mc_kinematics, pd_kinematics], axis=0)
 
 # Drop the muons
-kinematics = kinematics[:,:,2:]
+kinematics = kinematics[:, :, 2:]
 
 # Zero pad the kinematics, sends kinematics to a numpy array
 kinematics = du.pad_kinematics(kinematics)
@@ -134,13 +164,13 @@ kinematics = du.pad_kinematics(kinematics)
 # Modify the legends to show the truth level data
 new_settings = pu.default_settings.copy()
 for key, val in new_settings.items():
-    val.update({'truth_mc': True})
-    val.update({'truth_data': True})
+    val.update({"truth_mc": True})
+    val.update({"truth_data": True})
 
 new_track_settings = pu.track_hists.copy()
 for key, val in new_track_settings.items():
-    val.update({'truth_mc': True})
-    val.update({'truth_data': True})
+    val.update({"truth_mc": True})
+    val.update({"truth_data": True})
 
 # Make names argument
 names = ("TruthMC", "TruthPD")
@@ -154,7 +184,9 @@ plotting = plotting[pos_weights]
 # Track plots can handle negative weights, so leave them
 
 # Calculate the wasserstein distance between MC and pseudodata
-wass_og = WassersteinOne(hist_info=new_settings, draw_plots=False, save_location=args.store)
+wass_og = WassersteinOne(
+    hist_info=new_settings, draw_plots=False, save_location=args.store
+)
 wass_og.update(plotting, start_weights, start_weights, labels)
 w1_og, _ = wass_og.compute(from_torch=False, names=names, is_comp=False)
 print(f"Original Wasserstein One: {w1_og}")
@@ -165,4 +197,12 @@ wass = WassersteinOne(hist_info=new_settings, draw_plots=True, save_location=arg
 wass.update(plotting, start_weights, end_weights, labels)
 w1, plot_dict = wass.compute(from_torch=False, names=names, is_comp=True)
 print(f"Re-weighted Wasserstein One: {w1}")
-pu.make_inclusive_track_plots(kinematics, labels_track, start_weights_track, end_weights=end_weights_track, definitions=new_track_settings, save_location=args.store, names=names)
+pu.make_inclusive_track_plots(
+    kinematics,
+    labels_track,
+    start_weights_track,
+    end_weights=end_weights_track,
+    definitions=new_track_settings,
+    save_location=args.store,
+    names=names,
+)

@@ -10,7 +10,6 @@ Last updated 05/08/2024
 python3
 """
 
-
 import numpy as np
 import scipy
 from pytorch_lightning.utilities.rank_zero import *
@@ -20,14 +19,14 @@ import utils.plotting_utils as pu
 
 
 class WassersteinOne(BaseMetric):
-    """ A BaseMetric subclass which implements the 1D wasserstein 
+    """A BaseMetric subclass which implements the 1D wasserstein
     based performance metrics for omnifold classifiers.
     """
 
     # Can keep the same __init__ and update functions as the base class
 
     def compute(self, from_torch=True, **kwargs):
-        """ compute - Actually compute the sum of the wasserstein distances
+        """compute - Actually compute the sum of the wasserstein distances
         over the dimensions used in plotting.
 
         This calls the parent classes compute function
@@ -54,18 +53,23 @@ class WassersteinOne(BaseMetric):
         for i, (key, hist_dict) in enumerate(self.hist_info.items()):
 
             # If we are not using this dimension for W1 computation, continue
-            if not hist_dict['w1_eval']:
+            if not hist_dict["w1_eval"]:
                 continue
 
             # Slice this dimension
-            this_dim = self.plotting[:,i]
+            this_dim = self.plotting[:, i]
 
             # Separate into source / target
             source_dist = this_dim[self.target == 0]
             target_dist = this_dim[self.target == 1]
 
             # Calculate 1D wasserstein distance
-            this_wass = scipy.stats.wasserstein_distance(source_dist, target_dist, u_weights=source_weight, v_weights=target_weight)
+            this_wass = scipy.stats.wasserstein_distance(
+                source_dist,
+                target_dist,
+                u_weights=source_weight,
+                v_weights=target_weight,
+            )
 
             # Append to results list
             results.append(this_wass)

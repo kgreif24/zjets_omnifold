@@ -18,8 +18,8 @@ from cli.of_config import OfConfig
 from utils.subprocess_utils import capture_subprocess_output
 
 
-class Omnifolder():
-    """ Omnifolder - This class implements the omnifold algorithm.
+class Omnifolder:
+    """Omnifolder - This class implements the omnifold algorithm.
     It is responsible for running the omnifold procedure, calculating weights,
     plotting results, etc.
 
@@ -27,8 +27,15 @@ class Omnifolder():
     classifiers. This is handled in processes spawned by this class.
     """
 
-    def __init__(self, config_path, continue_iteration=0, continue_step_two=False, index=None, use_slurm=True):
-        """ __init__ - This function initializes the omnifolder object.
+    def __init__(
+        self,
+        config_path,
+        continue_iteration=0,
+        continue_step_two=False,
+        index=None,
+        use_slurm=True,
+    ):
+        """__init__ - This function initializes the omnifolder object.
 
         Arguments:
         config_path - Path to the config file for the omnifold algorithm
@@ -78,9 +85,8 @@ class Omnifolder():
         if self.cfg.wandb:
             wandb.login()
 
-
     def run_of(self):
-        """ run_of - Run the whole Omnifold procedure from start to finish.
+        """run_of - Run the whole Omnifold procedure from start to finish.
         Arguments: None
         Returns: None
         """
@@ -94,7 +100,7 @@ class Omnifolder():
 
         # Omnifold Loop
         first_iteration = True
-        for i in range(self.current_iteration, self.end_iteration+1):  # 1-indexed
+        for i in range(self.current_iteration, self.end_iteration + 1):  # 1-indexed
             self.current_iteration = i
             print(f"\n\n ##### Running iteration {i} of {self.end_iteration} #####")
             if first_iteration and self.continue_step_two:
@@ -106,9 +112,8 @@ class Omnifolder():
 
         print("\n############## Omnifold Finished!! ##############\n")
 
-
     def pre_train(self):
-        """ pre_train - This function runs the pre-training step of the omnifold algorithm.
+        """pre_train - This function runs the pre-training step of the omnifold algorithm.
         It will train two networks, a step 1 and a step 2 network. These will then be
         used as the starting point for the trainings in the iterations.
 
@@ -120,9 +125,8 @@ class Omnifolder():
             print("Running pre-training for step ", step)
             self.run_step(step, pt=True)
 
-
     def run_step(self, step, pt=False):
-        """ step_one - This function runs a step of the omnifold algorithm.
+        """step_one - This function runs a step of the omnifold algorithm.
         Which step it runs is controlled by the step argument.
 
         Arguments:
@@ -153,18 +157,18 @@ class Omnifolder():
 
         # Run training as a subprocess
         train_args = [
-            "python", 
-            "lightning_train.py", 
-            "--config_path", 
-            self.config_path, 
-            "--iteration", 
-            str(self.current_iteration), 
-            "--step", 
+            "python",
+            "lightning_train.py",
+            "--config_path",
+            self.config_path,
+            "--iteration",
+            str(self.current_iteration),
+            "--step",
             str(step),
             "--split_seed",
             str(seed),
             "--index",
-            str(self.index)
+            str(self.index),
         ]
         # Add warm start path if it exists
         if ws_path is not None:
@@ -173,11 +177,15 @@ class Omnifolder():
         if self.use_slurm:
             slurm_args = [
                 "srun",
-                "--nodes", str(self.cfg.num_nodes),
-                "--ntasks-per-node", str(self.cfg.num_gpus),
-                "--cpus-per-task", "30",
+                "--nodes",
+                str(self.cfg.num_nodes),
+                "--ntasks-per-node",
+                str(self.cfg.num_gpus),
+                "--cpus-per-task",
+                "30",
                 "--cpu_bind=cores",
-                "--gpus-per-task", "1",
+                "--gpus-per-task",
+                "1",
                 "--gpu-bind=none",
             ]
             train_args = slurm_args + train_args
@@ -198,10 +206,10 @@ class Omnifolder():
         found_id = False
         found_path = False
         for i in reversed(range(len(lines))):
-            if "###RUN ID###" in lines[i] and i+1 < len(lines):
+            if "###RUN ID###" in lines[i] and i + 1 < len(lines):
                 run_id = lines[i + 1]
                 found_id = True
-            if "###BEST MODEL PATH###" in lines[i] and i+1 < len(lines):
+            if "###BEST MODEL PATH###" in lines[i] and i + 1 < len(lines):
                 best_model_path = lines[i + 1]
                 found_path = True
             if found_id and found_path:
@@ -221,29 +229,33 @@ class Omnifolder():
 
             # Run evaluation as a subprocess, no need to keep output
             eval_args = [
-                "python", 
+                "python",
                 "lightning_eval.py",
                 "--check_path",
                 best_model_path,
                 "--run_id",
                 run_id,
-                "--config_path", 
-                self.config_path, 
-                "--iteration", 
-                str(self.current_iteration), 
-                "--step", 
+                "--config_path",
+                self.config_path,
+                "--iteration",
+                str(self.current_iteration),
+                "--step",
                 str(step),
                 "--index",
-                str(self.index)
+                str(self.index),
             ]
             if self.use_slurm:
                 slurm_args = [
                     "srun",
-                    "-n", "1",
-                    "--ntasks-per-node", "1",
-                    "--cpus-per-task", "128",
+                    "-n",
+                    "1",
+                    "--ntasks-per-node",
+                    "1",
+                    "--cpus-per-task",
+                    "128",
                     "--cpu_bind=cores",
-                    "--gpus-per-task", "1",
+                    "--gpus-per-task",
+                    "1",
                     "--gpu-bind=none",
                 ]
                 eval_args = slurm_args + eval_args

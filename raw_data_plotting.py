@@ -25,8 +25,16 @@ parser.add_argument("--f1", type=str, help="The path to file 1")
 parser.add_argument("--f2", type=str, help="The path to file 2")
 parser.add_argument("--name1", type=str, help="The name of file 1")
 parser.add_argument("--name2", type=str, help="The name of file 2")
-parser.add_argument("--truth1", action="store_true", help="If true, will plot truth level data for file 1")
-parser.add_argument("--truth2", action="store_true", help="If true, will plot truth level data for file 2")
+parser.add_argument(
+    "--truth1",
+    action="store_true",
+    help="If true, will plot truth level data for file 1",
+)
+parser.add_argument(
+    "--truth2",
+    action="store_true",
+    help="If true, will plot truth level data for file 2",
+)
 parser.add_argument("--store", type=str, help="The path to store the plots")
 args = parser.parse_args()
 
@@ -65,8 +73,12 @@ labels = np.concatenate([labels1, labels2], axis=0)
 
 # Get the plot data
 plotting_variables = pu.default_settings.keys()
-plotting1 = du.get_plotting(tree1, vars=plotting_variables, get_truth=args.truth1, stop=max_events)
-plotting2 = du.get_plotting(tree2, vars=plotting_variables, get_truth=args.truth2, stop=max_events)
+plotting1 = du.get_plotting(
+    tree1, vars=plotting_variables, get_truth=args.truth1, stop=max_events
+)
+plotting2 = du.get_plotting(
+    tree2, vars=plotting_variables, get_truth=args.truth2, stop=max_events
+)
 plotting = np.concatenate([plotting1, plotting2], axis=0)
 
 # Get the track kinematics
@@ -79,28 +91,44 @@ kinematics2 = du.pad_kinematics(kinematics2, max_tracks)
 kinematics = np.concatenate([kinematics1, kinematics2], axis=0)
 
 # Drop the muons
-kinematics = kinematics[:,:,2:]
+kinematics = kinematics[:, :, 2:]
 
 # Modify the legends if we have truth level data
 new_settings = pu.default_settings.copy()
 if args.truth1:
     for key, val in new_settings.items():
-        val.update({'truth_mc': True})
+        val.update({"truth_mc": True})
 if args.truth2:
     for key, val in new_settings.items():
-        val.update({'truth_data': True})
+        val.update({"truth_data": True})
 
 new_track_settings = pu.track_hists.copy()
 if args.truth1:
     for key, val in new_track_settings.items():
-        val.update({'truth_mc': True})
+        val.update({"truth_mc": True})
 if args.truth2:
     for key, val in new_track_settings.items():
-        val.update({'truth_data': True})
+        val.update({"truth_data": True})
 
 # Make names argument
 names = (args.name1, args.name2)
 
 # Make the logged plots
-pu.make_logged_plots(plotting, labels, weights, weights, definitions=new_settings, save_location=args.store, names=names)
-pu.make_inclusive_track_plots(kinematics, labels, weights, weights, definitions=new_track_settings, save_location=args.store, names=names)
+pu.make_logged_plots(
+    plotting,
+    labels,
+    weights,
+    weights,
+    definitions=new_settings,
+    save_location=args.store,
+    names=names,
+)
+pu.make_inclusive_track_plots(
+    kinematics,
+    labels,
+    weights,
+    weights,
+    definitions=new_track_settings,
+    save_location=args.store,
+    names=names,
+)

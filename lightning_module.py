@@ -22,31 +22,33 @@ import utils.plotting_utils as pu
 
 
 class LOfTransformer(L.LightningModule):
-    """ LOfTransformer - This class is a wrapper for the Omnifold Transformer.
+    """LOfTransformer - This class is a wrapper for the Omnifold Transformer.
     It will initialize the model in the __init__ method. Any additional arguments
     that are passed to the __init__ method will be passed to the OfTransformer.
 
     For now, loss is hardcoded to the BCEWithLogitsLoss.
     """
 
-    # Init function 
-    def __init__(self, 
-                 input_dim=3,          
-                 test_plots=None,
-                 log=False,
-                 debug=False,
-                 no_w1=False,
-                 seed=420,
-                 step=1,
-                 min_lr=1e-5,
-                 max_lr=1e-4,
-                 cycle_steps=30000,
-                 warmup_steps=8000,
-                 gamma=0.85,
-                 **kwargs):
-        """ __init__ - This method initializes the LOfTransformer class.
-        There is one required argument which gives the input dimension for the 
-        transformer. This is the # of features per object (usually 3). 
+    # Init function
+    def __init__(
+        self,
+        input_dim=3,
+        test_plots=None,
+        log=False,
+        debug=False,
+        no_w1=False,
+        seed=420,
+        step=1,
+        min_lr=1e-5,
+        max_lr=1e-4,
+        cycle_steps=30000,
+        warmup_steps=8000,
+        gamma=0.85,
+        **kwargs
+    ):
+        """__init__ - This method initializes the LOfTransformer class.
+        There is one required argument which gives the input dimension for the
+        transformer. This is the # of features per object (usually 3).
         Any other keyword arguments are passed to the OfTransformer init function,
         and saved as hyperparameters of the module.
 
@@ -82,41 +84,41 @@ class LOfTransformer(L.LightningModule):
 
         # Set plotting names based on step argument
         if step == 1:
-            self.names = ('RecoMC', 'RecoPD')
+            self.names = ("RecoMC", "RecoPD")
         elif step == 2:
-            self.names = ('TruthMC', 'PulledWeightsMC')
+            self.names = ("TruthMC", "PulledWeightsMC")
 
         # Set 32 bit precision for all operations
-        torch.set_float32_matmul_precision('medium')
+        torch.set_float32_matmul_precision("medium")
 
         # Initialize model and loss
         super().__init__()
-        self.criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
+        self.criterion = torch.nn.BCEWithLogitsLoss(reduction="none")
         if debug:
             self.model = DumbNeuralNetwork()
         else:
             self.model = OfTransformer(input_dim, **kwargs)
 
         # Performance metrics, note this also handles plotting and logging to wandb
-        self.val_auc = torchmetrics.classification.AUROC(task='binary')
-        self.test_auc = torchmetrics.classification.AUROC(task='binary')
+        self.val_auc = torchmetrics.classification.AUROC(task="binary")
+        self.test_auc = torchmetrics.classification.AUROC(task="binary")
         if not (self.debug or self.no_w1):
             self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=False)
             self.draw_test = True if test_plots != None else False
-            self.wasserstein_test = WassersteinOne(pu.default_settings, draw_plots=self.draw_test, save_location=test_plots)
+            self.wasserstein_test = WassersteinOne(
+                pu.default_settings, draw_plots=self.draw_test, save_location=test_plots
+            )
 
         # Log hyperparameters
-        self.save_hyperparameters(ignore=['test_plots', 'debug'])
-
+        self.save_hyperparameters(ignore=["test_plots", "debug"])
 
     # Forward pass
     def forward(self, inputs, mask):
-        tracks = inputs[:,:3,:]
+        tracks = inputs[:, :3, :]
         if self.debug:
             return self.model(tracks)
         else:
             return self.model(inputs, v=tracks, mask=mask)
-    
 
     # Training step
     def training_step(self, batch, batch_idx):
@@ -128,10 +130,9 @@ class LOfTransformer(L.LightningModule):
         loss = loss.mean()
 
         # Log training loss
-        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
+        self.log("train_loss", loss, prog_bar=True, sync_dist=True)
 
         return loss
-
 
     # Validation step
     def validation_step(self, batch, batch_idx):
@@ -147,16 +148,22 @@ class LOfTransformer(L.LightningModule):
         # Calculate and log loss
         loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
-        self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
         # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
         self.val_auc(output, target)
-        self.log('val_auc', self.val_auc, on_epoch=True, on_step=False, prog_bar=True, sync_dist=True)
+        self.log(
+            "val_auc",
+            self.val_auc,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            sync_dist=True,
+        )
 
         # Update wasserstein metric
         if not (self.debug or self.no_w1):
             self.wasserstein_val.update(plotting, start_weights, end_weights, target)
-
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
@@ -173,11 +180,16 @@ class LOfTransformer(L.LightningModule):
 
             # Logging
             if self.log_things:
-                self.log('val_wasserstein', val_wass, on_epoch=True, prog_bar=False, sync_dist=True)
-            
+                self.log(
+                    "val_wasserstein",
+                    val_wass,
+                    on_epoch=True,
+                    prog_bar=False,
+                    sync_dist=True,
+                )
+
         # Reset metric
         self.wasserstein_val.reset()
-
 
     # Test step
     def test_step(self, batch, batch_idx):
@@ -192,12 +204,18 @@ class LOfTransformer(L.LightningModule):
 
         # Calculate and log AUC
         self.test_auc(output, target)
-        self.log('test_auc', self.test_auc, on_epoch=True, on_step=False, prog_bar=False, sync_dist=False)
+        self.log(
+            "test_auc",
+            self.test_auc,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=False,
+            sync_dist=False,
+        )
 
         # Update wasserstein metric
         if not (self.debug or self.no_w1):
             self.wasserstein_test.update(plotting, start_weights, end_weights, target)
-
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
@@ -211,21 +229,25 @@ class LOfTransformer(L.LightningModule):
 
         # Logging
         if self.log_things:
-            self.log('test_wasserstein', test_wass, on_epoch=True, prog_bar=False, sync_dist=False)
+            self.log(
+                "test_wasserstein",
+                test_wass,
+                on_epoch=True,
+                prog_bar=False,
+                sync_dist=False,
+            )
             if self.draw_test and self.trainer.is_global_zero:
                 for key, histpath in plot_dict.items():
-                    log_name = 'test_' + key
+                    log_name = "test_" + key
                     self.logger.experiment.log({log_name: wandb.Image(histpath)})
 
         # Reset metric
         self.wasserstein_test.reset()
-        
 
     # Prediction step
     def predict_step(self, batch, batch_idx):
         inputs, _, mask, _, _ = batch
         return self(inputs, mask)
-
 
     # Configure optimizer
     def configure_optimizers(self):
@@ -238,7 +260,13 @@ class LOfTransformer(L.LightningModule):
             warmup_steps=self.warmup_steps,
             max_lr=self.max_lr,
             min_lr=self.min_lr,
-            gamma=self.gamma
+            gamma=self.gamma,
         )
-        return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'frequency': 1}}
-    
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            },
+        }

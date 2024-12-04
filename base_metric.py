@@ -13,7 +13,6 @@ Last updated 05/08/2024
 python3
 """
 
-
 import torchmetrics
 import numpy as np
 from pytorch_lightning.utilities.rank_zero import *
@@ -22,17 +21,17 @@ import utils.plotting_utils as pu
 
 
 class BaseMetric(torchmetrics.Metric):
-    """ A torchmetrics metric subclass which acts as the base class that handles
+    """A torchmetrics metric subclass which acts as the base class that handles
     all of the plotting.
     """
 
     def __init__(self, hist_info, draw_plots=False, save_location=None, **kwargs):
-        """ __init__ - Init function for the class. Both definees the state of the
+        """__init__ - Init function for the class. Both definees the state of the
         metric, and accepts some keyword arguments to control plot drawing.
 
         Arguments:
         hist_info - Dictionary describing the histograms used in the plotting
-        draw_plots - Optional, default False. If True, will draw plots of the plot dimensions. 
+        draw_plots - Optional, default False. If True, will draw plots of the plot dimensions.
         If false then this class essentially acts as a wrapper for calculating whatever performance metric
         defined in the child class.
         save_location - Optional, default None. If provided, will save the plots to this location
@@ -50,17 +49,15 @@ class BaseMetric(torchmetrics.Metric):
         self.draw_plots = draw_plots
         self.save_location = save_location
 
-
     def update(self, plotting, start_weights, end_weights, labels):
-        """ update - Function to update the metric state on each batch."""
+        """update - Function to update the metric state on each batch."""
         self.plotting.append(plotting)
         self.start_weights.append(start_weights)
         self.end_weights.append(end_weights)
         self.target.append(labels)
 
-
     def compute(self, from_torch=True, **kwargs):
-        """ compute - Actually produce the plots. This function should be overloaded
+        """compute - Actually produce the plots. This function should be overloaded
         with an appropriate call to "super" in for any subclass.
 
         Arguments:
@@ -102,15 +99,19 @@ class BaseMetric(torchmetrics.Metric):
         plot_dict = {}
         if self.draw_plots:
             plot_dict = pu.make_logged_plots(
-                plotting, target, start_weights, end_weights, save_location=self.save_location, **kwargs
+                plotting,
+                target,
+                start_weights,
+                end_weights,
+                save_location=self.save_location,
+                **kwargs
             )
 
         # Return the plot dictionary
         return plot_dict
 
-
     def reset(self):
-        """ reset - Reset the metric state."""
+        """reset - Reset the metric state."""
         self.plotting = []
         self.start_weights = []
         self.end_weights = []

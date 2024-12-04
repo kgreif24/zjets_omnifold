@@ -25,13 +25,22 @@ from utils.subprocess_utils import cleanup_resources
 
 
 class OfTrain:
-    """ OfTrain - This class is meant to handle the setup and training of a single
+    """OfTrain - This class is meant to handle the setup and training of a single
     Omnifold classifier. The driver code for using this class is in the "main" function
     below.
     """
 
-    def __init__(self, config_path, iteration, step, ws_path=None, seed=222, index=-1, unit_test=False):
-        """ __init__ - The init function for this class. It takes the OfConfig object
+    def __init__(
+        self,
+        config_path,
+        iteration,
+        step,
+        ws_path=None,
+        seed=222,
+        index=-1,
+        unit_test=False,
+    ):
+        """__init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
 
         Arguments:
@@ -43,7 +52,7 @@ class OfTrain:
         seed - The seed to use for the train / val split in this training
         index - The index of the ensemble to run. Add this number to the end of the group ID
              if it is not None
-        unit_test - If true, trainer will just run a few steps of training and exit 
+        unit_test - If true, trainer will just run a few steps of training and exit
 
         Returns:
         None
@@ -75,7 +84,6 @@ class OfTrain:
         checkpoint_dir = f"{root_dir}/{run_name}"
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-
         #################### Lightning setup ####################
 
         # Initialise the wandb logger
@@ -83,10 +91,10 @@ class OfTrain:
 
             # Build the logger
             self.wandb_logger = WandbLogger(
-                project=self.config.project_name, 
+                project=self.config.project_name,
                 group=self.config.group_name,
-                name=run_name, 
-                save_dir=checkpoint_dir
+                name=run_name,
+                save_dir=checkpoint_dir,
             )
 
             # Get run ID
@@ -98,34 +106,40 @@ class OfTrain:
             self.run_id = "test_run"
 
         # Initialise the callbacks
-        self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
+        self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(
+            logging_interval="step"
+        )
         self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
-            monitor='val_loss',
-            filename='{epoch}-{val_loss:.4f}',
+            monitor="val_loss",
+            filename="{epoch}-{val_loss:.4f}",
             save_top_k=self.config.top_k_checkpoints,
-            mode='min',
-            dirpath=checkpoint_dir
+            mode="min",
+            dirpath=checkpoint_dir,
         )
         self.early_stopping = L.pytorch.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=self.config.early_stopping_patience,
-            mode='min'
+            monitor="val_loss", patience=self.config.early_stopping_patience, mode="min"
         )
 
         # Build trainer
         # Only need to reload dataloaders if we are pretraining and request in config
-        reload_dataloaders = True if (self.iteration == 0 and self.config.num_pretrain_pieces > 1) else False
+        reload_dataloaders = (
+            True
+            if (self.iteration == 0 and self.config.num_pretrain_pieces > 1)
+            else False
+        )
         self.trainer = L.Trainer(
-            accelerator='auto' if (self.config.debug or unit_test) else 'gpu',
+            accelerator="auto" if (self.config.debug or unit_test) else "gpu",
             num_nodes=self.config.num_nodes,
-            devices='auto' if (self.config.debug or unit_test) else self.config.num_gpus,
+            devices=(
+                "auto" if (self.config.debug or unit_test) else self.config.num_gpus
+            ),
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
             fast_dev_run=unit_test,
             reload_dataloaders_every_n_epochs=reload_dataloaders,
-            use_distributed_sampler=False
+            use_distributed_sampler=False,
         )
 
         # Get min/max learning rates depending on step
@@ -143,14 +157,14 @@ class OfTrain:
         if ws_path is None:
 
             block_params = {
-                'dropout': self.config.block_dropout,
-                'attn_dropout': self.config.block_attn_dropout,
-                'activation_dropout': self.config.block_activation_dropout
+                "dropout": self.config.block_dropout,
+                "attn_dropout": self.config.block_attn_dropout,
+                "activation_dropout": self.config.block_activation_dropout,
             }
             cls_block_params = {
-                'dropout': self.config.cls_block_dropout,
-                'attn_dropout': self.config.cls_block_attn_dropout,
-                'activation_dropout': self.config.cls_block_activation_dropout
+                "dropout": self.config.cls_block_dropout,
+                "attn_dropout": self.config.cls_block_attn_dropout,
+                "activation_dropout": self.config.cls_block_activation_dropout,
             }
 
             self.l_module = LOfTransformer(
@@ -193,9 +207,8 @@ class OfTrain:
                 max_lr=max_lr,
                 cycle_steps=self.config.cycle_steps,
                 warmup_steps=self.config.warmup_steps,
-                gamma=self.config.gamma
+                gamma=self.config.gamma,
             )
-
 
         #################### Data setup ####################
 
@@ -210,21 +223,23 @@ class OfTrain:
             if self.iteration == 0:
                 source_file = self.config.mc_train_path
                 target_file = self.config.pretrain_path
-                source_weight_file = 'root'
-                target_weight_file = 'root'
-            # If this is the first iteration, use the weights from the root file for source 
+                source_weight_file = "root"
+                target_weight_file = "root"
+            # If this is the first iteration, use the weights from the root file for source
             # and no weights for the target
             elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
-                source_weight_file = 'root'
+                source_weight_file = "root"
                 target_weight_file = None
             # Otherwise use the weights from the previous step two for the source, and no
             # weights for the target
             else:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
-                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                source_weight_file = (
+                    f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                )
                 target_weight_file = None
         # For step two:
         if self.step == 2:
@@ -233,22 +248,28 @@ class OfTrain:
             if self.iteration == 0:
                 source_file = self.config.mc_train_path
                 target_file = self.config.pretrain_path
-                source_weight_file = 'root'
-                target_weight_file = 'root'
+                source_weight_file = "root"
+                target_weight_file = "root"
             # If this is the first iteration, use the weights from step one for target, and the
             # weights from the root file as source.
             elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.mc_train_path
-                source_weight_file = 'root'
-                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+                source_weight_file = "root"
+                target_weight_file = (
+                    f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+                )
             # Otherwise use weights from previous step 2 for source, and the weights
             # from the previous step one for target
             else:
                 source_file = self.config.mc_train_path
                 target_file = self.config.mc_train_path
-                source_weight_file = f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
-                target_weight_file = f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+                source_weight_file = (
+                    f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
+                )
+                target_weight_file = (
+                    f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
+                )
 
         # Build the data module
         self.d_module = LOfData(
@@ -256,7 +277,9 @@ class OfTrain:
             target_file=target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            data_divisor=self.config.num_pretrain_pieces if self.iteration == 0 else 1,   # Only need to use data divisor in pretraining
+            data_divisor=(
+                self.config.num_pretrain_pieces if self.iteration == 0 else 1
+            ),  # Only need to use data divisor in pretraining
             total_rank=int(self.config.num_nodes * self.config.num_gpus),
             rank=self.trainer.global_rank,
             max_tracks=self.config.max_tracks,
@@ -265,12 +288,11 @@ class OfTrain:
             split_seed=self.split_seed,
             dataloader_workers=10,
             testing=False,
-            use_truth=use_truth
+            use_truth=use_truth,
         )
 
-
     def run(self):
-        """ run - This function runs the training for the Omnifold classifier.
+        """run - This function runs the training for the Omnifold classifier.
 
         Arguments:
         None
@@ -289,28 +311,54 @@ class OfTrain:
         return self.run_id, self.checkpoints.best_model_path
 
 
-
 ############## MAIN FUNCTION ##############
-        
+
 # This function will be called as a subprocess from the Omnifolder class
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     # Register GPU cleanup at exit
     atexit.register(cleanup_resources)
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Run the omnifold algorithm')
-    parser.add_argument('--config_path', type=str, default=None, help='Path to the configuration file')
-    parser.add_argument('--ws_path', type=str, default=None, help='Path to a model checkpoint to warm start from')
-    parser.add_argument('--iteration', type=int, default=None, help='The iteration number for this training run')
-    parser.add_argument('--step', type=int, default=None, help='The step number for this training run, either 1 or 2')
-    parser.add_argument('--index', type=int, default=-1, help='The index of the ensemble to run')
-    parser.add_argument('--split_seed', type=int, default=222, help='The seed to use for the data split')
+    parser = argparse.ArgumentParser(description="Run the omnifold algorithm")
+    parser.add_argument(
+        "--config_path", type=str, default=None, help="Path to the configuration file"
+    )
+    parser.add_argument(
+        "--ws_path",
+        type=str,
+        default=None,
+        help="Path to a model checkpoint to warm start from",
+    )
+    parser.add_argument(
+        "--iteration",
+        type=int,
+        default=None,
+        help="The iteration number for this training run",
+    )
+    parser.add_argument(
+        "--step",
+        type=int,
+        default=None,
+        help="The step number for this training run, either 1 or 2",
+    )
+    parser.add_argument(
+        "--index", type=int, default=-1, help="The index of the ensemble to run"
+    )
+    parser.add_argument(
+        "--split_seed", type=int, default=222, help="The seed to use for the data split"
+    )
     args, unknown = parser.parse_known_args()
 
     # Run the training
-    trainer = OfTrain(args.config_path, args.iteration, args.step, seed=args.split_seed, index=args.index)
+    trainer = OfTrain(
+        args.config_path,
+        args.iteration,
+        args.step,
+        seed=args.split_seed,
+        index=args.index,
+    )
     run_id, best_path = trainer.run()
 
     # Print the run id and best model path

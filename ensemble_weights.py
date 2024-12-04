@@ -12,10 +12,22 @@ import numpy as np
 
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='Calculate central value weights over an ensemble of Omnifold runs.')
-parser.add_argument('--weight_card', type=str, help='Path to the weights, with ensemble taken over the wildcard *')
-parser.add_argument('--reduction', type=str, help='Reduction method to use: mean or median', default='mean', choices=['mean', 'median'])
-parser.add_argument('--output', type=str, help='Output file path')
+parser = argparse.ArgumentParser(
+    description="Calculate central value weights over an ensemble of Omnifold runs."
+)
+parser.add_argument(
+    "--weight_card",
+    type=str,
+    help="Path to the weights, with ensemble taken over the wildcard *",
+)
+parser.add_argument(
+    "--reduction",
+    type=str,
+    help="Reduction method to use: mean or median",
+    default="mean",
+    choices=["mean", "median"],
+)
+parser.add_argument("--output", type=str, help="Output file path")
 args = parser.parse_args()
 
 # Create glob of weight files
@@ -31,10 +43,14 @@ results = {}
 for vector in vector_names:
 
     # Take mean or median
-    if args.reduction == 'mean':
-        results[vector] = np.mean([np.load(file)[vector] for file in weight_files], axis=0).clip(max=100)
-    elif args.reduction == 'median':
-        results[vector] = np.median([np.load(file)[vector] for file in weight_files], axis=0).clip(max=100)
+    if args.reduction == "mean":
+        results[vector] = np.mean(
+            [np.load(file)[vector] for file in weight_files], axis=0
+        ).clip(max=100)
+    elif args.reduction == "median":
+        results[vector] = np.median(
+            [np.load(file)[vector] for file in weight_files], axis=0
+        ).clip(max=100)
 
 # Save results
 np.savez(args.output, **results)
