@@ -18,8 +18,8 @@ import lightning as L
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 
-from lightning_module import *
-from lightning_data_module import *
+from lightning_module import LOfTransformer
+from lightning_data_module import LOfData
 import utils.plotting_utils as pu
 import utils.data_utils as du
 from cli.of_config import OfConfig

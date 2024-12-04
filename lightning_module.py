@@ -10,14 +10,12 @@ import torch
 import lightning as L
 import torchmetrics
 import wandb
-from pytorch_lightning.utilities.rank_zero import *
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 
 from of_transformer.of_transformer import OfTransformer
 from of_transformer.simple_network import DumbNeuralNetwork
 from wasserstein_metric import WassersteinOne
-from utils.data_utils import *
 import utils.plotting_utils as pu
 
 
@@ -104,7 +102,7 @@ class LOfTransformer(L.LightningModule):
         self.test_auc = torchmetrics.classification.AUROC(task="binary")
         if not (self.debug or self.no_w1):
             self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=False)
-            self.draw_test = True if test_plots != None else False
+            self.draw_test = True if test_plots is not None else False
             self.wasserstein_test = WassersteinOne(
                 pu.default_settings, draw_plots=self.draw_test, save_location=test_plots
             )

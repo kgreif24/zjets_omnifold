@@ -8,7 +8,7 @@ python3
 
 import torch
 import lightning as L
-from pytorch_lightning.utilities.rank_zero import *
+from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 import copy
 import numpy as np
@@ -16,7 +16,7 @@ import uproot
 import awkward as ak
 
 from of_dataset import OfDataset
-from utils.data_utils import *
+import utils.data_utils as du
 import utils.plotting_utils as pu
 
 
@@ -368,7 +368,7 @@ class LOfData(L.LightningDataModule):
             raise ValueError("Invalid file argument")
 
         # Get kinematics
-        kinematics, indeces = get_kinematics(
+        kinematics, indeces = du.get_kinematics(
             tree,
             muon_only=self.muon_only,
             get_truth=self.use_truth,
@@ -385,7 +385,7 @@ class LOfData(L.LightningDataModule):
         plotting_variables = [
             hist_dict["key"] for hist_dict in pu.default_settings.values()
         ]
-        plotting = get_plotting(
+        plotting = du.get_plotting(
             tree,
             vars=plotting_variables,
             muon_only=self.muon_only,
@@ -628,7 +628,7 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.RandomSampler(train_dataset, generator=generator),
             num_workers=self.dataloader_workers,
-            collate_fn=null_collate,
+            collate_fn=du.null_collate,
         )
 
     # Validation dataloader
@@ -652,7 +652,7 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.SequentialSampler(val_dataset),
             num_workers=self.dataloader_workers,
-            collate_fn=null_collate,
+            collate_fn=du.null_collate,
         )
 
     # Test dataloader
@@ -672,7 +672,7 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.SequentialSampler(self.all_dataset),
             num_workers=self.dataloader_workers,
-            collate_fn=null_collate,
+            collate_fn=du.null_collate,
         )
 
     # Predict dataloader
@@ -695,5 +695,5 @@ class LOfData(L.LightningDataModule):
             batch_size=self.batch_size,
             sampler=torch.utils.data.SequentialSampler(self.source_dataset),
             num_workers=self.dataloader_workers,
-            collate_fn=null_collate,
+            collate_fn=du.null_collate,
         )

@@ -8,19 +8,19 @@ Last updated 03/08/2024
 python3
 """
 
-import os, time
+import os
+import time
 import argparse
 import atexit
 
 import lightning as L
 import wandb
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities.rank_zero import *
+from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 from cli.of_config import OfConfig
-from lightning_module import *
-from lightning_data_module import *
-from utils.plotting_utils import *
+from lightning_module import LOfTransformer
+from lightning_data_module import LOfData
 from utils.subprocess_utils import cleanup_resources
 
 

@@ -76,7 +76,7 @@ class OfDataset(torch.utils.data.Dataset):
                 == len(self.labels)
                 == len(self.plotting)
             )
-        except:
+        except AssertionError:
             raise Exception(
                 "Arguments passed to OfDataset class don't have the same number of events!"
             )

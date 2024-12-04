@@ -6,12 +6,12 @@ Last updated 03/06/2024
 python3
 """
 
-import sys, time
+import sys
+import time
 import subprocess
 
+import numpy as np
 import torch
-from lightning_module import *
-from pytorch_lightning.utilities.rank_zero import *
 import wandb
 
 from cli.of_config import OfConfig

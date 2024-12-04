@@ -15,7 +15,6 @@ python3
 
 import torchmetrics
 import numpy as np
-from pytorch_lightning.utilities.rank_zero import *
 
 import utils.plotting_utils as pu
 

@@ -12,10 +12,8 @@ python3
 
 import numpy as np
 import scipy
-from pytorch_lightning.utilities.rank_zero import *
 
 from base_metric import BaseMetric
-import utils.plotting_utils as pu
 
 
 class WassersteinOne(BaseMetric):

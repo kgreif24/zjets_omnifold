@@ -8,7 +8,7 @@ Last updated 09/06/2024
 python3
 """
 
-import sys, argparse
+import argparse
 import glob
 import scipy
 import numpy as np
