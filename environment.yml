@@ -77,7 +77,7 @@ dependencies:
   - libexpat=2.6.1
   - libffi=3.4.4
   - libgfortran=14.2.0
-  - libgfortran5=11.3.0
+  - libgfortran5=14.2.0
   - libopenblas=0.3.21
   - libpng=1.6.39
   - libprotobuf=3.20.3
