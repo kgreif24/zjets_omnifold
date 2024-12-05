@@ -1,8 +1,7 @@
 """ test_cli.py - Test suite for the CLI """
 
-import sys
-sys.path.append('./cli')
-from of_config import OfConfig
+from cli.of_config import OfConfig
+
 
 def test_config(tmp_path):
 
@@ -16,7 +15,7 @@ def test_config(tmp_path):
         assert True
 
     # Create a template
-    config_name = tmp_path / 'config.yaml'
+    config_name = tmp_path / "config.yaml"
     config.create_template(template_path=config_name)
 
     # Load the template and set an attribute
@@ -33,8 +32,8 @@ def test_config(tmp_path):
 
     # Check for some other common mistakes
     for key in vars(config).keys():
-        assert getattr(config, key) is not 'None'
-    
+        assert getattr(config, key) != "None"
+
     assert type(config.s1_min_lr) is float
     assert type(config.s1_max_lr) is float
     assert type(config.s2_min_lr) is float

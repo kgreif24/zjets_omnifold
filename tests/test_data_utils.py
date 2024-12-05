@@ -1,10 +1,8 @@
-""" 
+"""
 test_data_utils.py - Unit test suite for the data loading utilities.
 """
 
-import sys
-sys.path.append('./utils/')
-import data_utils as du
+import utils.data_utils as du
 
 import uproot
 import awkward as ak
@@ -13,54 +11,71 @@ import numpy as np
 
 def test_pad_kinematics():
 
-    input_array = ak.Array([
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-        [[1, 2], [4, 5], [7, 8]],
-        [[1], [4], [7]]
-    ])
+    input_array = ak.Array(
+        [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[1, 2], [4, 5], [7, 8]], [[1], [4], [7]]]
+    )
     max_tracks = 2
     fill = -1
 
     output_array = du.pad_kinematics(input_array, max_tracks=max_tracks, fill=fill)
-    test_out = np.array([
-        [[1, 2], [4, 5], [7, 8]],
-        [[1, 2], [4, 5], [7, 8]],
-        [[1, -1], [4, -1], [7, -1]]
-    ])
+    test_out = np.array(
+        [
+            [[1, 2], [4, 5], [7, 8]],
+            [[1, 2], [4, 5], [7, 8]],
+            [[1, -1], [4, -1], [7, -1]],
+        ]
+    )
     assert np.all(output_array == test_out)
 
 
 def test_get_one_hot():
 
     # Test events with 2 muons and 4 tracks
-    kinematics = np.array([
-        [[1,2,3,4,5,6],[7,8,9,10,11,12],[13,14,15,16,17,18]],
-        [[1,2,3,4,5,6],[7,8,9,10,11,12],[13,14,15,16,17,18]],
-        [[1,2,3,4,5,6],[7,8,9,10,11,12],[13,14,15,16,17,18]]
-    ])
-    indeces = np.array([
-        [[-1, -1, 0, 0, 1, 1]],
-        [[-1, -1, 0, 1, 2, 2]],
-        [[-1, -1, 0, 1, 1, 2]]
-    ])
+    kinematics = np.array(
+        [
+            [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18]],
+            [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18]],
+            [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18]],
+        ]
+    )
+    indeces = np.array(
+        [[[-1, -1, 0, 0, 1, 1]], [[-1, -1, 0, 1, 2, 2]], [[-1, -1, 0, 1, 1, 2]]]
+    )
 
     one_hot = du.get_one_hot(kinematics, indeces, n_jets=2)
-    test_out = np.array([
-        [[1,1,0,0,0,0],[0,0,1,1,0,0],[0,0,0,0,1,1],[0,0,0,0,0,0]],
-        [[1,1,0,0,0,0],[0,0,1,0,0,0],[0,0,0,1,0,0],[0,0,0,0,1,1]],
-        [[1,1,0,0,0,0],[0,0,1,0,0,0],[0,0,0,1,1,0],[0,0,0,0,0,1]]
-    ])
+    test_out = np.array(
+        [
+            [
+                [1, 1, 0, 0, 0, 0],
+                [0, 0, 1, 1, 0, 0],
+                [0, 0, 0, 0, 1, 1],
+                [0, 0, 0, 0, 0, 0],
+            ],
+            [
+                [1, 1, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 1, 1],
+            ],
+            [
+                [1, 1, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 1, 1, 0],
+                [0, 0, 0, 0, 0, 1],
+            ],
+        ]
+    )
     assert np.all(one_hot == test_out)
 
 
 def test_get_kinematics():
 
     # Hardcode the location of the event sample
-    sample = './assets/evts_000_100.root'
+    sample = "./assets/evts_000_100.root"
     f = uproot.open(sample)
-    t = f['OmniTree']
-    nt = ak.to_numpy(t['Ntracks'].array())
-    p190 = ak.to_numpy(t['pass190'].array())
+    t = f["OmniTree"]
+    nt = ak.to_numpy(t["Ntracks"].array())
+    p190 = ak.to_numpy(t["pass190"].array())
 
     # Filter the number of tracks
     nt = nt[p190 == 1]
@@ -71,38 +86,38 @@ def test_get_kinematics():
     assert len(ind1) == np.sum(p190)
 
     # Assert that we've taken the log of the pT (some negative values)
-    assert np.any(gk1[:,0,:] < 0)
+    assert np.any(gk1[:, 0, :] < 0)
 
     # Assert the number of tracks in each event is correct
-    gk1_count = ak.to_numpy(ak.count(gk1[:,0,:], axis=1))
-    ind1_count = ak.to_numpy(ak.count(ind1[:,0,:], axis=1))
-    assert np.all(gk1_count ==  ind1_count)
+    gk1_count = ak.to_numpy(ak.count(gk1[:, 0, :], axis=1))
+    ind1_count = ak.to_numpy(ak.count(ind1[:, 0, :], axis=1))
+    assert np.all(gk1_count == ind1_count)
     assert np.all(gk1_count == nt + 2)
 
     # Assert that we have two muons within each event
-    assert np.all(np.count_nonzero(ind1[:,0,:] == -1, axis=1) == 2)
+    assert np.all(np.count_nonzero(ind1[:, 0, :] == -1, axis=1) == 2)
 
 
 def test_get_plotting():
 
     # Hardcode the location of the event sample
-    sample = './assets/evts_000_100.root'
+    sample = "./assets/evts_000_100.root"
     f = uproot.open(sample)
-    t = f['OmniTree']
-    p190 = ak.to_numpy(t['pass190'].array())
+    t = f["OmniTree"]
+    p190 = ak.to_numpy(t["pass190"].array())
 
     # Assert we have 100 events and 2 vars
-    plotting = du.get_plotting(t, vars=['Ntracks', 'pT_ll'])
+    plotting = du.get_plotting(t, vars=["Ntracks", "pT_ll"])
     assert plotting.shape == (np.sum(p190), 2)
 
 
 def test_stack():
 
     # Hardcode the location of the event sample
-    sample = './assets/evts_000_100.root'
+    sample = "./assets/evts_000_100.root"
     f = uproot.open(sample)
-    t = f['OmniTree']
-    p190 = ak.to_numpy(t['pass190'].array())
+    t = f["OmniTree"]
+    p190 = ak.to_numpy(t["pass190"].array())
 
     # Get kinematics
     gk1, ind1 = du.get_kinematics(t)
