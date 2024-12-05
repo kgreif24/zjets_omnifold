@@ -1,7 +1,7 @@
-""" addWeightToTree.py - This script adds a set of omnifold weights to the MC train or test tree.
-This step needs to be run before you can plot arbitrary observables using fastjet. One issue with this
-is that we need to duplicate a huge amount of data, which is not ideal. Should put some thought into
-the optimal way to do this.
+""" addWeightToTree.py - This script adds a set of omnifold weights to the MC train or
+test tree. This step needs to be run before you can plot arbitrary observables
+using fastjet. One issue with this is that we need to duplicate a huge amount of data,
+which is not ideal. Should put some thought into the optimal way to do this.
 """
 
 import argparse
