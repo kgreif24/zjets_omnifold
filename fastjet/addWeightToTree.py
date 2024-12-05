@@ -1,5 +1,5 @@
 """ addWeightToTree.py - This script adds a set of omnifold weights to the MC train or test tree.
-This step needs to be run before you can plot arbitrary observables using fastjet. One issue with this 
+This step needs to be run before you can plot arbitrary observables using fastjet. One issue with this
 is that we need to duplicate a huge amount of data, which is not ideal. Should put some thought into
 the optimal way to do this.
 """
@@ -15,7 +15,8 @@ def main():
     parser.add_argument(
         "--input",
         type=str,
-        default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root",
+        default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
+                 WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root",
         help="Input file",
     )
     parser.add_argument("--output", type=str, help="Output file")
