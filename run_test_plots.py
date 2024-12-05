@@ -1,4 +1,4 @@
-""" run_plotting.py - This function will make "test" plots for comparing the source and 
+""" run_plotting.py - This function will make "test" plots for comparing the source and
 target distributions for a given reweighting.
 
 Author: Kevin Greif

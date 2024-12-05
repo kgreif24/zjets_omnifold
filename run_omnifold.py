@@ -8,14 +8,13 @@ python3
 """
 
 import os
+import argparse
+from omnifold import Omnifolder
 
 # On perlmutter, need to set this environment variable to avoid a conflict
 # between how numpy and torch handle multithreading. See this issue for more:
 # https://github.com/pytorch/pytorch/issues/37377
 os.environ["MKL_THREADING_LAYER"] = "GNU"
-
-import argparse
-from omnifold import Omnifolder
 
 if __name__ == "__main__":
 
@@ -44,7 +43,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_slurm",
         action="store_true",
-        help="If true, will prepend training and evaluation commands with slurm directives",
+        help="If true, will prepend training and evaluation\
+              commands with slurm directives",
     )
     args = parser.parse_args()
 
