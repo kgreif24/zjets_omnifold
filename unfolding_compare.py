@@ -1,7 +1,7 @@
-""" unfolding_compare.py - This script generates plots comparing the performance of a given
-ensemble of omnifold runs to the multifold and IBU results. The multifold comparison is
-only possible for the 24 multifold observables. The IBU comparison is only possible for those
-dimensions in which we have run IBU.
+""" unfolding_compare.py - This script generates plots comparing the performance
+of a given ensemble of omnifold runs to the multifold and IBU results.
+The multifold comparison is only possible for the 24 multifold observables.
+The IBU comparison is only possible for those dimensions in which we have run IBU.
 
 Author: Kevin Greif
 Last updated 09/06/2024

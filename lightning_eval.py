@@ -65,7 +65,7 @@ class OfEval:
         None
         """
 
-        #################### Config and directory setup ####################
+        # ------------------ Config and directory setup ------------------
 
         # Store the configuration
         self.config = OfConfig(config_name=config_path)
@@ -93,7 +93,10 @@ class OfEval:
         self.max_tracks = 150
 
         # Make directories for storing plots and weights
-        root_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        root_dir = (
+            f"{self.config.checkpoint_dir}/{self.config.project_name}/"
+            f"{self.config.group_name}"
+        )
         self.checkpoint_dir = f"{root_dir}/{self.run_name}"
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         self.test_dir = f"{root_dir}/{self.run_name}/test_plots"
@@ -109,7 +112,7 @@ class OfEval:
         else:
             self.save_dir = self.weight_dir
 
-        #################### Lightning setup ####################
+        # ----------------- Lightning setup -----------------
 
         # Initialise the wandb logger
         if self.config.wandb:
@@ -158,13 +161,14 @@ class OfEval:
             pu.default_settings, draw_plots=True, save_location=self.comp_dir
         )
 
-        #################### Data setup ####################
+        # ---------------------- Data setup ----------------------
 
         # Find the data and weight files to use for this iteration and step
         # For step one:
         if self.step == 1:
             use_truth = False
-            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            # If this is pre-training (iteration 0), use the MC train file and
+            # Sherpa file
             if self.iteration == 0:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
@@ -172,8 +176,8 @@ class OfEval:
                 test_target_file = self.config.pretrain_path
                 source_weight_file = "root"
                 target_weight_file = "root"
-            # If this is the first iteration, use the weights from the root file for source
-            # and no weights for the target
+            # If this is the first iteration, use the weights from the root file
+            # for source and no weights for the target
             elif self.iteration == 1:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
@@ -181,8 +185,8 @@ class OfEval:
                 test_target_file = self.config.data_path
                 source_weight_file = "root"
                 target_weight_file = None
-            # Otherwise use the weights from the previous step two for the source, and no
-            # weights for the target
+            # Otherwise use the weights from the previous step two for the source,
+            # and no weights for the target
             else:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
@@ -195,7 +199,8 @@ class OfEval:
         # For step two:
         if self.step == 2:
             use_truth = True
-            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            # If this is pre-training (iteration 0), use the MC train file and
+            # Sherpa file
             if self.iteration == 0:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
@@ -203,8 +208,8 @@ class OfEval:
                 test_target_file = self.config.pretrain_path
                 source_weight_file = "root"
                 target_weight_file = "root"
-            # If this is the first iteration, use the weights from step one for target, and the
-            # weights from the root file as source.
+            # If this is the first iteration, use the weights from step one for target,
+            # and the weights from the root file as source.
             elif self.iteration == 1:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
@@ -228,11 +233,12 @@ class OfEval:
                     f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
                 )
 
-        # Build a data module. In Omnifold iterations, we want to run prediction on every event
-        # we have, so need to define two data modules, one for the training / val
-        # set and one for the test set. Both of these will be in testing mode.
-        # Note the data modules filter data by the relevant pass 190 flag. Need to add in weights for
-        # events which fail these flags after prediction.
+        # Build a data module. In Omnifold iterations, we want to run prediction on
+        # every event we have, so need to define two data modules, one for the
+        # training / val set and one for the test set. Both of these will be
+        # in testing mode. Note the data modules filter data by the relevant
+        # pass 190 flag. Need to add in weights for events which fail these
+        # flags after prediction.
         self.d_module_train = LOfData(
             source_file=train_source_file,
             target_file=train_target_file,
@@ -276,10 +282,8 @@ class OfEval:
         self.trainer.test(self.model, self.d_module_test)
 
     def run_prediction(self):
-        """run_prediction - Run predictions over every data point in the train / test datamodules.
-        Then calculate the updated weights. Also need to think about how to handle the events
-        which do not pass the pass190 flags. For now just assign the starting weight to these events,
-        using the "get_source_all_weights" method of the data modules.
+        """run_prediction - Run predictions over every data point in the
+        train / test datamodules. Then calculate the updated weights.
 
         Then save the updated weights as .npz files
 
@@ -345,13 +349,13 @@ class OfEval:
             target_truth_pass190_test=target_truth_pass190_test,
         )
 
-        # Evaluate difference between reweighted truth MC and truth data if this is step 2
+        # Evaluate difference between reweighted truth MC and truth data
+        # if this is step 2
         if self.step == 2:
             self.compare()
 
     def compare(self):
-        """compare - Compare the reweighted truth MC to the truth pseudodata. Will draw all relevant plots,
-        calculate the wasserstein metric, and upload all results to wandb using the WassersteinOne class.
+        """compare - Compare the reweighted truth MC to the truth pseudodata.
 
         No arguments or returns
         """
@@ -471,7 +475,7 @@ class OfEval:
             wandb.finish()
 
 
-############## MAIN FUNCTION ##############
+# ------------------------- MAIN FUNCTION -------------------------
 
 # This function will be called as a subprocess from the Omnifolder class
 if __name__ == "__main__":

@@ -17,8 +17,8 @@ class OfDataset(torch.utils.data.Dataset):
     """OfDataset - A custom subclass of the Pytorch dataset class for use in training
     Omnifold models. The class loads all data as awkward arrays in init, but
     only promotes the data to torch tensors (with zero padding and one-hot encodings)
-    when data is requested. This saves memory and allows many more events to fit in memory
-    at one time.
+    when data is requested. This saves memory and allows many more events to fit in
+    memory at one time.
 
     Mask for zero-padded inputs will be generated on the fly when data is accessed.
     """
@@ -43,8 +43,9 @@ class OfDataset(torch.utils.data.Dataset):
         labels (np.ndarray) - The labels for the events
         weights (np.ndarray) - The weights for the events
         plotting (np.ndarray) - The plotting dimensions for the events
-        object_indeces (np.ndarray) - The indeces of the objects to include in the dataset.
-            If None, do not include one-hot encodings for the tracks in the data.
+        object_indeces (np.ndarray) - The indeces of the objects to include in the
+            dataset. If None, do not include one-hot encodings for the tracks in the
+            data.
         n_jets (int) - The maximum number of jets to include in the one-hot encodings.
             If object_indeces is None, this is not used
         max_tracks (int) - The maximum number of tracks to include in the dataset. If
@@ -78,7 +79,8 @@ class OfDataset(torch.utils.data.Dataset):
             )
         except AssertionError:
             raise Exception(
-                "Arguments passed to OfDataset class don't have the same number of events!"
+                "Arguments passed to OfDataset class don't have"
+                "the same number of events!"
             )
 
     def set_weights(self, weights):
@@ -163,7 +165,7 @@ class OfDataset(torch.utils.data.Dataset):
         # Flatten the indeces if necessary
         indeces = np.array(indeces).flatten()
 
-        ################ Kinematics + One Hots ################
+        # ------------- Kinematics + One Hots -------------
 
         # Slice kinematics
         kinematics = self.kinematics[indeces, ...]
@@ -195,7 +197,7 @@ class OfDataset(torch.utils.data.Dataset):
         # Convert kinematics to torch tensor
         kinematics = torch.from_numpy(kinematics.astype(np.float32))
 
-        ################ Mask ################
+        # ------------------ Mask ------------------
 
         # Generate mask for zero-padded inputs
         # Assume pT is the 0th element along axis 1
@@ -203,7 +205,7 @@ class OfDataset(torch.utils.data.Dataset):
         mask[kinematics[:, 0, :] != 0] = True
         mask = torch.unsqueeze(mask, 1)
 
-        ################ Labels, Weights, Plotting ################
+        # ------------- Labels, Weights, Plotting -------------
         labels = self.labels[indeces, ...]
         weights = self.weights[indeces, ...]
         plotting = self.plotting[indeces, ...]

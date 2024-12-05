@@ -1,8 +1,9 @@
-""" run_plotting.py - This function will run the "make_logged_plots" and the 
-"make_inclusive_track_plots" functions from plotting_utils.py. Command line arguments tell the 
-code whether to plot as reco or truth level.
+""" run_plotting.py - This function will run the "make_logged_plots" and the
+"make_inclusive_track_plots" functions from plotting_utils.py. Command line
+arguments tell the code whether to plot as reco or truth level.
 
-At all points we'll assume we aren't plotting a reweighting. This is just to look at raw data.
+At all points we'll assume we aren't plotting a reweighting. This is just to look at
+raw data.
 
 Currently broken by plotting_utils requiring a reweighting as input.
 

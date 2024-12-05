@@ -10,18 +10,22 @@ import gc
 
 import torch
 
+
 def capture_subprocess_output(subprocess_args):
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
-    process = subprocess.Popen(subprocess_args,
-                               bufsize=1,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               universal_newlines=True)
+    process = subprocess.Popen(
+        subprocess_args,
+        bufsize=1,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+    )
 
     # Create callback function for process output
     buf = io.StringIO()
+
     def handle_output(stream, mask):
         # Because the process' output is line buffered, there's only ever one
         # line to read when this function is called

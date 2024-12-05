@@ -1,5 +1,5 @@
 """ omnifold.py - This file contains a class which implements the omnifold
-algorithm. 
+algorithm.
 
 Author: Kevin Greif
 Last updated 03/06/2024
@@ -41,9 +41,10 @@ class Omnifolder:
         config_path - Path to the config file for the omnifold algorithm
         continue_iteration - The iteration to continue from
         continue_step_two - If true, continue from step two
-        index - The index of the ensemble to run. Add this number to the end of the group ID
-             if it is not None
-        use_slurm - If true, preprend training and evaluation commands with slurm directives
+        index - The index of the ensemble to run. Add this number to the end of the
+            group ID if it is not None
+        use_slurm - If true, preprend training and evaluation commands with slurm
+            directives
 
         Returns:
         None
@@ -113,9 +114,10 @@ class Omnifolder:
         print("\n############## Omnifold Finished!! ##############\n")
 
     def pre_train(self):
-        """pre_train - This function runs the pre-training step of the omnifold algorithm.
-        It will train two networks, a step 1 and a step 2 network. These will then be
-        used as the starting point for the trainings in the iterations.
+        """pre_train - This function runs the pre-training step of the omnifold
+        algorithm. It will train two networks, a step 1 and a step 2 network.
+        These will then be used as the starting point for the trainings
+        in the iterations.
 
         No arguments or returns
         """

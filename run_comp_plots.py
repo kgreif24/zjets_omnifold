@@ -1,8 +1,9 @@
-""" run_comp_plots.py - This function will generate "comp" plots which compare the reweighted
-MC truth distributions produced by Omnifold step 2 with the truth pseudodata distributions.
+""" run_comp_plots.py - This function will generate "comp" plots which compare the
+reweighted MC truth distributions produced by Omnifold step 2 with the truth
+pseudodata distributions.
 
-It requires only the paths to the MC and truth pseudodata files, and a path to the file storing
-the final weights that should be applied to the MC truth distribution.
+It requires only the paths to the MC and truth pseudodata files, and a path to the
+file storing the final weights that should be applied to the MC truth distribution.
 
 Author: Kevin Greif
 Last updated 08/30/2024
@@ -33,7 +34,10 @@ parser.add_argument(
 parser.add_argument(
     "--passBoth",
     action="store_true",
-    help="If true, will require that the MC events pass the reco filter in addition to truth",
+    help=(
+        "If true, will require that the MC events pass the reco filter"
+        "in addition to truth"
+    ),
 )
 args = parser.parse_args()
 
@@ -48,7 +52,8 @@ mc_tree = mc_file["OmniTree"]
 pd_file = uproot.open(args.pd)
 pd_tree = pd_file["OmniTree"]
 
-# Get filters, since we are using truth level data, we need to use the truth_pass190 filter
+# Get filters, since we are using truth level data,
+# we need to use the truth_pass190 filter
 mc_filter = ak.to_numpy(mc_tree["truth_pass190"].array(entry_stop=max_events))
 pd_filter = ak.to_numpy(pd_tree["truth_pass190"].array(entry_stop=max_events))
 
@@ -64,7 +69,8 @@ if args.passBoth:
 # Get original MC weights
 mc_start_weights = ak.to_numpy(mc_tree["weight"].array(entry_stop=max_events))
 
-# Truncate and filter (already truncated MC start weights for event observables, so just filter)
+# Truncate and filter
+# (already truncated MC start weights for event observables, so just filter)
 mc_start_weights_event = mc_start_weights[mc_filter == 1]
 
 if len(mc_start_weights) > max_track_events:
@@ -128,7 +134,8 @@ mc_labels_track = np.zeros_like(mc_start_weights_track)
 pd_labels_track = np.ones_like(pd_weights_track)
 labels_track = np.concatenate([mc_labels_track, pd_labels_track], axis=0)
 
-# Get the plot data, always want the truth level for this script. Take all events for event level observables
+# Get the plot data, always want the truth level for this script.
+# Take all events for event level observables
 plotting_variables = pu.default_settings.keys()
 mc_plotting = du.get_plotting(
     mc_tree,
@@ -191,8 +198,8 @@ wass_og.update(plotting, start_weights, start_weights, labels)
 w1_og, _ = wass_og.compute(from_torch=False, names=names, is_comp=False)
 print(f"Original Wasserstein One: {w1_og}")
 
-# Make the logged plots, using wasserstein metric class for the pre-computed overservables,
-# and also calculate the reweighted wasserstein distance
+# Make the logged plots, using wasserstein metric class for the pre-computed
+# overservables, and also calculate the reweighted wasserstein distance
 wass = WassersteinOne(hist_info=new_settings, draw_plots=True, save_location=args.store)
 wass.update(plotting, start_weights, end_weights, labels)
 w1, plot_dict = wass.compute(from_torch=False, names=names, is_comp=True)

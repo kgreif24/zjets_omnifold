@@ -3,11 +3,12 @@ import torch.nn as nn
 
 import random
 
+
 class SequenceTrimmer(nn.Module):
-    """ SequenceTrimmer - This class shuffles and truncates the input particles
-    during model training. 
-    
-    The "perm" tensor contains a random permutation of the 
+    """SequenceTrimmer - This class shuffles and truncates the input particles
+    during model training.
+
+    The "perm" tensor contains a random permutation of the
     particles in an input, that is applied to the x, v, and uu inputs.
 
     The "maxlen" integer tells the layer how many particles to allow in the output.
@@ -49,9 +50,11 @@ class SequenceTrimmer(nn.Module):
                     q = min(1, random.uniform(*self.target))
                     maxlen = torch.quantile(mask.type_as(x).sum(dim=-1), q).long()
                     rand = torch.rand_like(mask.type_as(x))
-                    rand.masked_fill_(~mask, -1) # Masked particles are given a random number of -1
-                    # Then they are sorted last here, this way masked particles are always truncated
-                    # before real particles.
+                    rand.masked_fill_(
+                        ~mask, -1
+                    )  # Masked particles are given a random number of -1
+                    # Then they are sorted last here, this way masked particles
+                    # are always truncated before real particles.
                     perm = rand.argsort(dim=-1, descending=True)  # (N, 1, P)
                     mask = torch.gather(mask, -1, perm)
                     x = torch.gather(x, -1, perm.expand_as(x))

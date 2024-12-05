@@ -4,7 +4,7 @@ is a base class for OF classifier performance metric.
 This base class is necessary because we implement all of the plotting callbacks
 for a regular training as a subclass of torchmetrics.Metric. The reason is that this
 class has built-in functionality for aggregating model inputs / outputs across
-many batches and devices. This is necessary for calculating performance metrics, 
+many batches and devices. This is necessary for calculating performance metrics,
 but also for building whatever plots we might be interested in at a given point
 in training.
 
@@ -30,10 +30,12 @@ class BaseMetric(torchmetrics.Metric):
 
         Arguments:
         hist_info - Dictionary describing the histograms used in the plotting
-        draw_plots - Optional, default False. If True, will draw plots of the plot dimensions.
-        If false then this class essentially acts as a wrapper for calculating whatever performance metric
-        defined in the child class.
-        save_location - Optional, default None. If provided, will save the plots to this location
+        draw_plots - Optional, default False. If True, will draw plots of the plo
+            dimensions.
+        If false then this class essentially acts as a wrapper for calculating whateve
+            performance metric defined in the child class.
+        save_location - Optional, default None. If provided, will save the plots t
+            this location
 
         Returns:
         None
@@ -62,7 +64,8 @@ class BaseMetric(torchmetrics.Metric):
         Arguments:
         from_torch - Optional, default True. If True, will convert the state tensors
             to numpy. If false assumes state tensors are already numpy
-        Returns: A dictionary of plots with form {plot_name: stored location of .png file}.
+        Returns: A dictionary of plots with form
+            {plot_name: stored location of .png file}.
         If draw_plots is False, then this dictionary is empty.
         """
 

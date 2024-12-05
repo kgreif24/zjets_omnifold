@@ -1,6 +1,6 @@
 """ lightning_train.py - This file defines the "OfTrain" class, which handles the setup
 and training for an omnifolder classifier using pytorch lightning. It also defines the
-"main" function, which will be called from the Omnifolder class as a subprocess for 
+"main" function, which will be called from the Omnifolder class as a subprocess for
 easy parallelism.
 
 Author: Kevin Greif
@@ -47,18 +47,18 @@ class OfTrain:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
-        ws_path - The path to a model checkpoint to warm start from, if left as None then model
-            will be initialized from scratch
+        ws_path - The path to a model checkpoint to warm start from, if left as None
+            then model will be initialized from scratch
         seed - The seed to use for the train / val split in this training
-        index - The index of the ensemble to run. Add this number to the end of the group ID
-             if it is not None
+        index - The index of the ensemble to run. Add this number to the end of the
+            group ID if it is not None
         unit_test - If true, trainer will just run a few steps of training and exit
 
         Returns:
         None
         """
 
-        #################### Config and directory setup ####################
+        # ------------- Config and directory setup -------------
 
         # Store the configuration
         self.config = OfConfig(config_name=config_path)
@@ -71,7 +71,10 @@ class OfTrain:
             self.config.group_name = f"{self.config.group_name}_{index}"
 
         # Make root directory for this run of Omnifold
-        root_dir = f"{self.config.checkpoint_dir}/{self.config.project_name}/{self.config.group_name}"
+        root_dir = (
+            f"{self.config.checkpoint_dir}/"
+            f"{self.config.project_name}/{self.config.group_name}"
+        )
         os.makedirs(root_dir, exist_ok=True)
 
         # Set run name
@@ -84,7 +87,7 @@ class OfTrain:
         checkpoint_dir = f"{root_dir}/{run_name}"
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-        #################### Lightning setup ####################
+        # ---------------- Lightning setup ----------------
 
         # Initialise the wandb logger
         if self.config.wandb:
@@ -210,30 +213,32 @@ class OfTrain:
                 gamma=self.config.gamma,
             )
 
-        #################### Data setup ####################
+        # ---------------- Data setup ----------------
 
-        # Get weights for use in training. Define (but do not make!) the weight directory
+        # Get weights for use in training. Define (but do not make!) the weight
+        # directory
         weight_dir = f"{root_dir}/weights"
 
         # Find the data and weight files to use for this iteration and step
         # For step one:
         if self.step == 1:
             use_truth = False
-            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            # If this is pre-training (iteration 0), use the MC train file
+            # and Sherpa file
             if self.iteration == 0:
                 source_file = self.config.mc_train_path
                 target_file = self.config.pretrain_path
                 source_weight_file = "root"
                 target_weight_file = "root"
-            # If this is the first iteration, use the weights from the root file for source
-            # and no weights for the target
+            # If this is the first iteration, use the weights from the root file
+            # for source and no weights for the target
             elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
                 source_weight_file = "root"
                 target_weight_file = None
-            # Otherwise use the weights from the previous step two for the source, and no
-            # weights for the target
+            # Otherwise use the weights from the previous step two for the source,
+            # and no weights for the target
             else:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
@@ -244,14 +249,15 @@ class OfTrain:
         # For step two:
         if self.step == 2:
             use_truth = True
-            # If this is pre-training (iteration 0), use the MC train file and Sherpa file
+            # If this is pre-training (iteration 0), use the MC train file and
+            # Sherpa file
             if self.iteration == 0:
                 source_file = self.config.mc_train_path
                 target_file = self.config.pretrain_path
                 source_weight_file = "root"
                 target_weight_file = "root"
-            # If this is the first iteration, use the weights from step one for target, and the
-            # weights from the root file as source.
+            # If this is the first iteration, use the weights from step one for target,
+            # and the weights from the root file as source.
             elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.mc_train_path
@@ -311,7 +317,7 @@ class OfTrain:
         return self.run_id, self.checkpoints.best_model_path
 
 
-############## MAIN FUNCTION ##############
+# ------------------ MAIN FUNCTION ------------------
 
 # This function will be called as a subprocess from the Omnifolder class
 
