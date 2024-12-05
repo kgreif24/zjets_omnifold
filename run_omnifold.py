@@ -43,8 +43,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_slurm",
         action="store_true",
-        help="If true, will prepend training and evaluation\
-              commands with slurm directives",
+        help=(
+            "If true, will not prepend training and evaluation"
+            "commands with slurm directives"
+        ),
     )
     args = parser.parse_args()
 

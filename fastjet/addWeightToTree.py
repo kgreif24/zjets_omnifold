@@ -15,8 +15,10 @@ def main():
     parser.add_argument(
         "--input",
         type=str,
-        default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
-                 WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root",
+        default=(
+            "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+            "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root"
+        ),
         help="Input file",
     )
     parser.add_argument("--output", type=str, help="Output file")

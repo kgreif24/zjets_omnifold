@@ -71,8 +71,10 @@ class OfTrain:
             self.config.group_name = f"{self.config.group_name}_{index}"
 
         # Make root directory for this run of Omnifold
-        root_dir = f"{self.config.checkpoint_dir}/\
-                     {self.config.project_name}/{self.config.group_name}"
+        root_dir = (
+            f"{self.config.checkpoint_dir}/"
+            f"{self.config.project_name}/{self.config.group_name}"
+        )
         os.makedirs(root_dir, exist_ok=True)
 
         # Set run name

@@ -79,8 +79,8 @@ class OfDataset(torch.utils.data.Dataset):
             )
         except AssertionError:
             raise Exception(
-                "Arguments passed to OfDataset class don't have\
-                the same number of events!"
+                "Arguments passed to OfDataset class don't have"
+                "the same number of events!"
             )
 
     def set_weights(self, weights):

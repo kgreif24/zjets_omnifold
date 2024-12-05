@@ -57,44 +57,56 @@ class OfConfig:
         self.parser.add_argument(
             "--mc_train_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
-                    WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root",
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root"
+            ),
             help="Path for the MC training data",
         )
         self.parser.add_argument(
             "--mc_test_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
-                    WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root",
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root"
+            ),
             help="Path for the MC testing data",
         )
         self.parser.add_argument(
             "--data_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
-                    WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root",
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root"
+            ),
             help="Path for the data",
         )
         self.parser.add_argument(
             "--truth_data_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
-                    WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root",
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root"
+            ),
             help="Path to the truth pseudodata",
         )
         self.parser.add_argument(
             "--pretrain_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
-                    WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root",
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root"
+            ),
             help="Path to the file to use in pretraining",
         )
         self.parser.add_argument(
             "--split_seed",
             type=int,
             default=-1,
-            help="Seed for the train / validation split, set to -1 to produce random\
-                  seed at train time",
+            help=(
+                "Seed for the train / validation split, set to -1 to produce random"
+                "seed at train time",
+            ),
         )
         self.parser.add_argument(
             "--max_tracks",

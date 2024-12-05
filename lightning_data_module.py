@@ -165,13 +165,13 @@ class LOfData(L.LightningDataModule):
 
         # Calculate number of good events
         rank_zero_info(
-            f"We have a fraction {np.sum(self.source_use190) / self.num_source}\
-              of good events in the source dataset"
+            f"We have a fraction {np.sum(self.source_use190) / self.num_source}"
+            "of good events in the source dataset"
         )
         if self.target_file is not None:
             rank_zero_info(
-                f"We have a fraction {np.sum(self.target_use190) / self.num_target}\
-                  of good events in the target dataset"
+                f"We have a fraction {np.sum(self.target_use190) / self.num_target}"
+                "of good events in the target dataset"
             )
 
         # Determine start / stop indeces for each data piece, note we don't

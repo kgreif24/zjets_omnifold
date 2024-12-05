@@ -34,8 +34,10 @@ parser.add_argument(
 parser.add_argument(
     "--passBoth",
     action="store_true",
-    help="If true, will require that the MC events pass the reco filter\
-          in addition to truth",
+    help=(
+        "If true, will require that the MC events pass the reco filter"
+        "in addition to truth"
+    ),
 )
 args = parser.parse_args()
 
