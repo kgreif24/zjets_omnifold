@@ -52,13 +52,17 @@ class LOfTransformer(L.LightningModule):
 
         Arguments:
             input_dim {int} -- The input dimension of the model.
-            test_plots {str} -- The path to the directory where testing plots will be stored for logging,
-                None by default, in which case testing plots will not be drawn
+            test_plots {str} -- The path to the directory where testing plots will be
+                stored for logging. None by default, in which case testing plots will
+                not be drawn
             log {bool} -- Set to true if we want to log plots to wandb. False by default
-            debug {bool} -- Set to true if we are running in debug mode, use simple network on muons only
+            debug {bool} -- Set to true if we are running in debug mode, use simple
+                network on muons only
             no_w1 {bool} -- Set to true if we want to disable the wasserstein metric
-            seed {int} -- The random seed to use for the train / val split. Only used for logging
-            step {int} -- Whether this training is for OF step one or two, only effects plot labeling
+            seed {int} -- The random seed to use for the train / val split. Only used
+                for logging
+            step {int} -- Whether this training is for OF step one or two, only effects
+                plot labeling
             min_lr {float} -- The minimum learning rate
             max_lr {float} -- The maximum learning rate
             cycle_steps {int} -- The number of steps in a cycle

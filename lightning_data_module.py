@@ -1,5 +1,6 @@
 """ lightning_data_module.py - This file defines the LOfData class.
-It builds OfDatasets from the input ROOT files and provides dataloaders for training and testing.
+It builds OfDatasets from the input ROOT files and provides dataloaders for training
+and testing.
 
 Author: Kevin Greif
 Last updated 11/15/2024
@@ -25,17 +26,19 @@ class LOfData(L.LightningDataModule):
     and Omnifold classifier. It subclasses the LightningDataModule class.
 
     Init function takes the path to the data files as arguments.
-    It then goes through the process of loading data from disk using uproot, and applying
-    the relevant preprocessing. The data is stored in the class as attributes, in the form
-    of pytorch datasets.
+    It then goes through the process of loading data from disk using uproot, and
+    applying the relevant preprocessing. The data is stored in the class as attributes,
+    in the form of pytorch datasets.
 
-    The "data_divisor" argument is used to divide the data into pieces. One piece is trained on in a given
-    epoch, and then the next piece will be loaded in the subsequent epoch. This is useful for
-    training on large datasets, where the entire dataset may not fit in memory.
+    The "data_divisor" argument is used to divide the data into pieces. One piece is
+    trained on in a given epoch, and then the next piece will be loaded in the
+    subsequent epoch. This is useful for training on large datasets, where the
+    entire dataset may not fit in memory.
 
-    The "total_rank" and "rank" arguments are used for distributed training. In this case all of the data
-    in a given piece are divided by the number of GPUs being used in training. Each GPU will then load
-    only the data it needs. This is much more efficient than loading the entire dataset on each GPU.
+    The "total_rank" and "rank" arguments are used for distributed training.
+    In this case all of the data in a given piece are divided by the number
+    of GPUs being used in training. Each GPU will then load only the data it needs.
+    This is much more efficient than loading the entire dataset on each GPU.
 
     DataLoaders are produced in the relevant hook.
     """
@@ -66,26 +69,35 @@ class LOfData(L.LightningDataModule):
 
         Arguments:
             source_file {str} -- The path to the file containing the source data.
-            target_file {str} -- The path to the file containing the target data. Optional, defaults to None.
-            source_weight_path {string} -- Path to a .npz file containing weights for the source data
-            target_weight_path {string} -- Path to a .npz file containing weights for the target data
-            max_events_target {int} -- The maximum number of events to consider in the target data. Defaults to np.inf
-                which means all events are considered.
-            data_divisor {int} -- Divide the whole dataset into this many pieces. Default to 1,
-                in which case the whole dataset is used. If >1, then the dataloaders will be configured
-                to load only one piece of the data for each epoch.
-            total_rank {int} -- The total number of GPUs in use for distributed training. Defaults to 1.
-            rank {int} -- The rank of the current GPU in use for distributed training. Defaults to 0.
-            n_jets {int} -- The number of jets to consider in the data. Defaults to 5.
-            max_tracks {int} -- The maximum number of tracks to consider in the data. Defaults to None,
-                in which case all tracks are considered.
+            target_file {str} -- The path to the file containing the target data.
+                Optional, defaults to None.
+            source_weight_path {string} -- Path to a .npz file containing weights
+                for the source data
+            target_weight_path {string} -- Path to a .npz file containing weights
+                for the target data
+            max_events_target {int} -- The maximum number of events to consider
+                in the target data. Defaults to np.inf which means all events are
+                considered.
+            data_divisor {int} -- Divide the whole dataset into this many pieces.
+                Default to 1, in which case the whole dataset is used. If >1, then
+                the dataloaders will be configured to load only one piece of the
+                data for each epoch.
+            total_rank {int} -- The total number of GPUs in use for distributed
+                training. Defaults to 1.
+            rank {int} -- The rank of the current GPU in use for distributed
+                training. Defaults to 0.
+            n_jets {int} -- The number of jets to consider in the data. Defaults
+                to 5.
+            max_tracks {int} -- The maximum number of tracks to consider in the
+                data. Defaults to None, in which case all tracks are considered.
             muon_only {bool} -- Set to true if we only want to consider muons.
             batch_size {int} -- The batch size for the data loaders. Defaults
                 to 256.
             dataloader_workers {int} -- The number of workers for the data loaders.
             split_seed {int} - The random seed to use in making train / val split,
                 if set to -1 then a random integer is used.
-            testing {bool} - Set to true for data module to load testing weights (not training)
+            testing {bool} - Set to true for data module to load testing weights
+                (not training)
             use_truth {bool} - Set to true if we want to use truth level information
                 for the data module. Defaults to false.
             **kwargs - Passed to the OfDataset classes
@@ -153,15 +165,18 @@ class LOfData(L.LightningDataModule):
 
         # Calculate number of good events
         rank_zero_info(
-            f"We have a fraction {np.sum(self.source_use190) / self.num_source} of good events in the source dataset"
+            f"We have a fraction {np.sum(self.source_use190) / self.num_source}\
+              of good events in the source dataset"
         )
         if self.target_file is not None:
             rank_zero_info(
-                f"We have a fraction {np.sum(self.target_use190) / self.num_target} of good events in the target dataset"
+                f"We have a fraction {np.sum(self.target_use190) / self.num_target}\
+                  of good events in the target dataset"
             )
 
-        # Determine start / stop indeces for each data piece, note we don't trucate in the
-        # case of non-divisible data, since it is fine if epochs have slightly different lengths
+        # Determine start / stop indeces for each data piece, note we don't
+        # trucate in the case of non-divisible data, since it is fine if
+        # epochs have slightly different lengths
         self.source_indeces = self._setup_pieces(self.num_source)
         if self.target_file is not None:
             self.target_indeces = self._setup_pieces(self.num_target)
@@ -170,8 +185,8 @@ class LOfData(L.LightningDataModule):
         if self.total_rank > 1:
             assert self.rank >= 0 and self.rank < self.total_rank
 
-        # By default, load the first piece. In the case where we are not using a data divisor,
-        # this will be the one and only load operation
+        # By default, load the first piece. In the case where we are not
+        # using a data divisor, this will be the one and only load operation
         self.current_piece = 0
         self._rebuild_dataset("source", piece=self.current_piece)
         if self.target_file is not None:
@@ -179,17 +194,18 @@ class LOfData(L.LightningDataModule):
             self._concatenate_datasets(piece=self.current_piece)
 
     def _setup_pieces(self, num_events):
-        """_setup_pieces - This function sets up the pieces for the data module. It is called
-        in the __init__ function for the source data set by default, and optionally for the
-        target data set if one is given to the module. It returns the start and stop indeces
-        for the pieces of the data.
+        """_setup_pieces - This function sets up the pieces for the data module.
+        It is called in the __init__ function for the source data set by default,
+        and optionally for the target data set if one is given to the module.
+        It returns the start and stop indeces for the pieces of the data.
 
         Arguments:
-            num_events {int} -- The total number of events in the dataset, this is either source
-                or target.
+            num_events {int} -- The total number of events in the dataset, this is
+                either source or target.
 
         Returns:
-            {list} - A list of tuples containing the start and stop indeces for each piece
+            {list} - A list of tuples containing the start and stop indeces for
+            each piece
         """
 
         indeces = np.linspace(0, num_events, self.data_divisor + 1, dtype=int)
@@ -199,18 +215,21 @@ class LOfData(L.LightningDataModule):
         return list(zip(start_indeces, stop_indeces))
 
     def _rebuild_dataset(self, filename, piece=0):
-        """rebuild_dataset - This function builds the pytorch datasets for the source or target data.
-        It will load the kinematics, index, weight, label, and plotting info, and use them to build the "source dataset",
-        which is used for prediction, and the "all_dataset", which is used for training / validation / testing.
-        It will load a piece of the data based on the piece argument, and the data divisor set in the init function.
+        """rebuild_dataset - This function builds the pytorch datasets for the source
+        or target data. It will load the kinematics, index, weight, label, and plotting
+        info, and use them to build the "source dataset", which is used for prediction,
+        and the "all_dataset", which is used for training / validation / testing.
+        It will load a piece of the data based on the piece argument, and the data
+        divisor set in the init function.
 
-        Note this function also "shards" the data depending on the number of GPUs in use.
-        This is done by dividing the data piece into equal shards, and then only loading the chunk that corresponds
-        to the rank of the current GPU.
+        Note this function also "shards" the data depending on the number of GPUs
+        in use. This is done by dividing the data piece into equal shards, and then
+        only loading the chunk that corresponds to the rank of the current GPU.
 
         Arguments:
             filename {str} -- The file to load data from. Can be 'source' or 'target'
-            piece {int} -- The piece of the data to load. Defaults to 0, in which case the first piece is loaded.
+            piece {int} -- The piece of the data to load. Defaults to 0, in which
+                case the first piece is loaded.
 
         Returns:
             None
@@ -220,7 +239,7 @@ class LOfData(L.LightningDataModule):
         if filename == "target" and self.target_file is None:
             raise ValueError("Target file not provided")
 
-        ####################### Configure which data to read ########################
+        # ------------------ Configure which data to read -------------------
 
         if piece >= self.data_divisor:
             raise ValueError("Piece number exceeds data divisor")
@@ -231,19 +250,19 @@ class LOfData(L.LightningDataModule):
         elif filename == "target":
             start, stop = self.target_indeces[piece]
 
-        # If we are using more than one GPU, further shard the data depending on the rank
-        # Calculate the start / stop indeces here
+        # If we are using more than one GPU, further shard the data depending
+        # on the rank. Calculate the start / stop indeces here
         if self.total_rank > 1:
             start, stop = self._calc_shard_indeces(start, stop, file=filename)
 
-        ####################### Load the data ########################
+        # -------------------- Load the data ----------------------------
 
         # Get the data from file
         kinematics, indeces, weights, plotting = self._load_data_from_file(
             filename, self.source_weight_path, start=start, stop=stop
         )
 
-        ####################### Process weights ##########################
+        # -------------------- Process weights ----------------------------
 
         # Store all weights for use in prediction, then truncate and apply filter
         if filename == "source":
@@ -257,14 +276,14 @@ class LOfData(L.LightningDataModule):
             piece190 = self.target_use190[start:stop]
             weights = weights[piece190 == 1]
 
-        ####################### Process labels ##########################
+        # --------------------- Process labels ---------------------------
 
         if filename == "source":
             labels = np.zeros((len(kinematics), 1), dtype=np.float32)
         elif filename == "target":
             labels = np.ones((len(kinematics), 1), dtype=np.float32)
 
-        ####################### Build dataset ##########################
+        # ---------------------- Build dataset ----------------------------
 
         # Build pytorch datasets
         if filename == "source":
@@ -295,13 +314,14 @@ class LOfData(L.LightningDataModule):
             )
 
     def _concatenate_datasets(self, piece=0):
-        """_concatenate_datasets - This function concatenates the source and target datasets
-        into a single dataset. This is used for training and validation, where we want to use
-        both source and target data.
+        """_concatenate_datasets - This function concatenates the source and
+        target datasets into a single dataset. This is used for training and
+        validation, where we want to use both source and target data.
 
         Arguments:
-            piece {int} -- The piece of the data for which we need to concatenate the datasets.
-                Defaults to 0, in which case the first piece is used.
+            piece {int} -- The piece of the data for which we need to
+                concatenate the datasets. Defaults to 0, in which case the
+                first piece is used.
 
         Returns:
             None
@@ -342,20 +362,25 @@ class LOfData(L.LightningDataModule):
     def _load_data_from_file(
         self, which_file="source", weight_path="root", start=None, stop=None
     ):
-        """load_data_from_file - This function loads data from a file using uproot, and applies the relevant preprocessing.
-        It returns the kinematics, mask, plotting data, weights, and pass190 filter
+        """load_data_from_file - This function loads data from a file using uproot,
+        and applies the relevant preprocessing. It returns the kinematics, mask,
+        plotting data, weights, and pass190 filter
 
         Arguments:
             which_file {str} -- The file to load data from. Can be 'source' or 'target'
-            weight_path {str} -- The path to the weights file. Note this is for all events, without the pass190 filter
-                Defaults to 'root', in which case we load the weights from the ROOT file
-            start {int} -- The start index for the data. Defaults to None, in which case start from 0
-            stop {int} -- The stop index for the data. Defaults to None, in which case stop at the end of the file.
+            weight_path {str} -- The path to the weights file. Note this is for all
+                events, without the pass190 filter. Defaults to 'root', in which
+                case we load the weights from the ROOT file
+            start {int} -- The start index for the data. Defaults to None, in which
+                case start from 0
+            stop {int} -- The stop index for the data. Defaults to None, in which
+                case stop at the end of the file.
 
         Returns:
             np.ndarray -- The kinematics data
             np.ndarray -- The mask data
-            np.ndarray -- The weight data, for all events, regardless of start/stop. Does not apply the pass190 filter!!
+            np.ndarray -- The weight data, for all events, regardless of start/stop.
+                Does not apply the pass190 filter!!
             np.ndarray -- The plotting data
         """
 
@@ -397,20 +422,25 @@ class LOfData(L.LightningDataModule):
         return kinematics, indeces, weights, plotting
 
     def _load_weights(self, tree, which_file="source", path=None, test=False):
-        """_load_weights - This function implements the logic for loading weights to be used both in data loading, and
-        in providing access to the weights for the purposes of calculating the next iteration of weights in the evaluation
-        routine. The logic is as follows:
+        """_load_weights - This function implements the logic for loading weights
+        to be used both in data loading, and in providing access to the weights
+        for the purposes of calculating the next iteration of weights in the
+        evaluation routine. The logic is as follows:
 
         1. If the path is 'root', then we load the weights from the root file
-        2. If the path is not None, then we load the weights from the .npz file at the given path
+        2. If the path is not None, then we load the weights from the .npz file
+           at the given path
         3. If the path is None, then we return a vector of ones
 
-        Note if we are loading weights from source, then we truncate the weights by max_events_target
+        Note if we are loading weights from source, then we truncate the weights
+        by max_events_target
 
         Arguments:
             tree {uproot.tree.TTree} -- The uproot tree object
-            path {str} -- The path to the weights file. If set to 'root', then we load the weights from the root file.
-            test {bool} -- Set to true if we want to load the test weights. Defaults to false.
+            path {str} -- The path to the weights file. If set to 'root', then we
+                load the weights from the root file.
+            test {bool} -- Set to true if we want to load the test weights.
+                Defaults to false.
 
         Returns:
             np.ndarray -- A numpy array of weights
@@ -488,9 +518,10 @@ class LOfData(L.LightningDataModule):
         return source_weights, target_weights
 
     def _calc_shard_indeces(self, start, stop, file="source"):
-        """_calc_shard_indeces - This function calculates the indeces of some shard within either
-        the source or target root file, given the start and stop indeces of the piece, and a string
-        argument specifying the whether to calculate for source or target.
+        """_calc_shard_indeces - This function calculates the indeces of
+        some shard within either the source or target root file, given
+        the start and stop indeces of the piece, and a string argument
+        specifying the whether to calculate for source or target.
 
         Function uses the pass190 filters and the rank as set in the init function.
 
@@ -532,11 +563,12 @@ class LOfData(L.LightningDataModule):
         return min_idx, max_idx
 
     def _pass_to_all(self, pass190, start, idx):
-        """_pass_to_all - This function calculates an index within the space of all events
-        based on a start index of a piece (in the space of all events) and an index within the space of
-        only good events in the piece.
+        """_pass_to_all - This function calculates an index within the space of all
+        events based on a start index of a piece (in the space of all events)
+        and an index within the space of only good events in the piece.
 
-        This is for use in calculating shard indeces! Will use recursion to do calculation efficiently.
+        This is for use in calculating shard indeces! Will use recursion to do
+        calculation efficiently.
 
         Arguments:
             pass190 {np.ndarray} -- The pass190 filter
@@ -547,7 +579,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start : start + idx])
+        acquired_good_evts = np.sum(pass190[start:start+idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts
@@ -657,9 +689,10 @@ class LOfData(L.LightningDataModule):
 
     # Test dataloader
     def test_dataloader(self):
-        """test_dataloader - This method returns a pytorch dataloader for running predictions. It always yeilds
-        the "all dataset". In the case that we are dividing the data into pieces, this will always just
-        use the current piece since it doesn't matter which part of the data we use for testing.
+        """test_dataloader - This method returns a pytorch dataloader for running
+        predictions. It always yeilds the "all dataset". In the case that we are
+        dividing the data into pieces, this will always just use the current
+        piece since it doesn't matter which part of the data we use for testing.
 
         No arguments
 
@@ -677,11 +710,13 @@ class LOfData(L.LightningDataModule):
 
     # Predict dataloader
     def predict_dataloader(self):
-        """predict_dataloader - This method returns a pytorch dataloader for running predictions.
-        Only need to run predictions for the source data in general, so can just use the source dataset.
+        """predict_dataloader - This method returns a pytorch dataloader for running
+        predictions. Only need to run predictions for the source data in general,
+        so can just use the source dataset.
 
         Note the data modules used for prediction should never divide the data since
-        we always want to predict for every event. Will include assertion that the data divisor is 1.
+        we always want to predict for every event. Will include assertion that the
+        data divisor is 1.
 
         No arguments
 

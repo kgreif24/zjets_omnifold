@@ -16,15 +16,16 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_info
 class OfConfig:
 
     def add_default_arguments(self):
-        """add_default_arguments - Add default arguments to the parser. This sets all of the defaults
-        needed to run the Omnifold algorithm succesfully.
+        """add_default_arguments - Add default arguments to the parser.
+        This sets all of the defaults needed to run the Omnifold algorithm succesfully.
 
         Arguments: None
         Returns: None
         """
 
         # Dummy argument to prevent error on parsing the command line arg "config_path"
-        ## This is a hack, but I don't want to carry the argparser from the top level "run_omnifold.py" to the "OfConfig" class
+        # This is a hack, but I don't want to carry the argparser from the top level
+        # "run_omnifold.py" to the "OfConfig" class
         self.parser.add_argument(
             "--config_path",
             type=str,
@@ -56,38 +57,44 @@ class OfConfig:
         self.parser.add_argument(
             "--mc_train_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root",
+            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
+                    WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root",
             help="Path for the MC training data",
         )
         self.parser.add_argument(
             "--mc_test_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root",
+            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
+                    WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root",
             help="Path for the MC testing data",
         )
         self.parser.add_argument(
             "--data_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root",
+            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
+                    WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root",
             help="Path for the data",
         )
         self.parser.add_argument(
             "--truth_data_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root",
+            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
+                    WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root",
             help="Path to the truth pseudodata",
         )
         self.parser.add_argument(
             "--pretrain_path",
             type=str,
-            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root",
+            default="/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/\
+                    WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root",
             help="Path to the file to use in pretraining",
         )
         self.parser.add_argument(
             "--split_seed",
             type=int,
             default=-1,
-            help="Seed for the train / validation split, set to -1 to produce random seed at train time",
+            help="Seed for the train / validation split, set to -1 to produce random\
+                  seed at train time",
         )
         self.parser.add_argument(
             "--max_tracks",
@@ -349,7 +356,8 @@ class OfConfig:
         """init function for the OfConfig class.
 
         Arguments:
-        config_name - The name of the configuration file to load. If this is None, then the default settings are used
+        config_name - The name of the configuration file to load.
+            If this is None, then the default settings are used
 
         Returns:
         None
@@ -374,12 +382,12 @@ class OfConfig:
             self.config = None
 
     def __getattr__(self, name):
-        """__getattr__ - This function allows the OfConfig object to access the arguments
-        as instance variables. Function first looks for value in a loaded config file.
-        If none exists, then we take the default
+        """__getattr__ - This function allows the OfConfig object to access the
+        arguments as instance variables. Function first looks for value in a
+        loaded config file. If none exists, then we take the default
 
-        If the instance variable is not found in any of these places, then the function raises an exception
-        and exits.
+        If the instance variable is not found in any of these places, then the
+        function raises an exception and exits.
 
         Arguments:
         name - The name of the instance variable to access
@@ -403,15 +411,16 @@ class OfConfig:
         # If this fails take the default value
         try:
             return getattr(self.args, name)
-        # If the instance variable is not found in the parsed args or the configuration file, raise exception
-        # and exit
+        # If the instance variable is not found in the parsed args or the
+        # configuration file, raise exception and exit
         except Exception:
             print(f"Instance variable {name} not found in args or config. Exiting!")
             sys.exit(1)
 
     def mod_config(self, name: str, value) -> None:
-        """mod_config - This function modifies the config loaded from a yaml file at a given name and value.
-        If no yaml file has been loaded, then this function raises and exception.
+        """mod_config - This function modifies the config loaded from a yaml file at
+        a given name and value. If no yaml file has been loaded, then this function
+        raises an exception.
 
         Arguments:
         name - The name of the field to modify in the config
