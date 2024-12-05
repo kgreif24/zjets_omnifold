@@ -9,8 +9,8 @@ import uproot
 import awkward as ak
 import pytest
 
-from ..lightning_module import LOfTransformer
-from ..lightning_data_module import LOfData
+from lightning_module import LOfTransformer
+from lightning_data_module import LOfData
 
 
 @pytest.mark.slow

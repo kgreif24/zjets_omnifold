@@ -3,7 +3,7 @@ test_of_dataset.py - Test suite for the OfDataset class.
 """
 
 import copy
-from ..of_dataset import OfDataset as ofd
+import of_dataset as ofd
 import utils.data_utils as du
 
 import uproot

@@ -2,9 +2,9 @@
 test_train_eval.py - Test suite for the OfTrain / OfEval classes
 """
 
-from ..lightning_train import OfTrain
-from ..lightning_eval import OfEval
-from ..cli.of_config import OfConfig
+from lightning_train import OfTrain
+from lightning_eval import OfEval
+from cli.of_config import OfConfig
 
 
 def test_lightning_train(tmp_path):
