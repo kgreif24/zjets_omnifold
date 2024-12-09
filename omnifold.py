@@ -6,9 +6,11 @@ Last updated 03/06/2024
 python3
 """
 
+import os
 import sys
 import time
 import subprocess
+import json
 
 import numpy as np
 import torch
@@ -30,21 +32,21 @@ class Omnifolder:
     def __init__(
         self,
         config_path,
-        continue_iteration=0,
-        continue_step_two=False,
+        checkpoint_file=None,
         index=None,
-        use_slurm=True,
+        subprocesses=None,
     ):
         """__init__ - This function initializes the omnifolder object.
 
         Arguments:
         config_path - Path to the config file for the omnifold algorithm
-        continue_iteration - The iteration to continue from
-        continue_step_two - If true, continue from step two
+        checkpoint_file - Path to a json file which contains the status of a
+            terminated run. If this is not None, the run will be resumed from
+            the last saved status. If None, run Omnifold from scratch.
         index - The index of the ensemble to run. Add this number to the end of the
             group ID if it is not None
-        use_slurm - If true, preprend training and evaluation commands with slurm
-            directives
+        subprocesses - A list of subprocesses to keep track of, used for signal
+            handling
 
         Returns:
         None
@@ -67,20 +69,45 @@ class Omnifolder:
         self.cfg = OfConfig(config_name=config_path)
         print("Checkpoint path: ", self.cfg.checkpoint_dir)
 
-        # Print messages about the first iteration / step to run
-        if continue_iteration == 0:
-            print("Starting from scratch")
-        else:
-            print("Continuing from iteration ", continue_iteration)
-        if continue_step_two:
-            print("Continuing from step two")
+        # Load status from checkpoint file if it exists
+        if checkpoint_file is not None:
+            with open(checkpoint_file, "r") as f:
+                status = json.load(f)
+            self.current_iteration = status["current_iteration"]
+            self.current_step = status["current_step"]
+            self.training = status["training"]
+            self.best_model_path = status["best_model_path"]
+            self.run_id = status["run_id"]
 
-        # Set some instance variables for tracking progress through the procedure
-        self.current_iteration = continue_iteration
-        self.continue_step_two = continue_step_two
-        self.end_iteration = self.current_iteration + self.cfg.num_iterations
+        # Else configure to run from scratch
+        else:
+            self.current_iteration = 0
+            self.current_step = 1
+            self.training = True
+            self.best_model_path = None
+            self.run_id = None
+
+        # Set some instance variables
+        if self.current_iteration > self.cfg.num_iterations:
+            raise ValueError(
+                "Current iteration is greater than total number of iterations!"
+            )
+        self.end_iteration = self.cfg.num_iterations
         self.index = index
-        self.use_slurm = use_slurm
+        self.subprocesses = subprocesses
+
+        # Set config path and config object as instance variables
+        self.config_path = config_path
+        print("Omnifolder class trying to load config from file", config_path)
+        self.cfg = OfConfig(config_name=config_path)
+        print("Checkpoint path: ", self.cfg.checkpoint_dir)
+
+        # Make root dir for this run of Omnifold
+        self.root_dir = (
+            f"{self.cfg.checkpoint_dir}/"
+            f"{self.cfg.project_name}/{self.cfg.group_name}"
+        )
+        os.makedirs(self.root_dir, exist_ok=True)
 
         # Login to wandb
         if self.cfg.wandb:
@@ -104,7 +131,7 @@ class Omnifolder:
         for i in range(self.current_iteration, self.end_iteration + 1):  # 1-indexed
             self.current_iteration = i
             print(f"\n\n ##### Running iteration {i} of {self.end_iteration} #####")
-            if first_iteration and self.continue_step_two:
+            if first_iteration and self.current_step == 2:
                 self.run_step(2)
                 first_iteration = False
             else:
@@ -140,12 +167,14 @@ class Omnifolder:
         if step not in [1, 2]:
             raise ValueError("Step must be 1 or 2!")
 
-        print(f"\n## Step {step} Training ##\n")
+        # If we are done training, skip straight to evaluation
+        if self.training:
+            print(f"\n## Step {step} Training ##\n")
 
-        # Determine seed for train / val split
-        seed = self.cfg.split_seed
-        if seed == -1:
-            seed = np.random.randint(0, 10000)
+            # Determine seed for train / val split
+            seed = self.cfg.split_seed
+            if seed == -1:
+                seed = np.random.randint(0, 10000)
 
         # Run training as a subprocess
         train_args = [
@@ -187,27 +216,37 @@ class Omnifolder:
             sys.exit(train_code)
 
         # Sleep for a bit to ensure all resources are released
-        print("Sleeping for 2 minutes")
-        time.sleep(120)
+        print("Sleeping for 20 seconds")
+        time.sleep(20)
 
         # Reverse search output for run_id and best model path
         lines = output.split("\n")
         for i in reversed(range(len(lines))):
             if "###RUN ID###" in lines[i] and i + 1 < len(lines):
-                run_id = lines[i + 1]
+                self.run_id = lines[i + 1]
                 break
 
         # Only care about running evaluation if this is not a pre-training step
         if self.current_iteration > 0:
-
             print(f"\n## Step {step} Evaluating ##\n")
 
             # Run evaluation as a subprocess, no need to keep output
             eval_args = [
+                "srun",
+                "-n",
+                "1",
+                "--ntasks-per-node",
+                "1",
+                "--cpus-per-task",
+                "128",
+                "--cpu_bind=cores",
+                "--gpus-per-task",
+                "1",
+                "--gpu-bind=none",
                 "python",
                 "lightning_eval.py",
                 "--run_id",
-                run_id,
+                self.run_id,
                 "--config_path",
                 self.config_path,
                 "--iteration",
@@ -233,9 +272,49 @@ class Omnifolder:
                 ]
                 eval_args = slurm_args + eval_args
             print(eval_args)
-            test_code = subprocess.run(eval_args)
-            if test_code.returncode != 0:
-                print("Error running evaluation subprocess!")
-                sys.exit(test_code.returncode)
+
+            # Run evaluation subprocess
+            try:
+                process = subprocess.Popen(
+                    eval_args,
+                    preexec_fn=os.setsid,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                self.subprocesses.append(process)
+                process.wait()
+
+            except Exception as e:
+                print(f"Error running evaluation subprocess! {e}")
+                sys.exit(1)
+
+        # Set training flag to True and model paths / IDs to None
+        self.training = True
+        self.best_model_path = None
+        self.run_id = None
+
+        # Increment current step
+        self.current_step = (self.current_step % 2) + 1
 
         print(f"Finished step {step}!!")
+
+    def save_status(self):
+        """ save_status - Saves the status of this Omnifold run to a
+        json file. This file can then be used to resume the run at a
+        later time.
+
+        Arguments: None
+        Returns: None
+        """
+
+        # Write json file with the config path, current iteration, and
+        # any other relevant information
+        status = {
+            "current_iteration": self.current_iteration,
+            "current_step": self.current_step,
+            "training": self.training,
+            "run_id": self.run_id,
+        }
+        with open(f"{self.root_dir}/status.json", "w") as f:
+            json.dump(status, f)

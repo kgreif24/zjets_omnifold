@@ -145,6 +145,7 @@ class OfTrain:
             if (self.iteration == 0 and self.config.num_pretrain_pieces > 1)
             else False
         )
+        print("DEBUG! Set max steps to 200 for testing")
         self.trainer = L.Trainer(
             accelerator="auto" if (self.config.debug or unit_test) else "gpu",
             num_nodes=self.config.num_nodes,
@@ -153,7 +154,9 @@ class OfTrain:
             ),
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
-            max_epochs=self.config.max_epochs,
+            # max_epochs=self.config.max_epochs,
+            max_steps=1100,
+            val_check_interval=1000,
             enable_progress_bar=self.config.interactive,
             reload_dataloaders_every_n_epochs=reload_dataloaders,
             use_distributed_sampler=False,
@@ -292,6 +295,7 @@ class OfTrain:
                 )
 
         # Build the data module
+        print("DEBUG!! One data loader worker")
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -306,7 +310,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=1,
             testing=False,
             use_truth=use_truth,
         )

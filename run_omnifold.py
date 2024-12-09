@@ -9,6 +9,7 @@ python3
 
 import os
 import argparse
+import signal
 from omnifold import Omnifolder
 
 # On perlmutter, need to set this environment variable to avoid a conflict
@@ -24,15 +25,10 @@ if __name__ == "__main__":
         "--config_path", type=str, default=None, help="Path to the configuration file"
     )
     parser.add_argument(
-        "--continue_iteration",
-        type=int,
-        default=0,
-        help="The restart iteration number for this run",
-    )
-    parser.add_argument(
-        "--continue_step_two",
-        action="store_true",
-        help="If true, will continue from step two and then proceed as usual",
+        "--checkpoint_file",
+        type=str,
+        default=None,
+        help="Path to the checkpoint json file which describes a terminated run",
     )
     parser.add_argument(
         "--ensemble_index",
@@ -40,22 +36,30 @@ if __name__ == "__main__":
         type=int,
         help="The index of the ensemble to run",
     )
-    parser.add_argument(
-        "--no_slurm",
-        action="store_true",
-        help=(
-            "If true, will not prepend training and evaluation"
-            "commands with slurm directives"
-        ),
-    )
     args = parser.parse_args()
 
-    # Run Omnifold!
+    # Global variable to track subprocesses
+    subprocesses = []
+
+    # Build Omnifolder class
     of = Omnifolder(
         args.config_path,
-        continue_iteration=args.continue_iteration,
-        continue_step_two=args.continue_step_two,
+        checkpoint_file=args.checkpoint_file,
         index=args.ensemble_index,
-        use_slurm=not args.no_slurm,
+        subprocesses=subprocesses,
     )
+
+    # Signal handler function
+    def handle_signal(signum, frame):
+        print(f"Caught signal {signum}, making checkpoints and exiting")
+        of.save_status()
+        for process in subprocesses:
+            if process.poll() is None:
+                # os.killpg(os.getpgid(process.pid), signum)
+                print(f"Have running process {process.pid}! Could propagate")
+
+    # Register signal handler
+    signal.signal(signal.SIGUSR1, handle_signal)
+
+    # Run the omnifold algorithm
     of.run_of()

@@ -21,6 +21,12 @@
 #SBATCH -o ./outfiles/%x-%A-%a.out
 #SBATCH -e ./outfiles/%x-%A-%a.err
 
+# Function to handle SIGUSR1
+cleanup() {
+    echo "Caught SIGUSR1 in Bash script. Propagating signal..."
+    kill -SIGUSR1 $(jobs -p) # Sends SIGUSR1 to all child processes
+}
+
 # Set up environment
 module load conda
 conda activate ajets
@@ -34,6 +40,12 @@ export OMP_NUM_THREADS=1
 export OMP_PLACES=threads
 export OMP_PROC_BIND=spread
 
+# Trap SIGUSR1 and call timeout operations
+trap cleanup SIGUSR1
+
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it one 1 core and 1 node
-python run_omnifold.py --config_path ./cli/multi_node.yml --ensemble_index $SLURM_ARRAY_TASK_ID
+python run_omnifold.py --config_path ./cli/single_node.yml &
+
+# Wait for all child processes to complete
+wait
