@@ -244,11 +244,13 @@ class LOfData(L.LightningDataModule):
         if piece >= self.data_divisor:
             raise ValueError("Piece number exceeds data divisor")
 
-        # Get start and stop indeces for the piece
+        # Get start and stop indeces for the piece, and choose correct weights
         if filename == "source":
             start, stop = self.source_indeces[piece]
+            use_weight_path = self.source_weight_path
         elif filename == "target":
             start, stop = self.target_indeces[piece]
+            use_weight_path = self.target_weight_path
 
         # If we are using more than one GPU, further shard the data depending
         # on the rank. Calculate the start / stop indeces here
@@ -259,7 +261,7 @@ class LOfData(L.LightningDataModule):
 
         # Get the data from file
         kinematics, indeces, weights, plotting = self._load_data_from_file(
-            filename, self.source_weight_path, start=start, stop=stop
+            filename, use_weight_path, start=start, stop=stop
         )
 
         # -------------------- Process weights ----------------------------
