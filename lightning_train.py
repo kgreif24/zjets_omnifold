@@ -12,6 +12,7 @@ import os
 import time
 import argparse
 import atexit
+import re
 
 import lightning as L
 import wandb
@@ -65,6 +66,8 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
+        self.ws_path = ws_path
+        self.restart_path = None
         self.split_seed = seed
 
         # Modify the group name if an index is provided
@@ -101,6 +104,13 @@ class OfTrain:
                 )
         else:
             ws_path = None
+
+        # If the checkpoint directory contains an HPC checkpoint,
+        # we will restart training from that point
+        for file_name in os.listdir(checkpoint_dir):
+            if re.match(r"hpc_ckpt_*.ckpt", file_name):
+                self.restart_path = os.path.join(checkpoint_dir, file_name)
+            break
 
         # ---------------- Lightning setup ----------------
 
@@ -145,7 +155,6 @@ class OfTrain:
             if (self.iteration == 0 and self.config.num_pretrain_pieces > 1)
             else False
         )
-        print("DEBUG! Set max steps to 200 for testing")
         self.trainer = L.Trainer(
             accelerator="auto" if (self.config.debug or unit_test) else "gpu",
             num_nodes=self.config.num_nodes,
@@ -154,9 +163,8 @@ class OfTrain:
             ),
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
-            # max_epochs=self.config.max_epochs,
-            max_steps=1100,
-            val_check_interval=1000,
+            default_root_dir=checkpoint_dir,
+            max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
             reload_dataloaders_every_n_epochs=reload_dataloaders,
             use_distributed_sampler=False,
@@ -174,7 +182,7 @@ class OfTrain:
             max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
 
         # Build lightning module from scratch if we are not given a warm start parth
-        if ws_path is None:
+        if (self.ws_path is None) and (self.restart_path is None):
 
             block_params = {
                 "dropout": self.config.block_dropout,
@@ -216,10 +224,17 @@ class OfTrain:
                 num_layers=self.config.num_layers,
             )
 
-        # Else load the model from the warm start path
+        # Else load the model from the restart or warm start path
         else:
+
+            # Note we give preference to the restart path if it exists
+            use_path = (
+                self.restart_path if self.restart_path is not None else self.ws_path
+            )
+            rank_zero_info(f"Loading model from path {use_path}")
+
             self.l_module = LOfTransformer.load_from_checkpoint(
-                ws_path,
+                use_path,
                 log=self.config.wandb,
                 debug=self.config.debug,
                 step=self.step,
@@ -324,8 +339,13 @@ class OfTrain:
         {string} - The run id for this training run
         """
 
-        # Run training
-        self.trainer.fit(self.l_module, self.d_module)
+        # Run training, pickup from restart path if available
+        # If we only have a warm start path, start from the beginning
+        self.trainer.fit(
+            self.l_module,
+            self.d_module,
+            ckpt_path=self.restart_path,
+        )
 
         # Make symlink to best model
         best_model_path = self.checkpoints.best_model_path

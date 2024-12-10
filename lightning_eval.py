@@ -15,6 +15,7 @@ import numpy as np
 import uproot
 import awkward as ak
 import lightning as L
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 
@@ -156,6 +157,7 @@ class OfEval:
             num_nodes=1,
             devices=1,
             logger=self.wandb_logger,
+            plugins=[SLURMEnvironment(auto_requeue=False)],
             enable_progress_bar=self.config.interactive,
             fast_dev_run=unit_test,
             use_distributed_sampler=False,

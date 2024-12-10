@@ -32,7 +32,6 @@ class Omnifolder:
     def __init__(
         self,
         config_path,
-        checkpoint_file=None,
         index=None,
         subprocesses=None,
     ):
@@ -65,13 +64,21 @@ class Omnifolder:
 
         # Set config path and config object as instance variables
         self.config_path = config_path
-        print("Omnifolder class trying to load config from file", config_path)
+        print("Loading config from path", config_path)
         self.cfg = OfConfig(config_name=config_path)
-        print("Checkpoint path: ", self.cfg.checkpoint_dir)
 
-        # Load status from checkpoint file if it exists
-        if checkpoint_file is not None:
-            with open(checkpoint_file, "r") as f:
+        # Make root dir for this run of Omnifold
+        self.root_dir = (
+            f"{self.cfg.checkpoint_dir}/"
+            f"{self.cfg.project_name}/{self.cfg.group_name}"
+        )
+        os.makedirs(self.root_dir, exist_ok=True)
+
+        # Load status from checkpoint file if it exists in root dir
+        status_file = os.path.join(self.root_dir, "status.json")
+        if os.path.exists(status_file):
+            print(f"Picking up progress from status file {status_file}")
+            with open(status_file, "r") as f:
                 status = json.load(f)
             self.current_iteration = status["current_iteration"]
             self.current_step = status["current_step"]
@@ -95,19 +102,6 @@ class Omnifolder:
         self.end_iteration = self.cfg.num_iterations
         self.index = index
         self.subprocesses = subprocesses
-
-        # Set config path and config object as instance variables
-        self.config_path = config_path
-        print("Omnifolder class trying to load config from file", config_path)
-        self.cfg = OfConfig(config_name=config_path)
-        print("Checkpoint path: ", self.cfg.checkpoint_dir)
-
-        # Make root dir for this run of Omnifold
-        self.root_dir = (
-            f"{self.cfg.checkpoint_dir}/"
-            f"{self.cfg.project_name}/{self.cfg.group_name}"
-        )
-        os.makedirs(self.root_dir, exist_ok=True)
 
         # Login to wandb
         if self.cfg.wandb:

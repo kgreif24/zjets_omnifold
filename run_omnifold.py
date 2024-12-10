@@ -8,6 +8,7 @@ python3
 """
 
 import os
+import time
 import argparse
 import signal
 from omnifold import Omnifolder
@@ -25,12 +26,6 @@ if __name__ == "__main__":
         "--config_path", type=str, default=None, help="Path to the configuration file"
     )
     parser.add_argument(
-        "--checkpoint_file",
-        type=str,
-        default=None,
-        help="Path to the checkpoint json file which describes a terminated run",
-    )
-    parser.add_argument(
         "--ensemble_index",
         default=-1,
         type=int,
@@ -44,19 +39,35 @@ if __name__ == "__main__":
     # Build Omnifolder class
     of = Omnifolder(
         args.config_path,
-        checkpoint_file=args.checkpoint_file,
         index=args.ensemble_index,
         subprocesses=subprocesses,
     )
 
-    # Signal handler function
+    # Signal handler function for SIGTERM or SIGUSR1
+    # These are the slurm terminate and timeout signals
     def handle_signal(signum, frame):
-        print(f"Caught signal {signum}, making checkpoints and exiting")
-        of.save_status()
-        for process in subprocesses:
-            if process.poll() is None:
-                # os.killpg(os.getpgid(process.pid), signum)
-                print(f"Have running process {process.pid}! Could propagate")
+        if signum == signal.SIGTERM or signum == signal.SIGUSR1:
+
+            # Save the status of the algorithm
+            print(f"Caught signal {signum}, making checkpoints and exiting")
+            of.save_status()
+
+            # Propagate the signal as SIGUSR1 to subprocesses
+            for process in subprocesses:
+                if process.poll() is None:
+                    print(f"Propagating SIGUSR1 to process {process.pid}")
+                    os.killpg(os.getpgid(process.pid), signal.SIGUSR1)
+
+            # Wait for some time to allow subprocesses to finish
+            time.sleep(30)
+
+            # If we get timeout signal, slurm will not automatically requeue
+            # so we have to do it ourself
+            if signum == signal.SIGUSR1:
+                print("Requeueing job")
+                os.system("scontrol requeue $SLURM_JOB_ID")
+
+            return
 
     # Register signal handler
     signal.signal(signal.SIGUSR1, handle_signal)
