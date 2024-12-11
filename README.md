@@ -57,7 +57,8 @@ The most up-to-date datasets for use in Omnifold are listed below. They are all 
 |   Train MC   | WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root |
 |   Test MC   |   WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root |
 |   Pseudodata | WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root |
-|   Truth Pseudodata | WithTracks_TruthPseudodata_Combined_1-18.root |
+|   Truth Pseudodata | WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root |
+|   Pre-train data | WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all_shuffled.root |
 
 Note the pseudodata is not separated into training and testing sets. This is because we do not use the network outputs over the pseudodata, so it is not essential to completely avoid overtraining on the pseudodata. The code does construct a held-out validation set for tracking overtraining, but the pseudodata used in the testing set is the concatenation of the validation and training sets. For this reason the loss values / performance metrics calculated on the testing set should be taken with a grain of salt. This of course has no impact on the performance of Omnifold.
 
