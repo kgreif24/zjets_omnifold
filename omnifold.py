@@ -85,6 +85,7 @@ class Omnifolder:
             self.training = status["training"]
             self.best_model_path = status["best_model_path"]
             self.run_id = status["run_id"]
+            self.seed = status["seed"]
 
         # Else configure to run from scratch
         else:
@@ -93,6 +94,7 @@ class Omnifolder:
             self.training = True
             self.best_model_path = None
             self.run_id = None
+            self.seed = self.cfg.split_seed
 
         # Set some instance variables
         if self.current_iteration > self.cfg.num_iterations:
@@ -166,9 +168,8 @@ class Omnifolder:
             print(f"\n## Step {step} Training ##\n")
 
             # Determine seed for train / val split
-            seed = self.cfg.split_seed
-            if seed == -1:
-                seed = np.random.randint(0, 10000)
+            if self.seed == -1:
+                self.seed = np.random.randint(0, 10000)
 
         # Run training as a subprocess
         train_args = [
@@ -181,7 +182,7 @@ class Omnifolder:
             "--step",
             str(step),
             "--split_seed",
-            str(seed),
+            str(self.seed),
             "--index",
             str(self.index),
         ]
@@ -309,6 +310,7 @@ class Omnifolder:
             "current_step": self.current_step,
             "training": self.training,
             "run_id": self.run_id,
+            "seed": self.seed,
         }
         with open(f"{self.root_dir}/status.json", "w") as f:
             json.dump(status, f)

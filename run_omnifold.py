@@ -52,25 +52,26 @@ if __name__ == "__main__":
             print(f"Caught signal {signum}, making checkpoints and exiting")
             of.save_status()
 
-            # Propagate the signal as SIGUSR1 to subprocesses
+            # Send SIGUSR1 to subprocesses
             for process in subprocesses:
                 if process.poll() is None:
                     print(f"Propagating SIGUSR1 to process {process.pid}")
                     os.killpg(os.getpgid(process.pid), signal.SIGUSR1)
 
-            # Wait for some time to allow subprocesses to finish
+            # Wait for some time to allow subprocesses to checkpoint
             time.sleep(30)
 
-            # If we get timeout signal, slurm will not automatically requeue
-            # so we have to do it ourself
-            if signum == signal.SIGUSR1:
-                print("Requeueing job")
-                os.system("scontrol requeue $SLURM_JOB_ID")
+            # Send terminate signal to subprocesses
+            for process in subprocesses:
+                if process.poll() is None:
+                    print(f"Terminating process {process.pid}")
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
 
             return
 
-    # Register signal handler
+    # Register signal handlers
     signal.signal(signal.SIGUSR1, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
 
     # Run the omnifold algorithm
     of.run_of()

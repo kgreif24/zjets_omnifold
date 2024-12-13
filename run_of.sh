@@ -7,13 +7,13 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-task=1
 #SBATCH --gpu-bind=none
-#SBATCH -q preempt
+#SBATCH -q regular
 #SBATCH -J pretrain-02
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
 #SBATCH -t 0-04:00:00
-#SBATCH --signal=USR1@120
+#SBATCH --signal=B:USR1@120
 #SBATCH --requeue
 #SBATCH --open-mode=append
 
@@ -23,6 +23,15 @@
 # Redirect stdout and stderr to output directory separated by job number
 #SBATCH -o ./outfiles/%x-%A-%a.out
 #SBATCH -e ./outfiles/%x-%A-%a.err
+
+# Function to handle SIGUSR1 (timeout)
+cleanup() {
+    echo "Caught SIGUSR1 in bash script. Propagating signal..."
+    kill -SIGUSR1 $(jobs -p) # Sends SIGUSR1 to all child processes
+    sleep 110  # Sleep to allow jobs to checkpoint before requeue
+    echo "Requeueing job..."
+    scontrol requeue $SLURM_JOB_ID
+}
 
 # Set up environment
 module load conda
@@ -37,9 +46,12 @@ export OMP_NUM_THREADS=1
 export OMP_PLACES=threads
 export OMP_PROC_BIND=spread
 
+# Trap SIGUSR1 and call timeout operations
+trap cleanup SIGUSR1
+
 # run the application:
 # Since the parent process just handles calling the subprocesses for training / eval, run it one 1 core and 1 node
-srun --nodes=1 --ntasks-per-node=1 --cpus-per-task=1 --gpus-per-task=0 python run_omnifold.py --config_path ./cli/requeue.yml
+python run_omnifold.py --config_path ./cli/pretrain.yml &
 
-# Sleep for 2 minutes so a process is still available for slurm to kill
-sleep 120
+# Wait for all child processes to complete
+wait
