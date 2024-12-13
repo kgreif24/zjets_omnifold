@@ -8,7 +8,6 @@ python3
 """
 
 import os
-import time
 import argparse
 import signal
 from omnifold import Omnifolder
@@ -43,30 +42,11 @@ if __name__ == "__main__":
         subprocesses=subprocesses,
     )
 
-    # Signal handler function for SIGTERM or SIGUSR1
-    # These are the slurm terminate and timeout signals
+    # Signal handler function for checkpointing
     def handle_signal(signum, frame):
         if signum == signal.SIGTERM or signum == signal.SIGUSR1:
-
-            # Save the status of the algorithm
-            print(f"Caught signal {signum}, making checkpoints and exiting")
+            print(f"Caught signal {signum}, making checkpoints")
             of.save_status()
-
-            # Send SIGUSR1 to subprocesses
-            for process in subprocesses:
-                if process.poll() is None:
-                    print(f"Propagating SIGUSR1 to process {process.pid}")
-                    os.killpg(os.getpgid(process.pid), signal.SIGUSR1)
-
-            # Wait for some time to allow subprocesses to checkpoint
-            time.sleep(30)
-
-            # Send terminate signal to subprocesses
-            for process in subprocesses:
-                if process.poll() is None:
-                    print(f"Terminating process {process.pid}")
-                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-
             return
 
     # Register signal handlers

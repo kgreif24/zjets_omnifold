@@ -12,7 +12,7 @@ import os
 import time
 import argparse
 import atexit
-import re
+import glob
 
 import lightning as L
 import wandb
@@ -106,11 +106,12 @@ class OfTrain:
             ws_path = None
 
         # If the checkpoint directory contains an HPC checkpoint,
-        # we will restart training from that point
-        for file_name in os.listdir(checkpoint_dir):
-            if re.match(r"hpc_ckpt_*.ckpt", file_name):
-                self.restart_path = os.path.join(checkpoint_dir, file_name)
-            break
+        # we will restart training from the most recent checkpoint file
+        checkpoint_glob = glob.glob(f"{checkpoint_dir}/*.ckpt")
+        if len(checkpoint_glob) > 0:
+            self.restart_path = sorted(
+                checkpoint_glob, key=os.path.getmtime, reverse=True
+            )[0]
 
         # ---------------- Lightning setup ----------------
 

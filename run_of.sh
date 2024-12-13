@@ -7,31 +7,22 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-task=1
 #SBATCH --gpu-bind=none
-#SBATCH -q regular
+#SBATCH -q debug
 #SBATCH -J pretrain-02
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
-#SBATCH -t 0-04:00:00
-#SBATCH --signal=B:USR1@120
+#SBATCH -t 0-00:15:00
+#SBATCH --signal=USR1@120
 #SBATCH --requeue
 #SBATCH --open-mode=append
 
 # Make job array
-#SBATCH --array=1-1
+#          #SBATCH --array=1-1
 
 # Redirect stdout and stderr to output directory separated by job number
 #SBATCH -o ./outfiles/%x-%A-%a.out
 #SBATCH -e ./outfiles/%x-%A-%a.err
-
-# Function to handle SIGUSR1 (timeout)
-cleanup() {
-    echo "Caught SIGUSR1 in bash script. Propagating signal..."
-    kill -SIGUSR1 $(jobs -p) # Sends SIGUSR1 to all child processes
-    sleep 110  # Sleep to allow jobs to checkpoint before requeue
-    echo "Requeueing job..."
-    scontrol requeue $SLURM_JOB_ID
-}
 
 # Set up environment
 module load conda
@@ -46,12 +37,16 @@ export OMP_NUM_THREADS=1
 export OMP_PLACES=threads
 export OMP_PROC_BIND=spread
 
-# Trap SIGUSR1 and call timeout operations
-trap cleanup SIGUSR1
-
 # run the application:
-# Since the parent process just handles calling the subprocesses for training / eval, run it one 1 core and 1 node
+# Since the parent process
 python run_omnifold.py --config_path ./cli/pretrain.yml &
+PARENT_ID=$!
+echo "Parent process started with PID $PARENT_ID"
+
+# Run the signal handler, just needs to run on one cpu on one node
+srun --nodes=1 --ntasks=1 --cpus-per-task=1 --gpus-per-task=0 python requeue_on_signal.py --pid $PARENT_ID &
+HANDLER_ID=$!
+echo "Handler process started with PID $HANDLER_ID"
 
 # Wait for all child processes to complete
 wait
