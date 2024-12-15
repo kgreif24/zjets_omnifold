@@ -32,8 +32,8 @@ class Omnifolder:
     def __init__(
         self,
         config_path,
-        index=None,
-        subprocesses=None,
+        index=-1,
+        use_slurm=True,
     ):
         """__init__ - This function initializes the omnifolder object.
 
@@ -44,8 +44,6 @@ class Omnifolder:
             the last saved status. If None, run Omnifold from scratch.
         index - The index of the ensemble to run. Add this number to the end of the
             group ID if it is not None
-        subprocesses - A list of subprocesses to keep track of, used for signal
-            handling
 
         Returns:
         None
@@ -66,6 +64,10 @@ class Omnifolder:
         self.config_path = config_path
         print("Loading config from path", config_path)
         self.cfg = OfConfig(config_name=config_path)
+
+        # Modify the group name if an index is provided
+        if index != -1:
+            self.cfg.group_name = f"{self.cfg.group_name}_{index}"
 
         # Make root dir for this run of Omnifold
         self.root_dir = (
@@ -103,7 +105,7 @@ class Omnifolder:
             )
         self.end_iteration = self.cfg.num_iterations
         self.index = index
-        self.subprocesses = subprocesses
+        self.use_slurm = use_slurm
 
         # Login to wandb
         if self.cfg.wandb:
@@ -171,39 +173,55 @@ class Omnifolder:
             if self.seed == -1:
                 self.seed = np.random.randint(0, 10000)
 
-        # Run training as a subprocess
-        train_args = [
-            "python",
-            "lightning_train.py",
-            "--config_path",
-            self.config_path,
-            "--iteration",
-            str(self.current_iteration),
-            "--step",
-            str(step),
-            "--split_seed",
-            str(self.seed),
-            "--index",
-            str(self.index),
-        ]
-        # Add slurm args if requested
-        if self.use_slurm:
-            slurm_args = [
-                "srun",
-                "--nodes",
-                str(self.cfg.num_nodes),
-                "--ntasks-per-node",
-                str(self.cfg.num_gpus),
-                "--cpus-per-task",
-                "30",
-                "--cpu_bind=none",
-                "--gpus-per-task",
-                "1",
-                "--gpu-bind=none",
+            # Determine checkpoint path to warm start from, if any
+            ws_path = None
+            if not pt:
+                if step == 1:
+                    ws_path = self.step_one_ws_path
+                elif step == 2:
+                    ws_path = self.step_two_ws_path
+
+            # Run training as a subprocess
+            train_args = [
+                "python",
+                "lightning_train.py",
+                "--config_path",
+                self.config_path,
+                "--iteration",
+                str(self.current_iteration),
+                "--step",
+                str(step),
+                "--split_seed",
+                str(self.seed),
+                "--index",
+                str(self.index),
             ]
-            train_args = slurm_args + train_args
-        print(train_args)
-        train_code, output = capture_subprocess_output(train_args)
+            # Add warm start path if it exists
+            if ws_path is not None:
+                train_args += ["--ws_path", ws_path]
+
+            # Add slurm arguments if we are using
+            if self.use_slurm:
+                slurm_args = [
+                    "srun",
+                    "--nodes",
+                    "1" if self.cfg.debug else str(self.cfg.num_nodes),
+                    "--ntasks-per-node",
+                    "1" if self.cfg.debug else str(self.cfg.num_gpus),
+                    "--cpus-per-task",
+                    "30",
+                    "--cpu_bind=none",
+                    "--gpus-per-task",
+                    "0" if self.cfg.debug else "1",
+                    "--gpu-bind=none",
+                ]
+                train_args = slurm_args + train_args
+            print(train_args)
+
+            # Run training subprocess
+            train_code, output = capture_subprocess_output(
+                train_args,
+            )
 
         # Exit on non-zero return code
         if train_code != 0:
@@ -227,17 +245,6 @@ class Omnifolder:
 
             # Run evaluation as a subprocess, no need to keep output
             eval_args = [
-                "srun",
-                "-n",
-                "1",
-                "--ntasks-per-node",
-                "1",
-                "--cpus-per-task",
-                "128",
-                "--cpu_bind=cores",
-                "--gpus-per-task",
-                "1",
-                "--gpu-bind=none",
                 "python",
                 "lightning_eval.py",
                 "--run_id",
@@ -277,7 +284,6 @@ class Omnifolder:
                     stderr=subprocess.PIPE,
                     text=True
                 )
-                self.subprocesses.append(process)
                 process.wait()
 
             except Exception as e:

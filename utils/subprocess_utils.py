@@ -12,7 +12,7 @@ import gc
 import torch
 
 
-def capture_subprocess_output(subprocess_args, subprocesses_list=None):
+def capture_subprocess_output(subprocess_args):
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
@@ -24,7 +24,6 @@ def capture_subprocess_output(subprocess_args, subprocesses_list=None):
         stderr=subprocess.STDOUT,
         universal_newlines=True,
     )
-    subprocesses_list.append(process)
 
     # Create callback function for process output
     buf = io.StringIO()

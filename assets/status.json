@@ -1,0 +1,1 @@
+{"current_iteration": 0, "current_step": 2, "training": true, "step_one_ws_path": null, "step_two_ws_path": null, "best_model_path": "./assets/test_checkpoint.ckpt", "run_id": "test", "seed": 444}

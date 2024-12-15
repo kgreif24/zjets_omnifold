@@ -32,14 +32,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Global variable to track subprocesses
-    subprocesses = []
-
     # Build Omnifolder class
     of = Omnifolder(
         args.config_path,
         index=args.ensemble_index,
-        subprocesses=subprocesses,
     )
 
     # Signal handler function for checkpointing
