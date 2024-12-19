@@ -311,7 +311,6 @@ class OfTrain:
                 )
 
         # Build the data module
-        print("DEBUG!! One data loader worker")
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -326,7 +325,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
-            dataloader_workers=1,
+            dataloader_workers=10,
             testing=False,
             use_truth=use_truth,
         )
