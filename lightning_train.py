@@ -28,6 +28,10 @@ class OfTrain:
     """OfTrain - This class is meant to handle the setup and training of a single
     Omnifold classifier. The driver code for using this class is in the "main" function
     below.
+
+    Warm starting is implemented in that any training with iteration >= 1 will search
+    for a "best_model.ckpt" file in the checkpoint directory of the pretraining runs.
+    If this file does not exist, will raise an exception.
     """
 
     def __init__(
@@ -35,7 +39,6 @@ class OfTrain:
         config_path,
         iteration,
         step,
-        ws_path=None,
         seed=222,
         index=-1,
         unit_test=False,
@@ -47,8 +50,6 @@ class OfTrain:
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
-        ws_path - The path to a model checkpoint to warm start from, if left as None
-            then model will be initialized from scratch
         seed - The seed to use for the train / val split in this training
         index - The index of the ensemble to run. Add this number to the end of the
             group ID if it is not None
@@ -84,8 +85,22 @@ class OfTrain:
             run_name = f"iteration_{self.iteration}_step_{self.step}"
 
         # Set the checkpoint directory
-        checkpoint_dir = f"{root_dir}/{run_name}"
-        os.makedirs(checkpoint_dir, exist_ok=True)
+        self.checkpoint_dir = f"{root_dir}/{run_name}"
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+
+        # If we are running itertaion >= 1, get warm start path
+        if iteration >= 1:
+            if step == 1:
+                ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
+            else:
+                ws_path = f"{root_dir}/pretrain_step_2/best_model.ckpt"
+            if not os.path.exists(ws_path):
+                raise FileNotFoundError(
+                    f"Could not find warm start path {ws_path}. "
+                    "Please ensure the pretraining runs have completed."
+                )
+        else:
+            ws_path = None
 
         # ---------------- Lightning setup ----------------
 
@@ -97,7 +112,7 @@ class OfTrain:
                 project=self.config.project_name,
                 group=self.config.group_name,
                 name=run_name,
-                save_dir=checkpoint_dir,
+                save_dir=self.checkpoint_dir,
             )
 
             # Get run ID
@@ -117,7 +132,7 @@ class OfTrain:
             filename="{epoch}-{val_loss:.4f}",
             save_top_k=self.config.top_k_checkpoints,
             mode="min",
-            dirpath=checkpoint_dir,
+            dirpath=self.checkpoint_dir,
         )
         self.early_stopping = L.pytorch.callbacks.EarlyStopping(
             monitor="val_loss", patience=self.config.early_stopping_patience, mode="min"
@@ -140,7 +155,6 @@ class OfTrain:
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
-            fast_dev_run=unit_test,
             reload_dataloaders_every_n_epochs=reload_dataloaders,
             use_distributed_sampler=False,
         )
@@ -309,12 +323,17 @@ class OfTrain:
         # Run training
         self.trainer.fit(self.l_module, self.d_module)
 
+        # Make symlink to best model
+        best_model_path = self.checkpoints.best_model_path
+        best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
+        os.symlink(best_model_path, best_model_link)
+
         # Close W&B
         if self.config.wandb:
             wandb.finish()
 
         # Return the run id and best checkpoint path
-        return self.run_id, self.checkpoints.best_model_path
+        return self.run_id, best_model_path
 
 
 # ------------------ MAIN FUNCTION ------------------
@@ -330,12 +349,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the omnifold algorithm")
     parser.add_argument(
         "--config_path", type=str, default=None, help="Path to the configuration file"
-    )
-    parser.add_argument(
-        "--ws_path",
-        type=str,
-        default=None,
-        help="Path to a model checkpoint to warm start from",
     )
     parser.add_argument(
         "--iteration",

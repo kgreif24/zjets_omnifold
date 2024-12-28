@@ -24,7 +24,13 @@ def test_lightning_train(tmp_path):
         rid, path = trainer.run()
 
     except Exception:
+
         assert False
+
+    # Check that we made a best model checkpoint symlink
+    assert (
+        tmp_path / "test-of" / "test-of-run" / "pretrain_step_1" / "best_model.ckpt"
+    ).exists()
 
 
 def test_lightning_eval(tmp_path):
@@ -41,11 +47,11 @@ def test_lightning_eval(tmp_path):
 
         # Initialize the class, being sure to configure it to run a fast development run
         evaluator = OfEval(
-            "./assets/test_checkpoint.ckpt",
             "test",
             config_name,
             0,
             1,
+            check_path="./assets/test_checkpoint.ckpt",
             store=tmp_path,
             unit_test=True,
         )

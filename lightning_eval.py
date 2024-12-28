@@ -34,11 +34,11 @@ class OfEval:
 
     def __init__(
         self,
-        check_path,
         run_id,
         config_path,
         iteration,
         step,
+        check_path=None,
         verify=False,
         store=None,
         index=-1,
@@ -48,11 +48,12 @@ class OfEval:
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
         Arguments:
-        check_path - The path to the checkpoint to evaluate
         run_id - The ID of the run for evaluation
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
+        check_path - Defaults None, the path to the checkpoint to evaluate
+            If left none, use the best model symlink
         verify - Defaults False, if set to true forget about testing and just run
             prediction.
         store - Defaults None, if set, store weights here instead of in the default
@@ -105,6 +106,11 @@ class OfEval:
         os.makedirs(self.comp_dir, exist_ok=True)
         self.weight_dir = f"{root_dir}/weights"
         os.makedirs(self.weight_dir, exist_ok=True)
+
+        # Set the checkpoint path if not provided
+        if check_path is None:
+            check_path = f"{self.checkpoint_dir}/best_model.ckpt"
+        print(f"Evaluating with checkpoint: {check_path}")
 
         # Change the save location if the store argument is set
         if store is not None:

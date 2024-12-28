@@ -127,20 +127,6 @@ class OfConfig:
             help="Maximum number of events to use in the target data",
         )
 
-        # Pretraining checkpoints, only needed if picking up a run from a checkpoint
-        self.parser.add_argument(
-            "--pt_step_one_checkpoint",
-            type=str,
-            default=None,
-            help="Path to the pretraining step one checkpoint",
-        )
-        self.parser.add_argument(
-            "--pt_step_two_checkpoint",
-            type=str,
-            default=None,
-            help="Path to the pretraining step two checkpoint",
-        )
-
         # Training
         self.parser.add_argument(
             "--batch_size", type=int, default=256, help="Batch size for training"

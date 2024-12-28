@@ -41,12 +41,6 @@ num_pretrain_pieces: 1
 # Maximum number of events to use in the target data
 max_events_target: 500000
 
-# Path to the pretraining step one checkpoint
-pt_step_one_checkpoint: null
-
-# Path to the pretraining step two checkpoint
-pt_step_two_checkpoint: null
-
 # Batch size for training
 batch_size: 256
 
