@@ -67,11 +67,11 @@ class Omnifolder:
         self.cfg = OfConfig(config_name=config_path)
         print("Checkpoint path: ", self.cfg.checkpoint_dir)
 
-        # Handle paths for warm starting if we are not starting from scratch
-        if continue_iteration != 0:
+        # Print messages about the first iteration / step to run
+        if continue_iteration == 0:
+            print("Starting from scratch")
+        else:
             print("Continuing from iteration ", continue_iteration)
-            self.step_one_ws_path = self.cfg.pt_step_one_checkpoint
-            self.step_two_ws_path = self.cfg.pt_step_two_checkpoint
         if continue_step_two:
             print("Continuing from step two")
 
@@ -125,16 +125,14 @@ class Omnifolder:
         print("\n########## Pre-Training ##########\n")
         for step in [1, 2]:
             print("Running pre-training for step ", step)
-            self.run_step(step, pt=True)
+            self.run_step(step)
 
-    def run_step(self, step, pt=False):
+    def run_step(self, step):
         """step_one - This function runs a step of the omnifold algorithm.
         Which step it runs is controlled by the step argument.
 
         Arguments:
             step - The step of the omnifold algorithm to run. 1 or 2.
-            pt - If true, indicates that this is a pre-training step and best model
-                checkpoints will be saved to warm start all subsequent trainings
         Returns: None
         """
 
@@ -148,14 +146,6 @@ class Omnifolder:
         seed = self.cfg.split_seed
         if seed == -1:
             seed = np.random.randint(0, 10000)
-
-        # Determine checkpoint path to warm start from, if any
-        ws_path = None
-        if not pt:
-            if step == 1:
-                ws_path = self.step_one_ws_path
-            elif step == 2:
-                ws_path = self.step_two_ws_path
 
         # Run training as a subprocess
         train_args = [
@@ -172,9 +162,6 @@ class Omnifolder:
             "--index",
             str(self.index),
         ]
-        # Add warm start path if it exists
-        if ws_path is not None:
-            train_args += ["--ws_path", ws_path]
         # Add slurm args if requested
         if self.use_slurm:
             slurm_args = [
@@ -205,24 +192,10 @@ class Omnifolder:
 
         # Reverse search output for run_id and best model path
         lines = output.split("\n")
-        found_id = False
-        found_path = False
         for i in reversed(range(len(lines))):
             if "###RUN ID###" in lines[i] and i + 1 < len(lines):
                 run_id = lines[i + 1]
-                found_id = True
-            if "###BEST MODEL PATH###" in lines[i] and i + 1 < len(lines):
-                best_model_path = lines[i + 1]
-                found_path = True
-            if found_id and found_path:
                 break
-
-        # Save best model path to warm start future trainings
-        if pt:
-            if step == 1:
-                self.step_one_ws_path = best_model_path
-            elif step == 2:
-                self.step_two_ws_path = best_model_path
 
         # Only care about running evaluation if this is not a pre-training step
         if self.current_iteration > 0:
@@ -233,8 +206,6 @@ class Omnifolder:
             eval_args = [
                 "python",
                 "lightning_eval.py",
-                "--check_path",
-                best_model_path,
                 "--run_id",
                 run_id,
                 "--config_path",
