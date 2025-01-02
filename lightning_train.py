@@ -326,6 +326,8 @@ class OfTrain:
         # Make symlink to best model
         best_model_path = self.checkpoints.best_model_path
         best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
+        if os.path.exists(best_model_link):
+            os.remove(best_model_link)
         os.symlink(best_model_path, best_model_link)
 
         # Close W&B
