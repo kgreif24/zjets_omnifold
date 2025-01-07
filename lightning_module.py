@@ -32,7 +32,6 @@ class LOfTransformer(L.LightningModule):
         self,
         input_dim=3,
         test_plots=None,
-        log=False,
         debug=False,
         no_w1=False,
         seed=420,
@@ -55,7 +54,6 @@ class LOfTransformer(L.LightningModule):
             test_plots {str} -- The path to the directory where testing plots will be
                 stored for logging. None by default, in which case testing plots will
                 not be drawn
-            log {bool} -- Set to true if we want to log plots to wandb. False by default
             debug {bool} -- Set to true if we are running in debug mode, use simple
                 network on muons only
             no_w1 {bool} -- Set to true if we want to disable the wasserstein metric
@@ -76,7 +74,6 @@ class LOfTransformer(L.LightningModule):
         self.debug = debug
         self.no_w1 = no_w1
         self.seed = seed
-        self.log_things = log
         self.step = step
         self.min_lr = min_lr
         self.max_lr = max_lr
@@ -153,15 +150,7 @@ class LOfTransformer(L.LightningModule):
         self.log("val_loss", loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
         # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
-        self.val_auc(output, target)
-        self.log(
-            "val_auc",
-            self.val_auc,
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-            sync_dist=True,
-        )
+        self.val_auc.update(output, target)
 
         # Update wasserstein metric
         if not (self.debug or self.no_w1):
@@ -177,11 +166,20 @@ class LOfTransformer(L.LightningModule):
         # Don't do anything but reset metric on validation sanity check
         if not self.trainer.sanity_checking:
 
-            # Calculate wasserstein metric, and get dictionary of plots to log
-            val_wass, _ = self.wasserstein_val.compute(names=self.names)
+            # Calculate AUROC and log
+            val_auc = self.val_auc.compute()
+            self.log(
+                    "val_auc",
+                    val_auc,
+                    on_epoch=True,
+                    prog_bar=True,
+                    sync_dist=True,
+            )
+            self.val_auc.reset()
 
-            # Logging
-            if self.log_things:
+            # Calculate wasserstein metric and log
+            if not (self.debug or self.no_w1):
+                val_wass, _ = self.wasserstein_val.compute(names=self.names)
                 self.log(
                     "val_wasserstein",
                     val_wass,
@@ -189,9 +187,7 @@ class LOfTransformer(L.LightningModule):
                     prog_bar=False,
                     sync_dist=True,
                 )
-
-        # Reset metric
-        self.wasserstein_val.reset()
+                self.wasserstein_val.reset()
 
     # Test step
     def test_step(self, batch, batch_idx):
@@ -204,16 +200,8 @@ class LOfTransformer(L.LightningModule):
         network_weights = torch.exp(output)
         end_weights = network_weights * start_weights
 
-        # Calculate and log AUC
-        self.test_auc(output, target)
-        self.log(
-            "test_auc",
-            self.test_auc,
-            on_epoch=True,
-            on_step=False,
-            prog_bar=False,
-            sync_dist=False,
-        )
+        # Update AUC
+        self.test_auc.update(output, target)
 
         # Update wasserstein metric
         if not (self.debug or self.no_w1):
@@ -225,12 +213,22 @@ class LOfTransformer(L.LightningModule):
         # Just return if in debug mode or not using wasserstein metrics
         if self.debug or self.no_w1:
             return
+        
+        # Calculate and log AUC
+        test_auc = self.test_auc.compute()
+        self.log(
+            "test_auc",
+            test_auc,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=False,
+            sync_dist=False,
+        )
+        self.test_auc.reset()
 
-        # Calculate wasserstein metric, and get dictionary of plots to log
-        test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
-
-        # Logging
-        if self.log_things:
+        # Calculate and log wasserstein metric
+        if not (self.debug or self.no_w1):
+            test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
             self.log(
                 "test_wasserstein",
                 test_wass,
@@ -242,9 +240,7 @@ class LOfTransformer(L.LightningModule):
                 for key, histpath in plot_dict.items():
                     log_name = "test_" + key
                     self.logger.experiment.log({log_name: wandb.Image(histpath)})
-
-        # Reset metric
-        self.wasserstein_test.reset()
+            self.wasserstein_test.reset()
 
     # Prediction step
     def predict_step(self, batch, batch_idx):

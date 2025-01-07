@@ -198,7 +198,6 @@ class OfTrain:
 
             self.l_module = LOfTransformer(
                 input_dim=self.config.input_dim,
-                log=self.config.wandb,
                 debug=self.config.debug,
                 # Include the seed just so it is logged to W&B
                 seed=self.config.split_seed,
@@ -236,7 +235,6 @@ class OfTrain:
 
             self.l_module = LOfTransformer.load_from_checkpoint(
                 use_path,
-                log=self.config.wandb,
                 debug=self.config.debug,
                 step=self.step,
                 min_lr=min_lr,
