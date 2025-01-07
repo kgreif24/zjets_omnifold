@@ -62,9 +62,9 @@ def test_omnifold(tmp_path):
 
     # Check for pretrain checkpoints
     step1_glob = glob.glob(f"{tmp_path}/test-of/test-of-run_1/pretrain_step_1/*.ckpt")
-    assert len(step1_glob) == 1
+    assert len(step1_glob) == 2
     step2_glob = glob.glob(f"{tmp_path}/test-of/test-of-run_1/pretrain_step_2/*.ckpt")
-    assert len(step2_glob) == 1
+    assert len(step2_glob) == 2
 
     # Get root weights
     mc_test = uproot.open("./assets/evts_100_200.root")
@@ -168,7 +168,7 @@ def test_restart(tmp_path):
     # Look for final pre-train checkpoint
     assert (tmp_path / "test-of" / "test-of-run_1" / "pretrain_step_2").exists()
     check_glob = glob.glob(f"{tmp_path}/test-of/test-of-run_1/pretrain_step_2/*.ckpt")
-    assert len(check_glob) == 1
+    assert len(check_glob) == 2
 
 
 def test_checkpoint(tmp_path):

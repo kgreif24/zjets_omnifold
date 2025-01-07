@@ -66,7 +66,6 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
-        self.ws_path = ws_path
         self.restart_path = None
         self.split_seed = seed
 
@@ -107,7 +106,7 @@ class OfTrain:
 
         # If the checkpoint directory contains an HPC checkpoint,
         # we will restart training from the most recent checkpoint file
-        checkpoint_glob = glob.glob(f"{checkpoint_dir}/*.ckpt")
+        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/hpc*.ckpt")
         if len(checkpoint_glob) > 0:
             self.restart_path = sorted(
                 checkpoint_glob, key=os.path.getmtime, reverse=True
@@ -164,7 +163,7 @@ class OfTrain:
             ),
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
-            default_root_dir=checkpoint_dir,
+            default_root_dir=self.checkpoint_dir,
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
             reload_dataloaders_every_n_epochs=reload_dataloaders,
@@ -183,7 +182,8 @@ class OfTrain:
             max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
 
         # Build lightning module from scratch if we are not given a warm start parth
-        if (self.ws_path is None) and (self.restart_path is None):
+        # or a restart path
+        if (ws_path is None) and (self.restart_path is None):
 
             block_params = {
                 "dropout": self.config.block_dropout,
@@ -230,7 +230,7 @@ class OfTrain:
 
             # Note we give preference to the restart path if it exists
             use_path = (
-                self.restart_path if self.restart_path is not None else self.ws_path
+                self.restart_path if self.restart_path is not None else ws_path
             )
             rank_zero_info(f"Loading model from path {use_path}")
 
@@ -408,7 +408,6 @@ if __name__ == "__main__":
 
     # Print the run id and best model path
     rank_zero_info(f"\n###RUN ID###\n{run_id}")
-    rank_zero_info(f"\n###BEST MODEL PATH###\n{best_path}")
 
     # Print something and sleep a bit to flush the output
     print("...")

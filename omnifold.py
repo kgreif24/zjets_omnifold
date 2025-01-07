@@ -85,7 +85,6 @@ class Omnifolder:
             self.current_iteration = status["current_iteration"]
             self.current_step = status["current_step"]
             self.training = status["training"]
-            self.best_model_path = status["best_model_path"]
             self.run_id = status["run_id"]
             self.seed = status["seed"]
 
@@ -94,7 +93,6 @@ class Omnifolder:
             self.current_iteration = 0
             self.current_step = 1
             self.training = True
-            self.best_model_path = None
             self.run_id = None
             self.seed = self.cfg.split_seed
 
@@ -173,14 +171,6 @@ class Omnifolder:
             if self.seed == -1:
                 self.seed = np.random.randint(0, 10000)
 
-            # Determine checkpoint path to warm start from, if any
-            ws_path = None
-            if not pt:
-                if step == 1:
-                    ws_path = self.step_one_ws_path
-                elif step == 2:
-                    ws_path = self.step_two_ws_path
-
             # Run training as a subprocess
             train_args = [
                 "python",
@@ -196,9 +186,6 @@ class Omnifolder:
                 "--index",
                 str(self.index),
             ]
-            # Add warm start path if it exists
-            if ws_path is not None:
-                train_args += ["--ws_path", ws_path]
 
             # Add slurm arguments if we are using
             if self.use_slurm:
