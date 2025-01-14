@@ -10,7 +10,6 @@ import argparse
 import yaml
 import sys
 from datetime import datetime
-from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 
 class OfConfig:
@@ -372,11 +371,9 @@ class OfConfig:
 
         # If a configuration file is provided, load it
         if config_name is not None:
-            rank_zero_info(f"Loading configuration from file: {config_name}")
             with open(config_name, "r") as f:
                 self.config = yaml.safe_load(f)
         else:
-            rank_zero_info("No config given, using defaults and command line arguments")
             self.config = None
 
     def __getattr__(self, name):

@@ -23,9 +23,9 @@ def handle_signal(signum, frame):
     """ Signal handler for the program. """
     print(f"Received signal {signum}, propagating to {args.pid}.")
     os.kill(args.pid, signum)
-    print("Wait 2 minutes for requeue")
-    time.sleep(120)
-    print("Requeueing")
+    print("Wait 20 second for requeue")
+    time.sleep(20)
+    print("Requeue job! This also terminates the current job")
     os.system("scontrol requeue $SLURM_JOB_ID")
 
 
@@ -37,4 +37,4 @@ print(f"Listening for signals on PID {os.getpid()}.")
 signal.pause()
 
 # After we get signal, wait for a bit so signals send properly
-time.sleep(120)
+time.sleep(30)

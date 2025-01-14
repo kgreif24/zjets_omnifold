@@ -11,6 +11,8 @@ python3
 
 import os
 import argparse
+import signal
+
 import numpy as np
 import uproot
 import awkward as ak
@@ -257,7 +259,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=0,
             load_all=True,
             testing=False,
             use_truth=use_truth,
@@ -273,7 +275,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=0,
             load_all=True,
             testing=True,
             use_truth=use_truth,
@@ -486,6 +488,9 @@ class OfEval:
 
 # This function will be called as a subprocess from the Omnifolder class
 if __name__ == "__main__":
+
+    # Override the signal handler for SIGUSR1
+    signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run the omnifold evaluation")

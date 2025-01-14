@@ -13,8 +13,10 @@ import time
 import argparse
 import atexit
 import glob
+import signal
 
 import lightning as L
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.rank_zero import rank_zero_info
@@ -104,9 +106,9 @@ class OfTrain:
         else:
             ws_path = None
 
-        # If the checkpoint directory contains an HPC checkpoint,
+        # If the checkpoint directory contains a restartheckpoint,
         # we will restart training from the most recent checkpoint file
-        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/hpc*.ckpt")
+        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/restart*.ckpt")
         if len(checkpoint_glob) > 0:
             self.restart_path = sorted(
                 checkpoint_glob, key=os.path.getmtime, reverse=True
@@ -163,6 +165,7 @@ class OfTrain:
             ),
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
+            plugins=[SLURMEnvironment(auto_requeue=False)],
             default_root_dir=self.checkpoint_dir,
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
@@ -228,9 +231,7 @@ class OfTrain:
         else:
 
             # Note we give preference to the restart path if it exists
-            use_path = (
-                self.restart_path if self.restart_path is not None else ws_path
-            )
+            use_path = self.restart_path if self.restart_path is not None else ws_path
             rank_zero_info(f"Loading model from path {use_path}")
 
             self.l_module = LOfTransformer.load_from_checkpoint(
@@ -323,7 +324,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=0,
             testing=False,
             use_truth=use_truth,
         )
@@ -394,7 +395,7 @@ if __name__ == "__main__":
     )
     args, unknown = parser.parse_known_args()
 
-    # Run the training
+    # Build trainer
     trainer = OfTrain(
         args.config_path,
         args.iteration,
@@ -402,6 +403,19 @@ if __name__ == "__main__":
         seed=args.split_seed,
         index=args.index,
     )
+
+    # Override SIGUSR1 and SIGTERM signals to only save a checkpoint
+    def handle_signal(signum, frame):
+        """Signal handler for the program."""
+        print(f"Received signal {signum}, saving checkpoint.")
+        trainer.trainer.save_checkpoint(
+            f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
+        )
+
+    signal.signal(signal.SIGUSR1, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    # Run the training
     run_id, best_path = trainer.run()
 
     # Print the run id and best model path

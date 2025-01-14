@@ -13,7 +13,6 @@ import subprocess
 import json
 
 import numpy as np
-import torch
 import wandb
 
 from cli.of_config import OfConfig
@@ -53,12 +52,6 @@ class Omnifolder:
         print("\n\n###################################################")
         print("############## Welcome to Omnifold!! ##############")
         print("###################################################\n\n")
-
-        cuda_available = torch.cuda.is_available()
-        print("Is CUDA available: ", cuda_available)
-        if cuda_available:
-            print("CUDA device count: ", torch.cuda.device_count())
-            print("CUDA device name: ", torch.cuda.get_device_name(0))
 
         # Set config path and config object as instance variables
         self.config_path = config_path
@@ -104,6 +97,7 @@ class Omnifolder:
         self.end_iteration = self.cfg.num_iterations
         self.index = index
         self.use_slurm = use_slurm
+        self.made_checkpoint = False
 
         # Login to wandb
         if self.cfg.wandb:
@@ -196,11 +190,13 @@ class Omnifolder:
                     "--ntasks-per-node",
                     "1" if self.cfg.debug else str(self.cfg.num_gpus),
                     "--cpus-per-task",
-                    "30",
-                    "--cpu_bind=none",
+                    "4",
+                    "--cpu_bind=cores",
+                    "--mem-per-cpu=10G",
                     "--gpus-per-task",
                     "0" if self.cfg.debug else "1",
                     "--gpu-bind=none",
+                    "--overlap",
                 ]
                 train_args = slurm_args + train_args
             print(train_args)
@@ -219,7 +215,7 @@ class Omnifolder:
         print("Sleeping for 20 seconds")
         time.sleep(20)
 
-        # Reverse search output for run_id and best model path
+        # Reverse search output for run_id
         lines = output.split("\n")
         for i in reversed(range(len(lines))):
             if "###RUN ID###" in lines[i] and i + 1 < len(lines):
@@ -253,11 +249,13 @@ class Omnifolder:
                     "--ntasks-per-node",
                     "1",
                     "--cpus-per-task",
-                    "128",
-                    "--cpu_bind=none",
+                    "4",
+                    "--cpu_bind=cores",
+                    "--mem-per-cpu=50G",
                     "--gpus-per-task",
                     "1",
                     "--gpu-bind=none",
+                    "--overlap",
                 ]
                 eval_args = slurm_args + eval_args
             print(eval_args)
@@ -296,14 +294,20 @@ class Omnifolder:
         Returns: None
         """
 
-        # Write json file with the config path, current iteration, and
-        # any other relevant information
-        status = {
-            "current_iteration": self.current_iteration,
-            "current_step": self.current_step,
-            "training": self.training,
-            "run_id": self.run_id,
-            "seed": self.seed,
-        }
-        with open(f"{self.root_dir}/status.json", "w") as f:
-            json.dump(status, f)
+        # Only make a check point once, either on SIGUSR1 or SIGTERM
+        if not self.made_checkpoint:
+
+            # Write json file with the config path, current iteration, and
+            # any other relevant information
+            status = {
+                "current_iteration": self.current_iteration,
+                "current_step": self.current_step,
+                "training": self.training,
+                "run_id": self.run_id,
+                "seed": self.seed,
+            }
+            with open(f"{self.root_dir}/status.json", "w") as f:
+                json.dump(status, f)
+
+            print("Status saved to ", f"{self.root_dir}/status.json")
+            self.made_checkpoint = True

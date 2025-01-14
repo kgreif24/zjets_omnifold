@@ -9,7 +9,9 @@ python3
 
 import os
 import argparse
+import time
 import signal
+import subprocess
 from omnifold import Omnifolder
 
 # On perlmutter, need to set this environment variable to avoid a conflict
@@ -32,18 +34,35 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # Boot signal handler to enable checkpointing on timeout and preempt
+    signal_slurm_args = [
+        "srun",
+        "--nodes=1",
+        "--ntasks-per-node=1",
+        "--cpus-per-task=1",
+        "--mem-per-cpu=1M",
+        "--gpus-per-task=0",
+        "--overlap",
+    ]
+    signal_launch_args = ["python", "requeue_on_signal.py", "--pid", str(os.getpid())]
+    signal_args = signal_slurm_args + signal_launch_args
+    print("Signal handler start with args: ")
+    print(" ".join(signal_args))
+    signal_process = subprocess.Popen(signal_args)
+
     # Build Omnifolder class
     of = Omnifolder(
         args.config_path,
         index=args.ensemble_index,
     )
 
-    # Signal handler function for checkpointing
+    # Signal handling function
     def handle_signal(signum, frame):
         if signum == signal.SIGTERM or signum == signal.SIGUSR1:
-            print(f"Caught signal {signum}, making checkpoints")
+            print(f"Caught signal {signum}")
+            print(f"At time {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+            print("Creating checkpoint...")
             of.save_status()
-            return
 
     # Register signal handlers
     signal.signal(signal.SIGUSR1, handle_signal)
