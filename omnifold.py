@@ -80,6 +80,8 @@ class Omnifolder:
             self.training = status["training"]
             self.run_id = status["run_id"]
             self.seed = status["seed"]
+            print(f"Removing status file {status_file}")
+            os.remove(status_file)
 
         # Else configure to run from scratch
         else:

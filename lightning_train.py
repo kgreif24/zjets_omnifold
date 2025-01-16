@@ -346,12 +346,13 @@ class OfTrain:
             ckpt_path=self.restart_path,
         )
 
-        # Make symlink to best model
+        # Make symlink to best model using rank 0 process
         best_model_path = self.checkpoints.best_model_path
         best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
-        if os.path.exists(best_model_link):
-            os.remove(best_model_link)
-        os.symlink(best_model_path, best_model_link)
+        if self.trainer.global_rank == 0:
+            if os.path.exists(best_model_link):
+                os.remove(best_model_link)
+            os.symlink(best_model_path, best_model_link)
 
         # Close W&B
         if self.config.wandb:

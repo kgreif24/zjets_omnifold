@@ -23,10 +23,14 @@ def handle_signal(signum, frame):
     """ Signal handler for the program. """
     print(f"Received signal {signum}, propagating to {args.pid}.")
     os.kill(args.pid, signum)
-    print("Wait 20 second for requeue")
-    time.sleep(20)
-    print("Requeue job! This also terminates the current job")
-    os.system("scontrol requeue $SLURM_JOB_ID")
+    time.sleep(5)
+    os.system("sync")
+    # Only need to requeue on timeout, not preemption
+    if signum == signal.SIGUSR1:
+        print("Wait 20 second for requeue")
+        time.sleep(20)
+        print("Requeue job! This also terminates the current job")
+        os.system("scontrol requeue $SLURM_JOB_ID")
 
 
 signal.signal(signal.SIGUSR1, handle_signal)
