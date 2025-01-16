@@ -3,7 +3,7 @@ test_train_eval.py - Test suite for the OfTrain / OfEval classes
 """
 
 from lightning_train import OfTrain
-# from lightning_eval import OfEval
+from lightning_eval import OfEval
 from cli.of_config import OfConfig
 
 
@@ -33,7 +33,6 @@ def test_lightning_train(tmp_path):
     ).exists()
 
 
-"""
 def test_lightning_eval(tmp_path):
 
     try:
@@ -60,4 +59,3 @@ def test_lightning_eval(tmp_path):
 
     except Exception:
         assert False
-"""
