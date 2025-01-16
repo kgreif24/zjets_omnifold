@@ -12,8 +12,11 @@ import os
 import time
 import argparse
 import atexit
+import glob
+import signal
 
 import lightning as L
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.rank_zero import rank_zero_info
@@ -65,6 +68,7 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
+        self.restart_path = None
         self.split_seed = seed
 
         # Modify the group name if an index is provided
@@ -101,6 +105,14 @@ class OfTrain:
                 )
         else:
             ws_path = None
+
+        # If the checkpoint directory contains a restartheckpoint,
+        # we will restart training from the most recent checkpoint file
+        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/restart*.ckpt")
+        if len(checkpoint_glob) > 0:
+            self.restart_path = sorted(
+                checkpoint_glob, key=os.path.getmtime, reverse=True
+            )[0]
 
         # ---------------- Lightning setup ----------------
 
@@ -153,6 +165,8 @@ class OfTrain:
             ),
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
+            plugins=[SLURMEnvironment(auto_requeue=False)],
+            default_root_dir=self.checkpoint_dir,
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
             reload_dataloaders_every_n_epochs=reload_dataloaders,
@@ -171,7 +185,8 @@ class OfTrain:
             max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
 
         # Build lightning module from scratch if we are not given a warm start parth
-        if ws_path is None:
+        # or a restart path
+        if (ws_path is None) and (self.restart_path is None):
 
             block_params = {
                 "dropout": self.config.block_dropout,
@@ -186,7 +201,6 @@ class OfTrain:
 
             self.l_module = LOfTransformer(
                 input_dim=self.config.input_dim,
-                log=self.config.wandb,
                 debug=self.config.debug,
                 # Include the seed just so it is logged to W&B
                 seed=self.config.split_seed,
@@ -213,11 +227,15 @@ class OfTrain:
                 num_layers=self.config.num_layers,
             )
 
-        # Else load the model from the warm start path
+        # Else load the model from the restart or warm start path
         else:
+
+            # Note we give preference to the restart path if it exists
+            use_path = self.restart_path if self.restart_path is not None else ws_path
+            rank_zero_info(f"Loading model from path {use_path}")
+
             self.l_module = LOfTransformer.load_from_checkpoint(
-                ws_path,
-                log=self.config.wandb,
+                use_path,
                 debug=self.config.debug,
                 step=self.step,
                 min_lr=min_lr,
@@ -306,7 +324,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=0,
             testing=False,
             use_truth=use_truth,
         )
@@ -320,15 +338,21 @@ class OfTrain:
         {string} - The run id for this training run
         """
 
-        # Run training
-        self.trainer.fit(self.l_module, self.d_module)
+        # Run training, pickup from restart path if available
+        # If we only have a warm start path, start from the beginning
+        self.trainer.fit(
+            self.l_module,
+            self.d_module,
+            ckpt_path=self.restart_path,
+        )
 
-        # Make symlink to best model
+        # Make symlink to best model using rank 0 process
         best_model_path = self.checkpoints.best_model_path
         best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
-        if os.path.exists(best_model_link):
-            os.remove(best_model_link)
-        os.symlink(best_model_path, best_model_link)
+        if self.trainer.global_rank == 0:
+            if os.path.exists(best_model_link):
+                os.remove(best_model_link)
+            os.symlink(best_model_path, best_model_link)
 
         # Close W&B
         if self.config.wandb:
@@ -372,7 +396,7 @@ if __name__ == "__main__":
     )
     args, unknown = parser.parse_known_args()
 
-    # Run the training
+    # Build trainer
     trainer = OfTrain(
         args.config_path,
         args.iteration,
@@ -380,11 +404,23 @@ if __name__ == "__main__":
         seed=args.split_seed,
         index=args.index,
     )
+
+    # Override SIGUSR1 and SIGTERM signals to only save a checkpoint
+    def handle_signal(signum, frame):
+        """Signal handler for the program."""
+        print(f"Received signal {signum}, saving checkpoint.")
+        trainer.trainer.save_checkpoint(
+            f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
+        )
+
+    signal.signal(signal.SIGUSR1, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    # Run the training
     run_id, best_path = trainer.run()
 
     # Print the run id and best model path
     rank_zero_info(f"\n###RUN ID###\n{run_id}")
-    rank_zero_info(f"\n###BEST MODEL PATH###\n{best_path}")
 
     # Print something and sleep a bit to flush the output
     print("...")

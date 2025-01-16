@@ -9,6 +9,9 @@ python3
 
 import os
 import argparse
+import time
+import signal
+import subprocess
 from omnifold import Omnifolder
 
 # On perlmutter, need to set this environment variable to avoid a conflict
@@ -24,38 +27,46 @@ if __name__ == "__main__":
         "--config_path", type=str, default=None, help="Path to the configuration file"
     )
     parser.add_argument(
-        "--continue_iteration",
-        type=int,
-        default=0,
-        help="The restart iteration number for this run",
-    )
-    parser.add_argument(
-        "--continue_step_two",
-        action="store_true",
-        help="If true, will continue from step two and then proceed as usual",
-    )
-    parser.add_argument(
         "--ensemble_index",
         default=-1,
         type=int,
         help="The index of the ensemble to run",
     )
-    parser.add_argument(
-        "--no_slurm",
-        action="store_true",
-        help=(
-            "If true, will not prepend training and evaluation"
-            "commands with slurm directives"
-        ),
-    )
     args = parser.parse_args()
 
-    # Run Omnifold!
+    # Boot signal handler to enable checkpointing on timeout and preempt
+    signal_slurm_args = [
+        "srun",
+        "--nodes=1",
+        "--ntasks-per-node=1",
+        "--cpus-per-task=1",
+        "--mem-per-cpu=1M",
+        "--gpus-per-task=0",
+        "--overlap",
+    ]
+    signal_launch_args = ["python", "requeue_on_signal.py", "--pid", str(os.getpid())]
+    signal_args = signal_slurm_args + signal_launch_args
+    print("Signal handler start with args: ")
+    print(" ".join(signal_args))
+    signal_process = subprocess.Popen(signal_args)
+
+    # Build Omnifolder class
     of = Omnifolder(
         args.config_path,
-        continue_iteration=args.continue_iteration,
-        continue_step_two=args.continue_step_two,
         index=args.ensemble_index,
-        use_slurm=not args.no_slurm,
     )
+
+    # Signal handling function
+    def handle_signal(signum, frame):
+        if signum == signal.SIGTERM or signum == signal.SIGUSR1:
+            print(f"Caught signal {signum}")
+            print(f"At time {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+            print("Creating checkpoint...")
+            of.save_status()
+
+    # Register signal handlers
+    signal.signal(signal.SIGUSR1, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    # Run the omnifold algorithm
     of.run_of()

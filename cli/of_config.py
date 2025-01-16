@@ -10,7 +10,6 @@ import argparse
 import yaml
 import sys
 from datetime import datetime
-from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 
 class OfConfig:
@@ -58,7 +57,7 @@ class OfConfig:
             "--mc_train_path",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "/pscratch/sd/k/kgreif/data/"
                 "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root"
             ),
             help="Path for the MC training data",
@@ -67,7 +66,7 @@ class OfConfig:
             "--mc_test_path",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "/pscratch/sd/k/kgreif/data/"
                 "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root"
             ),
             help="Path for the MC testing data",
@@ -76,7 +75,7 @@ class OfConfig:
             "--data_path",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "/pscratch/sd/k/kgreif/data/"
                 "WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root"
             ),
             help="Path for the data",
@@ -85,7 +84,7 @@ class OfConfig:
             "--truth_data_path",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "/pscratch/sd/k/kgreif/data/"
                 "WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root"
             ),
             help="Path to the truth pseudodata",
@@ -94,7 +93,7 @@ class OfConfig:
             "--pretrain_path",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files/"
+                "/pscratch/sd/k/kgreif/data/"
                 "WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root"
             ),
             help="Path to the file to use in pretraining",
@@ -372,11 +371,9 @@ class OfConfig:
 
         # If a configuration file is provided, load it
         if config_name is not None:
-            rank_zero_info(f"Loading configuration from file: {config_name}")
             with open(config_name, "r") as f:
                 self.config = yaml.safe_load(f)
         else:
-            rank_zero_info("No config given, using defaults and command line arguments")
             self.config = None
 
     def __getattr__(self, name):

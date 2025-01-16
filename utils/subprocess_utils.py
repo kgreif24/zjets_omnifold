@@ -3,6 +3,7 @@ https://gist.github.com/nawatts/e2cdca610463200c12eac2a14efc0bfb
 """
 
 import io
+import os
 import selectors
 import subprocess
 import sys
@@ -17,6 +18,7 @@ def capture_subprocess_output(subprocess_args):
     # universal_newlines = True is required for line buffering
     process = subprocess.Popen(
         subprocess_args,
+        preexec_fn=os.setsid,
         bufsize=1,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

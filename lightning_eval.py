@@ -11,10 +11,13 @@ python3
 
 import os
 import argparse
+import signal
+
 import numpy as np
 import uproot
 import awkward as ak
 import lightning as L
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 
@@ -145,7 +148,6 @@ class OfEval:
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
             test_plots=self.test_dir,
-            log=self.config.wandb,
             debug=self.config.debug,
             step=self.step,
         )
@@ -156,6 +158,7 @@ class OfEval:
             num_nodes=1,
             devices=1,
             logger=self.wandb_logger,
+            plugins=[SLURMEnvironment(auto_requeue=False)],
             enable_progress_bar=self.config.interactive,
             fast_dev_run=unit_test,
             use_distributed_sampler=False,
@@ -256,7 +259,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=0,
             load_all=True,
             testing=False,
             use_truth=use_truth,
@@ -272,7 +275,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=10,
+            dataloader_workers=0,
             load_all=True,
             testing=True,
             use_truth=use_truth,
@@ -485,6 +488,9 @@ class OfEval:
 
 # This function will be called as a subprocess from the Omnifolder class
 if __name__ == "__main__":
+
+    # Override the signal handler for SIGUSR1
+    signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run the omnifold evaluation")
