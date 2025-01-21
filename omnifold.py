@@ -208,21 +208,21 @@ class Omnifolder:
                 train_args,
             )
 
-        # Exit on non-zero return code
-        if train_code != 0:
-            print(f"Error running training subprocess! Code {train_code}")
-            sys.exit(train_code)
+            # Exit on non-zero return code
+            if train_code != 0:
+                print(f"Error running training subprocess! Code {train_code}")
+                sys.exit(train_code)
 
-        # Sleep for a bit to ensure all resources are released
-        print("Sleeping for 20 seconds")
-        time.sleep(20)
+            # Sleep for a bit to ensure all resources are released
+            print("Sleeping for 4 minutes")
+            time.sleep(240)
 
-        # Reverse search output for run_id
-        lines = output.split("\n")
-        for i in reversed(range(len(lines))):
-            if "###RUN ID###" in lines[i] and i + 1 < len(lines):
-                self.run_id = lines[i + 1]
-                break
+            # Reverse search output for run_id
+            lines = output.split("\n")
+            for i in reversed(range(len(lines))):
+                if "###RUN ID###" in lines[i] and i + 1 < len(lines):
+                    self.run_id = lines[i + 1]
+                    break
 
         # Only care about running evaluation if this is not a pre-training step
         if self.current_iteration > 0:
@@ -251,9 +251,9 @@ class Omnifolder:
                     "--ntasks-per-node",
                     "1",
                     "--cpus-per-task",
-                    "4",
+                    "128",
                     "--cpu_bind=cores",
-                    "--mem-per-cpu=50G",
+                    "--mem-per-cpu=1.5G",
                     "--gpus-per-task",
                     "1",
                     "--gpu-bind=none",
@@ -262,20 +262,15 @@ class Omnifolder:
                 eval_args = slurm_args + eval_args
             print(eval_args)
 
-            # Run evaluation subprocess
-            try:
-                process = subprocess.Popen(
-                    eval_args,
-                    preexec_fn=os.setsid,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                process.wait()
+            # Run training subprocess
+            eval_code, output = capture_subprocess_output(
+                eval_args,
+            )
 
-            except Exception as e:
-                print(f"Error running evaluation subprocess! {e}")
-                sys.exit(1)
+            # Exit on non-zero return code
+            if eval_code != 0:
+                print(f"Error running evaluation subprocess! Code {eval_code}")
+                sys.exit(eval_code)
 
         # Set training flag to True and model paths / IDs to None
         self.training = True
