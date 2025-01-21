@@ -203,7 +203,7 @@ class OfTrain:
                 input_dim=self.config.input_dim,
                 debug=self.config.debug,
                 # Include the seed just so it is logged to W&B
-                seed=self.config.split_seed,
+                seed=self.split_seed,
                 # Include the OF step for plots
                 step=self.step,
                 min_lr=min_lr,
