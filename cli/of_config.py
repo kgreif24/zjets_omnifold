@@ -131,7 +131,7 @@ class OfConfig:
             "--batch_size", type=int, default=256, help="Batch size for training"
         )
         self.parser.add_argument(
-            "--test_batch_size", type=int, default=256, help="Batch size for testing"
+            "--test_batch_size", type=int, default=512, help="Batch size for testing"
         )
         self.parser.add_argument(
             "--max_epochs",

@@ -252,7 +252,7 @@ class Omnifolder:
                     "1",
                     "--cpus-per-task",
                     "128",
-                    "--cpu_bind=cores",
+                    "--cpu_bind=threads",
                     "--mem-per-cpu=1790M",
                     "--gpus-per-task",
                     "1",
