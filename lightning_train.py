@@ -237,6 +237,7 @@ class OfTrain:
             self.l_module = LOfTransformer.load_from_checkpoint(
                 use_path,
                 debug=self.config.debug,
+                seed=self.split_seed,
                 step=self.step,
                 min_lr=min_lr,
                 max_lr=max_lr,
