@@ -190,9 +190,9 @@ class Omnifolder:
                     "--ntasks-per-node",
                     "1" if self.cfg.debug else str(self.cfg.num_gpus),
                     "--cpus-per-task",
-                    "4",
-                    "--cpu_bind=cores",
-                    "--mem-per-cpu=10G",
+                    "32",
+                    "--cpu-bind=none",
+                    "--mem-per-cpu=1790M",
                     "--gpus-per-task",
                     "0" if self.cfg.debug else "1",
                     "--gpu-bind=none",
@@ -221,6 +221,9 @@ class Omnifolder:
                 if "###RUN ID###" in lines[i] and i + 1 < len(lines):
                     self.run_id = lines[i + 1]
                     break
+
+            # Set flag to mark training finished
+            self.training = False
 
         # Only care about running evaluation if this is not a pre-training step
         if self.current_iteration > 0:
@@ -252,7 +255,7 @@ class Omnifolder:
                     "1",
                     "--cpus-per-task",
                     "128",
-                    "--cpu_bind=threads",
+                    "--cpu-bind=none",
                     "--mem-per-cpu=1790M",
                     "--gpus-per-task",
                     "1",
