@@ -106,7 +106,7 @@ class OfTrain:
         else:
             ws_path = None
 
-        # If the checkpoint directory contains a restartheckpoint,
+        # If the checkpoint directory contains a restart checkpoint,
         # we will restart training from the most recent checkpoint file
         checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/restart*.ckpt")
         if len(checkpoint_glob) > 0:
@@ -237,6 +237,7 @@ class OfTrain:
             self.l_module = LOfTransformer.load_from_checkpoint(
                 use_path,
                 debug=self.config.debug,
+                seed=self.split_seed,
                 step=self.step,
                 min_lr=min_lr,
                 max_lr=max_lr,
@@ -324,7 +325,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
-            dataloader_workers=0,
+            dataloader_workers=1,
             testing=False,
             use_truth=use_truth,
         )

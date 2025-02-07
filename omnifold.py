@@ -100,10 +100,8 @@ class Omnifolder:
         self.index = index
         self.use_slurm = use_slurm
         self.made_checkpoint = False
-
-        # Login to wandb
-        if self.cfg.wandb:
-            wandb.login()
+        self.head_node = os.getenv("SLURMD_NODENAME", None)
+        print("Head node is ", self.head_node)
 
     def run_of(self):
         """run_of - Run the whole Omnifold procedure from start to finish.
@@ -192,9 +190,9 @@ class Omnifolder:
                     "--ntasks-per-node",
                     "1" if self.cfg.debug else str(self.cfg.num_gpus),
                     "--cpus-per-task",
-                    "4",
-                    "--cpu_bind=cores",
-                    "--mem-per-cpu=10G",
+                    "32",
+                    "--cpu-bind=none",
+                    "--mem-per-cpu=1790M",
                     "--gpus-per-task",
                     "0" if self.cfg.debug else "1",
                     "--gpu-bind=none",
@@ -224,6 +222,9 @@ class Omnifolder:
                     self.run_id = lines[i + 1]
                     break
 
+            # Set flag to mark training finished
+            self.training = False
+
         # Only care about running evaluation if this is not a pre-training step
         if self.current_iteration > 0:
             print(f"\n## Step {step} Evaluating ##\n")
@@ -246,14 +247,16 @@ class Omnifolder:
             if self.use_slurm:
                 slurm_args = [
                     "srun",
-                    "-n",
+                    "--nodes",
                     "1",
+                    "--nodelist",
+                    str(self.head_node),
                     "--ntasks-per-node",
                     "1",
                     "--cpus-per-task",
                     "128",
-                    "--cpu_bind=cores",
-                    "--mem-per-cpu=1.5G",
+                    "--cpu-bind=none",
+                    "--mem-per-cpu=1790M",
                     "--gpus-per-task",
                     "1",
                     "--gpu-bind=none",
@@ -261,16 +264,10 @@ class Omnifolder:
                 ]
                 eval_args = slurm_args + eval_args
             print(eval_args)
-
-            # Run training subprocess
-            eval_code, output = capture_subprocess_output(
-                eval_args,
-            )
-
-            # Exit on non-zero return code
-            if eval_code != 0:
-                print(f"Error running evaluation subprocess! Code {eval_code}")
-                sys.exit(eval_code)
+            process = subprocess.run(eval_args)
+            if process.returncode != 0:
+                print(f"Error running evaluation subprocess! Code {process.returncode}")
+                sys.exit(process.returncode)
 
         # Set training flag to True and model paths / IDs to None
         self.training = True

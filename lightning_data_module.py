@@ -19,6 +19,7 @@ import awkward as ak
 from of_dataset import OfDataset
 import utils.data_utils as du
 import utils.plotting_utils as pu
+import utils.subprocess_utils as su
 
 
 class LOfData(L.LightningDataModule):
@@ -663,6 +664,7 @@ class LOfData(L.LightningDataModule):
             sampler=torch.utils.data.RandomSampler(train_dataset, generator=generator),
             num_workers=self.dataloader_workers,
             collate_fn=du.null_collate,
+            worker_init_fn=su.worker_init_fn,
         )
 
     # Validation dataloader
@@ -687,6 +689,7 @@ class LOfData(L.LightningDataModule):
             sampler=torch.utils.data.SequentialSampler(val_dataset),
             num_workers=self.dataloader_workers,
             collate_fn=du.null_collate,
+            worker_init_fn=su.worker_init_fn,
         )
 
     # Test dataloader
@@ -708,6 +711,7 @@ class LOfData(L.LightningDataModule):
             sampler=torch.utils.data.SequentialSampler(self.all_dataset),
             num_workers=self.dataloader_workers,
             collate_fn=du.null_collate,
+            worker_init_fn=su.worker_init_fn,
         )
 
     # Predict dataloader
@@ -733,4 +737,5 @@ class LOfData(L.LightningDataModule):
             sampler=torch.utils.data.SequentialSampler(self.source_dataset),
             num_workers=self.dataloader_workers,
             collate_fn=du.null_collate,
+            worker_init_fn=su.worker_init_fn,
         )

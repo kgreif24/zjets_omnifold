@@ -132,22 +132,17 @@ class OfEval:
                 name=self.run_name,
                 save_dir=self.checkpoint_dir,
                 id=self.run_id,
-                resume="must",
+                resume="allow",
             )
-
-            # Get run ID
-            self.run_id = self.wandb_logger.experiment.id
 
         # Else we use no logger
         else:
             self.wandb_logger = None
-            # Set a dummy run ID
-            self.run_id = "test_run"
 
         # Load model checkpoint
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
-            test_plots=self.test_dir,
+            test_plots=self.test_dir if self.config.wandb else None,
             debug=self.config.debug,
             step=self.step,
         )
