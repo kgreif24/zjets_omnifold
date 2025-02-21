@@ -4,6 +4,7 @@ test_omnifold.py - Test suite for the Omnifolder class
 
 import os
 import shutil
+import pathlib
 import glob
 import pytest
 import json
@@ -47,8 +48,6 @@ def test_omnifold(tmp_path):
     assert (
         tmp_path / "test-of" / "test-of-run_1" / "weights" / "iteration_2_step_2.npz"
     ).exists()
-    assert (tmp_path / "test-of" / "test-of-run_1" / "pretrain_step_1").exists()
-    assert (tmp_path / "test-of" / "test-of-run_1" / "pretrain_step_2").exists()
     assert (tmp_path / "test-of" / "test-of-run_1" / "iteration_1_step_1").exists()
     assert (
         tmp_path / "test-of" / "test-of-run_1" / "iteration_1_step_1" / "comp_plots"
@@ -59,12 +58,6 @@ def test_omnifold(tmp_path):
     assert (tmp_path / "test-of" / "test-of-run_1" / "iteration_1_step_2").exists()
     assert (tmp_path / "test-of" / "test-of-run_1" / "iteration_2_step_1").exists()
     assert (tmp_path / "test-of" / "test-of-run_1" / "iteration_2_step_2").exists()
-
-    # Check for pretrain checkpoints
-    step1_glob = glob.glob(f"{tmp_path}/test-of/test-of-run_1/pretrain_step_1/*.ckpt")
-    assert len(step1_glob) == 2
-    step2_glob = glob.glob(f"{tmp_path}/test-of/test-of-run_1/pretrain_step_2/*.ckpt")
-    assert len(step2_glob) == 2
 
     # Get root weights
     mc_test = uproot.open("./assets/evts_100_200.root")
@@ -149,25 +142,41 @@ def test_restart(tmp_path):
     config = OfConfig(config_name="./assets/test_of.yml")
 
     # Overwrite the checkpoint dir with the tmp path, and make
-    # it so we only run pre-training
+    # it so we only run one iteration
     config.mod_config("checkpoint_dir", tmp_path)
-    config.mod_config("num_iterations", 0)
+    config.mod_config("num_iterations", 1)
 
     # Write the config to a file
     config.create_template(template_path=f"{tmp_path}/test_of.yml")
     assert (tmp_path / "test_of.yml").exists()
 
-    # Copy status.json from assets to tmp_path
-    shutil.copy("./assets/status.json", tmp_path)
-    assert (tmp_path / "status.json").exists()
+    # Make a directory for the Omnifold run
+    run_dir = pathlib.Path(f"{tmp_path}/test-of/test-of-run_1")
+    check_dir = pathlib.Path(f"{tmp_path}/test-of/test-of-run_1/iteration_1_step_2")
+    weight_dir = pathlib.Path(f"{tmp_path}/test-of/test-of-run_1/weights")
+    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(check_dir, exist_ok=True)
+    os.makedirs(weight_dir, exist_ok=True)
+
+    # Save some dummy weights
+    np.savez(
+        f"{weight_dir}/iteration_1_step_1.npz",
+        train=np.ones(100),
+        test=np.ones(100),
+    )
+
+    # Copy status.json and checkpoint from assets to tmp_path
+    shutil.copy("./assets/status.json", run_dir)
+    assert (run_dir / "status.json").exists()
+    shutil.copy("./assets/debug_checkpoint.ckpt", f"{check_dir}/restart.ckpt")
+    assert (check_dir / "restart.ckpt").exists()
 
     # Make omnifolder object
     of = Omnifolder(f"{tmp_path}/test_of.yml", use_slurm=False, index=1)
     of.run_of()
 
     # Look for final pre-train checkpoint
-    assert (tmp_path / "test-of" / "test-of-run_1" / "pretrain_step_2").exists()
-    check_glob = glob.glob(f"{tmp_path}/test-of/test-of-run_1/pretrain_step_2/*.ckpt")
+    check_glob = glob.glob(f"{check_dir}/*.ckpt")
     assert len(check_glob) == 2
 
 

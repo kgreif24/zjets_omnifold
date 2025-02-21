@@ -4,7 +4,7 @@ and training for an omnifolder classifier using pytorch lightning. It also defin
 easy parallelism.
 
 Author: Kevin Greif
-Last updated 03/08/2024
+Last updated 02/21/2025
 python3
 """
 
@@ -94,14 +94,13 @@ class OfTrain:
 
         # If we are running itertaion >= 1, get warm start path
         if iteration >= 1:
-            if step == 1:
+            if self.config.pretrain_checkpoint is None:
                 ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
             else:
-                ws_path = f"{root_dir}/pretrain_step_2/best_model.ckpt"
+                ws_path = self.config.pretrain_checkpoint
             if not os.path.exists(ws_path):
                 raise FileNotFoundError(
                     f"Could not find warm start path {ws_path}. "
-                    "Please ensure the pretraining runs have completed."
                 )
         else:
             ws_path = None
@@ -151,12 +150,6 @@ class OfTrain:
         )
 
         # Build trainer
-        # Only need to reload dataloaders if we are pretraining and request in config
-        reload_dataloaders = (
-            True
-            if (self.iteration == 0 and self.config.num_pretrain_pieces > 1)
-            else False
-        )
         self.trainer = L.Trainer(
             accelerator="auto" if (self.config.debug or unit_test) else "gpu",
             num_nodes=self.config.num_nodes,
@@ -169,20 +162,25 @@ class OfTrain:
             default_root_dir=self.checkpoint_dir,
             max_epochs=self.config.max_epochs,
             enable_progress_bar=self.config.interactive,
-            reload_dataloaders_every_n_epochs=reload_dataloaders,
             use_distributed_sampler=False,
         )
 
-        # Get min/max learning rates depending on step
+        # Get min/max learning rates and cycle rates depending on step
         if self.iteration == 0:
             min_lr = self.config.pt_min_lr
             max_lr = self.config.pt_max_lr
+            cycle_steps = self.config.pt_cycle_steps
+            warmup_steps = self.config.pt_warmup_steps
         elif self.step == 1:
             min_lr = self.config.s1_min_lr
             max_lr = self.config.s1_max_lr * (self.config.s1_max_decay**self.iteration)
+            cycle_steps = self.config.s1_cycle_steps
+            warmup_steps = self.config.s1_warmup_steps
         else:
             min_lr = self.config.s2_min_lr
             max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
+            cycle_steps = self.config.s2_cycle_steps
+            warmup_steps = self.config.s2_warmup_steps
 
         # Build lightning module from scratch if we are not given a warm start parth
         # or a restart path
@@ -208,8 +206,8 @@ class OfTrain:
                 step=self.step,
                 min_lr=min_lr,
                 max_lr=max_lr,
-                cycle_steps=self.config.cycle_steps,
-                warmup_steps=self.config.warmup_steps,
+                cycle_steps=cycle_steps,
+                warmup_steps=warmup_steps,
                 gamma=self.config.gamma,
                 # Everything below here are parameters for the network
                 num_classes=1,
@@ -241,8 +239,8 @@ class OfTrain:
                 step=self.step,
                 min_lr=min_lr,
                 max_lr=max_lr,
-                cycle_steps=self.config.cycle_steps,
-                warmup_steps=self.config.warmup_steps,
+                cycle_steps=cycle_steps,
+                warmup_steps=warmup_steps,
                 gamma=self.config.gamma,
             )
 
@@ -316,9 +314,7 @@ class OfTrain:
             target_file=target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            data_divisor=(
-                self.config.num_pretrain_pieces if self.iteration == 0 else 1
-            ),  # Only need to use data divisor in pretraining
+            data_divisor=1,
             total_rank=int(self.config.num_nodes * self.config.num_gpus),
             rank=self.trainer.global_rank,
             max_tracks=self.config.max_tracks,

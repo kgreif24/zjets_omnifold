@@ -70,10 +70,10 @@ def worker_init_fn(worker_id):
     cpus_per_worker = max(1, num_cpus // torch.utils.data.get_worker_info().num_workers)
 
     # Assign each worker to a specific set of CPUs
-    cpu_range = list(range(worker_id * cpus_per_worker, (worker_id + 1) * cpus_per_worker))
-    
+    cpu_range = list(
+        range(worker_id * cpus_per_worker, (worker_id + 1) * cpus_per_worker)
+    )
+
     # Set CPU affinity for this worker
     p = psutil.Process(os.getpid())
     p.cpu_affinity(cpu_range)
-
-    print(f"Worker {worker_id} bound to CPUs: {cpu_range}")

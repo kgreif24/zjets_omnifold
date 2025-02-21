@@ -16,4 +16,5 @@ fastjet/obj
 *.out
 .vscode
 fastjet/out
+fastjet/copies
 experiments

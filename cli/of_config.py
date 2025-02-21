@@ -51,6 +51,18 @@ class OfConfig:
             default=6,
             help="Number of iterations to run the Omnifold algorithm",
         )
+        self.parser.add_argument(
+            "--pretrain_checkpoint",
+            type=str,
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/omnifold-tuning/"
+                "pretrain/run-9/epoch=8-step=20097.ckpt"
+            ),
+            help=(
+                "Path to checkpoint which will be used as the starting point"
+                "for all iterations"
+            ),
+        )
 
         # Data
         self.parser.add_argument(
@@ -58,7 +70,8 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root"
+                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_"
+                "train_Mar1023_shuffled.root"
             ),
             help="Path for the MC training data",
         )
@@ -67,7 +80,8 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root"
+                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_"
+                "test_Mar0723_shuffled.root"
             ),
             help="Path for the MC testing data",
         )
@@ -76,7 +90,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root"
+                "WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All_shuffled.root"
             ),
             help="Path for the data",
         )
@@ -94,7 +108,8 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all.root"
+                "WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_"
+                "Pretrain_all_shuffled.root"
             ),
             help="Path to the file to use in pretraining",
         )
@@ -112,12 +127,6 @@ class OfConfig:
             type=int,
             default=264,
             help="Maximum number of tracks to use in the data",
-        )
-        self.parser.add_argument(
-            "--num_pretrain_pieces",
-            type=int,
-            default=3,
-            help="Number of pieces to split the pretraining data into",
         )
         self.parser.add_argument(
             "--max_events_target",
@@ -143,13 +152,13 @@ class OfConfig:
         self.parser.add_argument(
             "--top_k_checkpoints",
             type=int,
-            default=5,
+            default=1,
             help="Number of top checkpoints to save",
         )
         self.parser.add_argument(
             "--early_stopping_patience",
             type=int,
-            default=12,
+            default=8,
             help="Number of epochs to wait before stopping training",
         )
         self.parser.add_argument(
@@ -176,6 +185,18 @@ class OfConfig:
             help="Maximum learning rate for pre-training",
         )
         self.parser.add_argument(
+            "--pt_cycle_steps",
+            type=int,
+            default=32000,
+            help="Number of steps in a cycle for pre-training",
+        )
+        self.parser.add_argument(
+            "--pt_warmup_steps",
+            type=int,
+            default=8000,
+            help="Number of steps to warm up the learning rate for pre-training",
+        )
+        self.parser.add_argument(
             "--s1_min_lr",
             type=float,
             default=0.000008,
@@ -186,6 +207,18 @@ class OfConfig:
             type=float,
             default=0.00005,
             help="Maximum learning rate for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_cycle_steps",
+            type=int,
+            default=5000,
+            help="Number of steps in a cycle for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_warmup_steps",
+            type=int,
+            default=0,
+            help="Number of steps to warm up the learning rate for step one training",
         )
         self.parser.add_argument(
             "--s2_min_lr",
@@ -200,6 +233,18 @@ class OfConfig:
             help="Maximum learning rate for step two training",
         )
         self.parser.add_argument(
+            "--s2_cycle_steps",
+            type=int,
+            default=12000,
+            help="Number of steps in a cycle for step two training",
+        )
+        self.parser.add_argument(
+            "--s2_warmup_steps",
+            type=int,
+            default=0,
+            help="Number of steps to warm up the learning rate for step two training",
+        )
+        self.parser.add_argument(
             "--s1_max_decay",
             type=float,
             default=1.0,
@@ -210,15 +255,6 @@ class OfConfig:
             type=float,
             default=1.0,
             help="Decay with iteration for step two trainings maximum learning rate",
-        )
-        self.parser.add_argument(
-            "--cycle_steps", type=int, default=50000, help="Number of steps in a cycle"
-        )
-        self.parser.add_argument(
-            "--warmup_steps",
-            type=int,
-            default=10000,
-            help="Number of steps to warm up the learning rate",
         )
         self.parser.add_argument(
             "--gamma",
@@ -289,7 +325,7 @@ class OfConfig:
         )
 
         self.parser.add_argument(
-            "--num_layers", type=int, default=8, help="Number of layers for the model"
+            "--num_layers", type=int, default=6, help="Number of layers for the model"
         )
         self.parser.add_argument(
             "--block_dropout",
@@ -313,7 +349,7 @@ class OfConfig:
         self.parser.add_argument(
             "--num_cls_layers",
             type=int,
-            default=2,
+            default=1,
             help="Number of classification layers for the model",
         )
         self.parser.add_argument(

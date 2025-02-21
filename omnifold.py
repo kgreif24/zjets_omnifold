@@ -13,7 +13,6 @@ import subprocess
 import json
 
 import numpy as np
-import wandb
 
 from cli.of_config import OfConfig
 from utils.subprocess_utils import capture_subprocess_output
@@ -85,7 +84,7 @@ class Omnifolder:
 
         # Else configure to run from scratch
         else:
-            self.current_iteration = 0
+            self.current_iteration = 1
             self.current_step = 1
             self.training = True
             self.run_id = None
@@ -111,11 +110,6 @@ class Omnifolder:
 
         print("\n############## Running Omnifold ##############\n")
 
-        # Pre-train step if this is iteration 0
-        if self.current_iteration == 0:
-            self.pre_train()
-            self.current_iteration = 1
-
         # Omnifold Loop
         first_iteration = True
         for i in range(self.current_iteration, self.end_iteration + 1):  # 1-indexed
@@ -129,20 +123,6 @@ class Omnifolder:
                 self.run_step(2)
 
         print("\n############## Omnifold Finished!! ##############\n")
-
-    def pre_train(self):
-        """pre_train - This function runs the pre-training step of the omnifold
-        algorithm. It will train two networks, a step 1 and a step 2 network.
-        These will then be used as the starting point for the trainings
-        in the iterations.
-
-        No arguments or returns
-        """
-
-        print("\n########## Pre-Training ##########\n")
-        for step in [1, 2]:
-            print("Running pre-training for step ", step)
-            self.run_step(step)
 
     def run_step(self, step):
         """step_one - This function runs a step of the omnifold algorithm.
@@ -225,53 +205,51 @@ class Omnifolder:
             # Set flag to mark training finished
             self.training = False
 
-        # Only care about running evaluation if this is not a pre-training step
-        if self.current_iteration > 0:
-            print(f"\n## Step {step} Evaluating ##\n")
+        # Run evaluation
+        print(f"\n## Step {step} Evaluating ##\n")
 
-            # Run evaluation as a subprocess, no need to keep output
-            eval_args = [
-                "python",
-                "lightning_eval.py",
-                "--run_id",
-                self.run_id,
-                "--config_path",
-                self.config_path,
-                "--iteration",
-                str(self.current_iteration),
-                "--step",
-                str(step),
-                "--index",
-                str(self.index),
+        # Run evaluation as a subprocess, no need to keep output
+        eval_args = [
+            "python",
+            "lightning_eval.py",
+            "--run_id",
+            self.run_id,
+            "--config_path",
+            self.config_path,
+            "--iteration",
+            str(self.current_iteration),
+            "--step",
+            str(step),
+            "--index",
+            str(self.index),
+        ]
+        if self.use_slurm:
+            slurm_args = [
+                "srun",
+                "--nodes",
+                "1",
+                "--nodelist",
+                str(self.head_node),
+                "--ntasks-per-node",
+                "1",
+                "--cpus-per-task",
+                "128",
+                "--cpu-bind=none",
+                "--mem-per-cpu=1790M",
+                "--gpus-per-task",
+                "1",
+                "--gpu-bind=none",
+                "--overlap",
             ]
-            if self.use_slurm:
-                slurm_args = [
-                    "srun",
-                    "--nodes",
-                    "1",
-                    "--nodelist",
-                    str(self.head_node),
-                    "--ntasks-per-node",
-                    "1",
-                    "--cpus-per-task",
-                    "128",
-                    "--cpu-bind=none",
-                    "--mem-per-cpu=1790M",
-                    "--gpus-per-task",
-                    "1",
-                    "--gpu-bind=none",
-                    "--overlap",
-                ]
-                eval_args = slurm_args + eval_args
-            print(eval_args)
-            process = subprocess.run(eval_args)
-            if process.returncode != 0:
-                print(f"Error running evaluation subprocess! Code {process.returncode}")
-                sys.exit(process.returncode)
+            eval_args = slurm_args + eval_args
+        print(eval_args)
+        process = subprocess.run(eval_args)
+        if process.returncode != 0:
+            print(f"Error running evaluation subprocess! Code {process.returncode}")
+            sys.exit(process.returncode)
 
         # Set training flag to True and model paths / IDs to None
         self.training = True
-        self.best_model_path = None
         self.run_id = None
 
         # Increment current step
