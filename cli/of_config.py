@@ -262,6 +262,12 @@ class OfConfig:
             default=0.85,
             help="Gamma for the learning rate scheduler",
         )
+        self.parser.add_argument(
+            "--weight_decay",
+            type=float,
+            default=0.01,
+            help="Weight decay for the optimizer",
+        )
 
         # Logging
         self.parser.add_argument(

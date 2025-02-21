@@ -12,6 +12,7 @@ import torchmetrics
 import wandb
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
+from pytorch_optimizer import Lion
 
 from of_transformer.of_transformer import OfTransformer
 from of_transformer.simple_network import DumbNeuralNetwork
@@ -38,6 +39,7 @@ class LOfTransformer(L.LightningModule):
         step=1,
         min_lr=1e-5,
         max_lr=1e-4,
+        weight_decay=0.01,
         cycle_steps=30000,
         warmup_steps=8000,
         gamma=0.85,
@@ -63,6 +65,7 @@ class LOfTransformer(L.LightningModule):
                 plot labeling
             min_lr {float} -- The minimum learning rate
             max_lr {float} -- The maximum learning rate
+            weight_decay {float} -- The weight decay for the optimizer
             cycle_steps {int} -- The number of steps in a cycle
             warmup_steps {int} -- The number of steps in the warmup
             gamma {float} -- The gamma parameter for the learning rate scheduler
@@ -77,6 +80,7 @@ class LOfTransformer(L.LightningModule):
         self.step = step
         self.min_lr = min_lr
         self.max_lr = max_lr
+        self.weight_decay = weight_decay
         self.cycle_steps = cycle_steps
         self.warmup_steps = warmup_steps
         self.gamma = gamma
@@ -169,11 +173,11 @@ class LOfTransformer(L.LightningModule):
             # Calculate AUROC and log
             val_auc = self.val_auc.compute()
             self.log(
-                    "val_auc",
-                    val_auc,
-                    on_epoch=True,
-                    prog_bar=True,
-                    sync_dist=True,
+                "val_auc",
+                val_auc,
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
             )
             self.val_auc.reset()
 
@@ -213,7 +217,7 @@ class LOfTransformer(L.LightningModule):
         # Just return if in debug mode or not using wasserstein metrics
         if self.debug or self.no_w1:
             return
-        
+
         # Calculate and log AUC
         test_auc = self.test_auc.compute()
         self.log(
@@ -251,7 +255,9 @@ class LOfTransformer(L.LightningModule):
     def configure_optimizers(self):
 
         # Build and return optimizer and scheduler
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5)
+        optimizer = Lion(
+            self.model.parameters(), lr=self.max_lr, weight_decay=self.weight_decay
+        )
         scheduler = CosineAnnealingWarmupRestarts(
             optimizer,
             first_cycle_steps=self.cycle_steps,

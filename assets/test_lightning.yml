@@ -107,6 +107,9 @@ s2_max_decay: 1.000000000
 # Gamma for the learning rate scheduler
 gamma: 0.850000000
 
+# Weight decay for the optimizer
+weight_decay: 0.01
+
 # Use wandb for logging
 wandb: False
 
