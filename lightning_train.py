@@ -99,9 +99,7 @@ class OfTrain:
             else:
                 ws_path = self.config.pretrain_checkpoint
             if not os.path.exists(ws_path):
-                raise FileNotFoundError(
-                    f"Could not find warm start path {ws_path}. "
-                )
+                raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
         else:
             ws_path = None
 
@@ -139,14 +137,16 @@ class OfTrain:
             logging_interval="step"
         )
         self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
-            monitor="val_loss",
-            filename="{epoch}-{val_loss:.4f}",
+            monitor="val_wasserstein",
+            filename="{epoch}-{val_wasserstein:.4f}",
             save_top_k=self.config.top_k_checkpoints,
             mode="min",
             dirpath=self.checkpoint_dir,
         )
         self.early_stopping = L.pytorch.callbacks.EarlyStopping(
-            monitor="val_loss", patience=self.config.early_stopping_patience, mode="min"
+            monitor="val_wasserstein",
+            patience=self.config.early_stopping_patience,
+            mode="min",
         )
 
         # Build trainer
