@@ -344,6 +344,11 @@ event_hists = {
         "xlabel": "# of tracks",
         "bins": np.arange(0, 256, 3),
     },
+    "sum_pT_tracks": {
+        "key": "sum_pT_tracks",
+        "xlabel": r"$H_{T, tracks}$",
+        "bins": np.linspace(0, 2000, 150),
+    },
 }
 
 track_hists = {

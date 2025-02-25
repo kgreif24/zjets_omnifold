@@ -35,14 +35,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Boot signal handler to enable checkpointing on timeout and preempt
+    nodelist = os.environ.get("SLURM_NODELIST", "")
+    pieces = nodelist.replace("[", ",").replace("]", ",").split(",")
+    head_node = pieces[0] + pieces[1]
     signal_slurm_args = [
         "srun",
         "--nodes=1",
-        "--ntasks-per-node=1",
+        "--ntasks=1",
         "--cpus-per-task=1",
-        "--mem-per-cpu=1M",
-        "--gpus-per-task=0",
+        "--mem=1M",
+        "--gpus=0",
         "--overlap",
+        f"--nodelist={head_node}"
     ]
     signal_launch_args = ["python", "requeue_on_signal.py", "--pid", str(os.getpid())]
     signal_args = signal_slurm_args + signal_launch_args

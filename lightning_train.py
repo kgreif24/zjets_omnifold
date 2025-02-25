@@ -323,7 +323,7 @@ class OfTrain:
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
             split_seed=self.split_seed,
-            dataloader_workers=1,
+            dataloader_workers=0,
             testing=False,
             use_truth=use_truth,
         )

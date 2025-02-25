@@ -248,9 +248,10 @@ class Omnifolder:
             print(f"Error running evaluation subprocess! Code {process.returncode}")
             sys.exit(process.returncode)
 
-        # Set training flag to True and model paths / IDs to None
+        # Set training flag to True, model paths / IDs to None, and seed to config
         self.training = True
         self.run_id = None
+        self.seed = self.cfg.split_seed
 
         # Increment current step
         self.current_step = (self.current_step % 2) + 1

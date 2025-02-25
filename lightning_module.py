@@ -39,6 +39,7 @@ class LOfTransformer(L.LightningModule):
         step=1,
         min_lr=1e-5,
         max_lr=1e-4,
+        optimizer=None,
         weight_decay=0.01,
         cycle_steps=30000,
         warmup_steps=8000,
@@ -80,6 +81,7 @@ class LOfTransformer(L.LightningModule):
         self.step = step
         self.min_lr = min_lr
         self.max_lr = max_lr
+        self.optimizer = optimizer  # Just here for backwards comptability
         self.weight_decay = weight_decay
         self.cycle_steps = cycle_steps
         self.warmup_steps = warmup_steps
