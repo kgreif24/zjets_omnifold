@@ -32,6 +32,7 @@ class Omnifolder:
         config_path,
         index=-1,
         use_slurm=True,
+        head_node=None,
     ):
         """__init__ - This function initializes the omnifolder object.
 
@@ -99,8 +100,7 @@ class Omnifolder:
         self.index = index
         self.use_slurm = use_slurm
         self.made_checkpoint = False
-        self.head_node = os.getenv("SLURMD_NODENAME", None)
-        print("Head node is ", self.head_node)
+        self.head_node = head_node
 
     def run_of(self):
         """run_of - Run the whole Omnifold procedure from start to finish.

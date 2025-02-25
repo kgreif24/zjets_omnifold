@@ -35,8 +35,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Boot signal handler to enable checkpointing on timeout and preempt
-    nodelist = os.environ.get("SLURM_NODELIST", "")
-    pieces = nodelist.replace("[", ",").replace("]", ",").split(",")
+    nodelist = os.environ.get("SLURM_JOB_NODELIST", "")
+    pieces = nodelist.replace("[", ",").replace("]", ",").replace("-", ",").split(",")
     head_node = pieces[0] + pieces[1]
     signal_slurm_args = [
         "srun",
@@ -58,6 +58,7 @@ if __name__ == "__main__":
     of = Omnifolder(
         args.config_path,
         index=args.ensemble_index,
+        head_node=head_node,
     )
 
     # Signal handling function

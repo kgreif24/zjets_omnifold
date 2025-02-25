@@ -8,6 +8,7 @@ Last updated 02/21/2025
 python3
 """
 
+import sys
 import os
 import time
 import argparse
@@ -411,6 +412,8 @@ if __name__ == "__main__":
         trainer.trainer.save_checkpoint(
             f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
         )
+        time.sleep(60)
+        sys.exit(0)
 
     signal.signal(signal.SIGUSR1, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
