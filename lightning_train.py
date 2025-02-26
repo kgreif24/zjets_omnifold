@@ -8,7 +8,6 @@ Last updated 02/21/2025
 python3
 """
 
-import sys
 import os
 import time
 import argparse
@@ -408,12 +407,12 @@ if __name__ == "__main__":
     # Override SIGUSR1 and SIGTERM signals to only save a checkpoint
     def handle_signal(signum, frame):
         """Signal handler for the program."""
-        print(f"Received signal {signum}, saving checkpoint.")
-        trainer.trainer.save_checkpoint(
-            f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
-        )
-        time.sleep(60)
-        sys.exit(0)
+        if trainer.trainer.is_global_zero:
+            print(f"Received signal {signum}, saving checkpoint.")
+            trainer.trainer.save_checkpoint(
+                f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
+            )
+        time.sleep(240)
 
     signal.signal(signal.SIGUSR1, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)

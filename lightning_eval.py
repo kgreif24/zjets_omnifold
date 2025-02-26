@@ -271,6 +271,7 @@ class OfEval:
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             dataloader_workers=30,
+            persistent_workers=True,
             load_all=True,
             testing=True,
             use_truth=use_truth,
@@ -466,7 +467,7 @@ class OfEval:
         if not self.verify:
             print("Run testing")
             self.run_testing()
-            if self.unit_test or (not self.trainer.is_global_zero):
+            if self.unit_test:
                 return
 
         # Run prediction, unless this is pretraining
