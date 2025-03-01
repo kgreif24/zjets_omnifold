@@ -245,13 +245,13 @@ class OfConfig:
             help="Number of steps to warm up the learning rate for step two training",
         )
         self.parser.add_argument(
-            "--s1_max_decay",
+            "--s1_lr_decay",
             type=float,
             default=1.0,
             help="Decay with iteration for step one trainings maximum learning rate",
         )
         self.parser.add_argument(
-            "--s2_max_decay",
+            "--s2_lr_decay",
             type=float,
             default=1.0,
             help="Decay with iteration for step two trainings maximum learning rate",

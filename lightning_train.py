@@ -113,24 +113,141 @@ class OfTrain:
 
         # ---------------- Lightning setup ----------------
 
-        # Initialise the wandb logger
-        if self.config.wandb:
+        # Get min/max learning rates and cycle rates depending on step
+        if self.iteration == 0:
+            min_lr = self.config.pt_min_lr
+            max_lr = self.config.pt_max_lr
+            cycle_steps = self.config.pt_cycle_steps
+            warmup_steps = self.config.pt_warmup_steps
+        elif self.step == 1:
+            min_lr = self.config.s1_min_lr * (
+                self.config.s1_lr_decay ** (self.iteration - 1)
+            )
+            max_lr = self.config.s1_max_lr * (
+                self.config.s1_lr_decay ** (self.iteration - 1)
+            )
+            cycle_steps = self.config.s1_cycle_steps
+            warmup_steps = self.config.s1_warmup_steps
+        else:
+            min_lr = self.config.s2_min_lr * (
+                self.config.s2_lr_decay ** (self.iteration - 1)
+            )
+            max_lr = self.config.s2_max_lr * (
+                self.config.s2_lr_decay ** (self.iteration - 1)
+            )
+            cycle_steps = self.config.s2_cycle_steps
+            warmup_steps = self.config.s2_warmup_steps
 
-            # Build the logger
-            self.wandb_logger = WandbLogger(
-                project=self.config.project_name,
-                group=self.config.group_name,
-                name=run_name,
-                save_dir=self.checkpoint_dir,
+        # Build lightning module from scratch if we are not given a warm start parth
+        # or a restart path
+        if (ws_path is None) and (self.restart_path is None):
+
+            # If using wandb, make a logger and get a new run ID
+            if self.config.wandb:
+
+                # Build the logger
+                self.wandb_logger = WandbLogger(
+                    project=self.config.project_name,
+                    group=self.config.group_name,
+                    name=run_name,
+                    save_dir=self.checkpoint_dir,
+                )
+
+                # Get run ID
+                run_id = self.wandb_logger.experiment.id
+
+            # Else we use no logger and set a dummy run ID
+            else:
+                self.wandb_logger = None
+                run_id = "test_run"
+
+            block_params = {
+                "dropout": self.config.block_dropout,
+                "attn_dropout": self.config.block_attn_dropout,
+                "activation_dropout": self.config.block_activation_dropout,
+            }
+            cls_block_params = {
+                "dropout": self.config.cls_block_dropout,
+                "attn_dropout": self.config.cls_block_attn_dropout,
+                "activation_dropout": self.config.cls_block_activation_dropout,
+            }
+
+            self.l_module = LOfTransformer(
+                input_dim=self.config.input_dim,
+                debug=self.config.debug,
+                # Include the seed and run ID just so they are logged to W&B
+                seed=seed,
+                run_id=run_id,
+                # Include the OF step for plots
+                step=self.step,
+                min_lr=min_lr,
+                max_lr=max_lr,
+                weight_decay=self.config.weight_decay,
+                cycle_steps=cycle_steps,
+                warmup_steps=warmup_steps,
+                gamma=self.config.gamma,
+                # Everything below here are parameters for the network
+                num_classes=1,
+                trim=self.config.run_trimmer,
+                remove_self_pair=self.config.remove_self_pair,
+                embed_dims=self.config.embed_dims,
+                pair_input_dim=self.config.pair_input_dim,
+                pair_extra_dim=0,
+                pair_embed_dims=self.config.pair_embed_dims,
+                fc_nodes=self.config.fc_nodes,
+                fc_dropout=self.config.fc_dropout,
+                cls_block_params=cls_block_params,
+                num_cls_layers=self.config.num_cls_layers,
+                block_params=block_params,
+                num_layers=self.config.num_layers,
             )
 
-            # Get run ID
-            self.run_id = self.wandb_logger.experiment.id
-
-        # Else we use no logger and set a dummy run ID
+        # Else load the model from the restart or warm start path
         else:
-            self.wandb_logger = None
-            self.run_id = "test_run"
+
+            # Note we give preference to the restart path if it exists
+            use_path = self.restart_path if self.restart_path is not None else ws_path
+            rank_zero_info(f"Loading model from path {use_path}")
+            self.l_module = LOfTransformer.load_from_checkpoint(
+                use_path,
+                debug=self.config.debug,
+                step=self.step,
+                min_lr=min_lr,
+                max_lr=max_lr,
+                weight_decay=self.config.weight_decay,
+                cycle_steps=cycle_steps,
+                warmup_steps=warmup_steps,
+                gamma=self.config.gamma,
+            )
+
+            # Get the seed from the checkpoint if this is a restart, else use seed
+            # passed into training job. Note this needs to be explicitly reset
+            # in wandb
+            if self.restart_path is not None:
+                seed = self.l_module.seed
+            else:
+                self.l_module.reset_seed(seed)
+
+            # Build wandb logger, note that we get a new run ID for a warm start
+            # but use the ID stored in the checkpoint for a restart.
+            # In case of warm start, need to reset the run ID in the module
+            # to the ID assigned for this run by wandb
+            if self.config.wandb:
+                run_id = self.l_module.run_id if self.restart_path is not None else None
+                self.wandb_logger = WandbLogger(
+                    project=self.config.project_name,
+                    group=self.config.group_name,
+                    name=run_name,
+                    save_dir=self.checkpoint_dir,
+                    id=run_id,
+                    resume="must" if self.restart_path is not None else "never",
+                )
+                if run_id is None:
+                    run_id = self.wandb_logger.experiment.id
+                    self.l_module.reset_run_id(run_id)
+            else:
+                self.wandb_logger = None
+                run_id = "test_run"
 
         # Initialise the callbacks
         self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(
@@ -164,87 +281,6 @@ class OfTrain:
             enable_progress_bar=self.config.interactive,
             use_distributed_sampler=False,
         )
-
-        # Get min/max learning rates and cycle rates depending on step
-        if self.iteration == 0:
-            min_lr = self.config.pt_min_lr
-            max_lr = self.config.pt_max_lr
-            cycle_steps = self.config.pt_cycle_steps
-            warmup_steps = self.config.pt_warmup_steps
-        elif self.step == 1:
-            min_lr = self.config.s1_min_lr
-            max_lr = self.config.s1_max_lr * (self.config.s1_max_decay**self.iteration)
-            cycle_steps = self.config.s1_cycle_steps
-            warmup_steps = self.config.s1_warmup_steps
-        else:
-            min_lr = self.config.s2_min_lr
-            max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
-            cycle_steps = self.config.s2_cycle_steps
-            warmup_steps = self.config.s2_warmup_steps
-
-        # Build lightning module from scratch if we are not given a warm start parth
-        # or a restart path
-        if (ws_path is None) and (self.restart_path is None):
-
-            block_params = {
-                "dropout": self.config.block_dropout,
-                "attn_dropout": self.config.block_attn_dropout,
-                "activation_dropout": self.config.block_activation_dropout,
-            }
-            cls_block_params = {
-                "dropout": self.config.cls_block_dropout,
-                "attn_dropout": self.config.cls_block_attn_dropout,
-                "activation_dropout": self.config.cls_block_activation_dropout,
-            }
-
-            self.l_module = LOfTransformer(
-                input_dim=self.config.input_dim,
-                debug=self.config.debug,
-                # Include the seed just so it is logged to W&B
-                seed=self.split_seed,
-                # Include the OF step for plots
-                step=self.step,
-                min_lr=min_lr,
-                max_lr=max_lr,
-                weight_decay=self.config.weight_decay,
-                cycle_steps=cycle_steps,
-                warmup_steps=warmup_steps,
-                gamma=self.config.gamma,
-                # Everything below here are parameters for the network
-                num_classes=1,
-                trim=self.config.run_trimmer,
-                remove_self_pair=self.config.remove_self_pair,
-                embed_dims=self.config.embed_dims,
-                pair_input_dim=self.config.pair_input_dim,
-                pair_extra_dim=0,
-                pair_embed_dims=self.config.pair_embed_dims,
-                fc_nodes=self.config.fc_nodes,
-                fc_dropout=self.config.fc_dropout,
-                cls_block_params=cls_block_params,
-                num_cls_layers=self.config.num_cls_layers,
-                block_params=block_params,
-                num_layers=self.config.num_layers,
-            )
-
-        # Else load the model from the restart or warm start path
-        else:
-
-            # Note we give preference to the restart path if it exists
-            use_path = self.restart_path if self.restart_path is not None else ws_path
-            rank_zero_info(f"Loading model from path {use_path}")
-
-            self.l_module = LOfTransformer.load_from_checkpoint(
-                use_path,
-                debug=self.config.debug,
-                seed=self.split_seed,
-                step=self.step,
-                min_lr=min_lr,
-                max_lr=max_lr,
-                weight_decay=self.config.weight_decay,
-                cycle_steps=cycle_steps,
-                warmup_steps=warmup_steps,
-                gamma=self.config.gamma,
-            )
 
         # ---------------- Data setup ----------------
 
@@ -322,7 +358,7 @@ class OfTrain:
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
-            split_seed=self.split_seed,
+            split_seed=seed,
             dataloader_workers=0,
             testing=False,
             use_truth=use_truth,
@@ -330,11 +366,7 @@ class OfTrain:
 
     def run(self):
         """run - This function runs the training for the Omnifold classifier.
-
-        Arguments:
-        None
-        Returns:
-        {string} - The run id for this training run
+        No arguments or returns
         """
 
         # Run training, pickup from restart path if available
@@ -356,9 +388,6 @@ class OfTrain:
         # Close W&B
         if self.config.wandb:
             wandb.finish()
-
-        # Return the run id and best checkpoint path
-        return self.run_id, best_model_path
 
 
 # ------------------ MAIN FUNCTION ------------------
@@ -404,7 +433,8 @@ if __name__ == "__main__":
         index=args.index,
     )
 
-    # Override SIGUSR1 and SIGTERM signals to only save a checkpoint
+    # Override SIGUSR1 and SIGTERM signals to save a checkpoint and requeue
+    # Ensure only the rank zero process does this
     def handle_signal(signum, frame):
         """Signal handler for the program."""
         if trainer.trainer.is_global_zero:
@@ -412,16 +442,18 @@ if __name__ == "__main__":
             trainer.trainer.save_checkpoint(
                 f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
             )
-        time.sleep(240)
+            # Requeue on timeout, not needed on preemption
+            if signum == signal.SIGUSR1:
+                time.sleep(60)
+                os.system("sync")
+                print("Requeue job!")
+                os.system("scontrol requeue $SLURM_JOB_ID")
 
     signal.signal(signal.SIGUSR1, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
     # Run the training
-    run_id, best_path = trainer.run()
-
-    # Print the run id and best model path
-    rank_zero_info(f"\n###RUN ID###\n{run_id}")
+    trainer.run()
 
     # Print something and sleep a bit to flush the output
     print("...")

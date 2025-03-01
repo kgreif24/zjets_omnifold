@@ -10,12 +10,9 @@ import os
 import sys
 import time
 import subprocess
-import json
-
 import numpy as np
 
 from cli.of_config import OfConfig
-from utils.subprocess_utils import capture_subprocess_output
 
 
 class Omnifolder:
@@ -32,7 +29,6 @@ class Omnifolder:
         config_path,
         index=-1,
         use_slurm=True,
-        head_node=None,
     ):
         """__init__ - This function initializes the omnifolder object.
 
@@ -62,34 +58,20 @@ class Omnifolder:
         if index != -1:
             self.cfg.group_name = f"{self.cfg.group_name}_{index}"
 
-        # Make root dir for this run of Omnifold
+        # Make root dir and weight dir for this run of Omnifold
         self.root_dir = (
             f"{self.cfg.checkpoint_dir}/"
             f"{self.cfg.project_name}/{self.cfg.group_name}"
         )
         os.makedirs(self.root_dir, exist_ok=True)
+        self.weight_dir = f"{self.root_dir}/weights"
+        os.makedirs(self.weight_dir, exist_ok=True)
 
-        # Load status from checkpoint file if it exists in root dir
-        status_file = os.path.join(self.root_dir, "status.json")
-        if os.path.exists(status_file):
-            print(f"Picking up progress from status file {status_file}")
-            with open(status_file, "r") as f:
-                status = json.load(f)
-            self.current_iteration = status["current_iteration"]
-            self.current_step = status["current_step"]
-            self.training = status["training"]
-            self.run_id = status["run_id"]
-            self.seed = status["seed"]
-            print(f"Removing status file {status_file}")
-            os.remove(status_file)
-
-        # Else configure to run from scratch
-        else:
-            self.current_iteration = 1
-            self.current_step = 1
-            self.training = True
-            self.run_id = None
-            self.seed = self.cfg.split_seed
+        # Infer run status from directory structure
+        status = self._infer_next_step()
+        self.current_iteration = status[0]
+        self.current_step = status[1]
+        self.training = status[2]
 
         # Set some instance variables
         if self.current_iteration > self.cfg.num_iterations:
@@ -100,7 +82,6 @@ class Omnifolder:
         self.index = index
         self.use_slurm = use_slurm
         self.made_checkpoint = False
-        self.head_node = head_node
 
     def run_of(self):
         """run_of - Run the whole Omnifold procedure from start to finish.
@@ -141,9 +122,10 @@ class Omnifolder:
         if self.training:
             print(f"\n## Step {step} Training ##\n")
 
-            # Determine seed for train / val split
-            if self.seed == -1:
-                self.seed = np.random.randint(0, 10000)
+            # Get seed
+            seed = self.cfg.split_seed
+            if seed == -1:
+                seed = np.random.randint(10000)
 
             # Run training as a subprocess
             train_args = [
@@ -155,10 +137,10 @@ class Omnifolder:
                 str(self.current_iteration),
                 "--step",
                 str(step),
-                "--split_seed",
-                str(self.seed),
                 "--index",
                 str(self.index),
+                "--split_seed",
+                str(seed),
             ]
 
             # Add slurm arguments if we are using
@@ -182,25 +164,14 @@ class Omnifolder:
             print(train_args)
 
             # Run training subprocess
-            train_code, output = capture_subprocess_output(
-                train_args,
-            )
-
-            # Exit on non-zero return code
-            if train_code != 0:
-                print(f"Error running training subprocess! Code {train_code}")
-                sys.exit(train_code)
+            process = subprocess.run(train_args)
+            if process.returncode != 0:
+                print(f"Error running training subprocess! Code {process.returncode}")
+                sys.exit(process.returncode)
 
             # Sleep for a bit to ensure all resources are released
-            print("Sleeping for 4 minutes")
-            time.sleep(240)
-
-            # Reverse search output for run_id
-            lines = output.split("\n")
-            for i in reversed(range(len(lines))):
-                if "###RUN ID###" in lines[i] and i + 1 < len(lines):
-                    self.run_id = lines[i + 1]
-                    break
+            print("Sleeping for 10 seconds")
+            time.sleep(10)
 
             # Set flag to mark training finished
             self.training = False
@@ -212,8 +183,6 @@ class Omnifolder:
         eval_args = [
             "python",
             "lightning_eval.py",
-            "--run_id",
-            self.run_id,
             "--config_path",
             self.config_path,
             "--iteration",
@@ -228,8 +197,6 @@ class Omnifolder:
                 "srun",
                 "--nodes",
                 "1",
-                "--nodelist",
-                str(self.head_node),
                 "--ntasks-per-node",
                 "1",
                 "--cpus-per-task",
@@ -248,39 +215,58 @@ class Omnifolder:
             print(f"Error running evaluation subprocess! Code {process.returncode}")
             sys.exit(process.returncode)
 
-        # Set training flag to True, model paths / IDs to None, and seed to config
+        # Set training flag to True
         self.training = True
-        self.run_id = None
-        self.seed = self.cfg.split_seed
 
         # Increment current step
         self.current_step = (self.current_step % 2) + 1
 
         print(f"Finished step {step}!!")
 
-    def save_status(self):
-        """ save_status - Saves the status of this Omnifold run to a
-        json file. This file can then be used to resume the run at a
-        later time.
+    def _infer_next_step(self):
+        """_infer_next_step - This function will examine the directory structure for
+        the run of Omnifold and determine what the next step in the procedure is.
+        It will return the current iteration and step, as well as whether we should
+        proceed with training or evaluation.
 
-        Arguments: None
-        Returns: None
+        No arguments
+        Returns:
+            {int} - Current iteration
+            {int} - Current step
+            {bool} - True if we are training, False if we are evaluating
         """
 
-        # Only make a check point once, either on SIGUSR1 or SIGTERM
-        if not self.made_checkpoint:
+        # Loop through iterations
+        for iteration in range(1, self.cfg.num_iterations + 1):
+            # Loop through steps
+            for step in range(1, 3):
 
-            # Write json file with the config path, current iteration, and
-            # any other relevant information
-            status = {
-                "current_iteration": self.current_iteration,
-                "current_step": self.current_step,
-                "training": self.training,
-                "run_id": self.run_id,
-                "seed": self.seed,
-            }
-            with open(f"{self.root_dir}/status.json", "w") as f:
-                json.dump(status, f)
+                # Move on if we have weights for this iteration / step
+                weight_path = f"{self.weight_dir}/iteration_{iteration}_step_{step}.npz"
+                if os.path.exists(weight_path):
+                    continue
 
-            print("Status saved to ", f"{self.root_dir}/status.json")
-            self.made_checkpoint = True
+                # If we don't have weights, we need to do work on this iteration / step
+                # Check if we have a best model path, if so we are done training
+                model_path = (
+                    f"{self.root_dir}/iteration_{iteration}_step_{step}/best_model.ckpt"
+                )
+                if os.path.exists(model_path):
+                    training = False
+                else:
+                    training = True
+
+                # Return results
+                return iteration, step, training
+
+        # If loop concludes, we are done with the procedure
+        return self.cfg.num_iterations, 2, False
+
+
+if __name__ == "__main__":
+
+    # Create Omnifolder object and print state
+    omnifolder = Omnifolder("./cli/base_ensemble.yml", index=6)
+    print(omnifolder.current_iteration)
+    print(omnifolder.current_step)
+    print(omnifolder.training)

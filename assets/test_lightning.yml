@@ -99,10 +99,10 @@ s2_cycle_steps: 12000
 s2_warmup_steps: 0
 
 # Decay with iteration for step one trainings maximum learning rate
-s1_max_decay: 1.000000000
+s1_lr_decay: 1.000000000
 
 # Decay with iteration for step two trainings maximum learning rate
-s2_max_decay: 1.000000000
+s2_lr_decay: 1.000000000
 
 # Gamma for the learning rate scheduler
 gamma: 0.850000000

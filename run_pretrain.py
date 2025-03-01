@@ -53,4 +53,4 @@ trainer = OfTrain(
 )
 
 # Run the pre-training
-run_id, best_path = trainer.run()
+trainer.run()

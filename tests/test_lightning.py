@@ -22,7 +22,7 @@ def test_pretrain(tmp_path):
         # Initialize the class, being sure to configure it to run a fast development run
         # and to run pretraining
         trainer = OfTrain(config_name, 0, 1, unit_test=True)
-        rid, path = trainer.run()
+        trainer.run()
 
     except Exception:
 
@@ -48,7 +48,7 @@ def test_lightning_train(tmp_path):
 
         # Initialize the class, being sure to configure it to run a fast development run
         trainer = OfTrain(config_name, 1, 1, unit_test=True)
-        rid, path = trainer.run()
+        trainer.run()
 
     except Exception:
 
@@ -74,7 +74,6 @@ def test_lightning_eval(tmp_path):
 
         # Initialize the class, being sure to configure it to run a fast development run
         evaluator = OfEval(
-            "test",
             config_name,
             0,
             1,

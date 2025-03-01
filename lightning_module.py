@@ -10,6 +10,7 @@ import torch
 import lightning as L
 import torchmetrics
 import wandb
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 from pytorch_optimizer import Lion
@@ -34,12 +35,13 @@ class LOfTransformer(L.LightningModule):
         input_dim=3,
         test_plots=None,
         debug=False,
-        no_w1=False,
         seed=420,
+        run_id=None,
         step=1,
         min_lr=1e-5,
         max_lr=1e-4,
         optimizer=None,
+        no_w1=None,
         weight_decay=0.01,
         cycle_steps=30000,
         warmup_steps=8000,
@@ -59,9 +61,10 @@ class LOfTransformer(L.LightningModule):
                 not be drawn
             debug {bool} -- Set to true if we are running in debug mode, use simple
                 network on muons only
-            no_w1 {bool} -- Set to true if we want to disable the wasserstein metric
             seed {int} -- The random seed to use for the train / val split. Only used
                 for logging
+            run_id {str} -- The run id given by weights and biases. Only used for
+                logging. Leave as None if not using wandb.
             step {int} -- Whether this training is for OF step one or two, only effects
                 plot labeling
             min_lr {float} -- The minimum learning rate
@@ -76,12 +79,11 @@ class LOfTransformer(L.LightningModule):
 
         # Set instance vars
         self.debug = debug
-        self.no_w1 = no_w1
         self.seed = seed
+        self.run_id = run_id
         self.step = step
         self.min_lr = min_lr
         self.max_lr = max_lr
-        self.optimizer = optimizer  # Just here for backwards comptability
         self.weight_decay = weight_decay
         self.cycle_steps = cycle_steps
         self.warmup_steps = warmup_steps
@@ -107,15 +109,44 @@ class LOfTransformer(L.LightningModule):
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task="binary")
         self.test_auc = torchmetrics.classification.AUROC(task="binary")
-        if not (self.debug or self.no_w1):
-            self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=False)
-            self.draw_test = True if test_plots is not None else False
-            self.wasserstein_test = WassersteinOne(
-                pu.default_settings, draw_plots=self.draw_test, save_location=test_plots
-            )
+        self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=False)
+        self.draw_test = True if test_plots is not None else False
+        self.wasserstein_test = WassersteinOne(
+            pu.default_settings, draw_plots=self.draw_test, save_location=test_plots
+        )
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=["test_plots", "debug"])
+
+    # Add seed and run ID to the information written and read from checkpoints
+    # Note these only need to run on the rank zero process
+    @rank_zero_only
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["seed"] = self.seed
+        checkpoint["run_id"] = self.run_id
+
+    @rank_zero_only
+    def on_load_checkpoint(self, checkpoint):
+        if "seed" in checkpoint.keys():
+            self.seed = checkpoint["seed"]
+        else:
+            self.seed = 222
+        if "run_id" in checkpoint.keys():
+            self.run_id = checkpoint["run_id"]
+        else:
+            self.run_id = "no_run_id"
+
+    # Reset the seed and run ID saved to the hyperparameters
+    # Note these only need to run on the rank zero process
+    @rank_zero_only
+    def reset_seed(self, seed):
+        self.seed = seed
+        self.save_hyperparameters({"seed": seed})
+
+    @rank_zero_only
+    def reset_run_id(self, run_id):
+        self.run_id = run_id
+        self.save_hyperparameters({"run_id": run_id})
 
     # Forward pass
     def forward(self, inputs, mask):
@@ -159,15 +190,10 @@ class LOfTransformer(L.LightningModule):
         self.val_auc.update(output, target)
 
         # Update wasserstein metric
-        if not (self.debug or self.no_w1):
-            self.wasserstein_val.update(plotting, start_weights, end_weights, target)
+        self.wasserstein_val.update(plotting, start_weights, end_weights, target)
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
-
-        # Just return if in debug mode or not update wasserstein metrics
-        if self.debug or self.no_w1:
-            return
 
         # Don't do anything but reset metric on validation sanity check
         if not self.trainer.sanity_checking:
@@ -184,16 +210,15 @@ class LOfTransformer(L.LightningModule):
             self.val_auc.reset()
 
             # Calculate wasserstein metric and log
-            if not (self.debug or self.no_w1):
-                val_wass, _ = self.wasserstein_val.compute(names=self.names)
-                self.log(
-                    "val_wasserstein",
-                    val_wass,
-                    on_epoch=True,
-                    prog_bar=False,
-                    sync_dist=True,
-                )
-                self.wasserstein_val.reset()
+            val_wass, _ = self.wasserstein_val.compute(names=self.names)
+            self.log(
+                "val_wasserstein",
+                val_wass,
+                on_epoch=True,
+                prog_bar=False,
+                sync_dist=True,
+            )
+            self.wasserstein_val.reset()
 
     # Test step
     def test_step(self, batch, batch_idx):
@@ -210,15 +235,10 @@ class LOfTransformer(L.LightningModule):
         self.test_auc.update(output, target)
 
         # Update wasserstein metric
-        if not (self.debug or self.no_w1):
-            self.wasserstein_test.update(plotting, start_weights, end_weights, target)
+        self.wasserstein_test.update(plotting, start_weights, end_weights, target)
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
-
-        # Just return if in debug mode or not using wasserstein metrics
-        if self.debug or self.no_w1:
-            return
 
         # Calculate and log AUC
         test_auc = self.test_auc.compute()
@@ -233,20 +253,19 @@ class LOfTransformer(L.LightningModule):
         self.test_auc.reset()
 
         # Calculate and log wasserstein metric
-        if not (self.debug or self.no_w1):
-            test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
-            self.log(
-                "test_wasserstein",
-                test_wass,
-                on_epoch=True,
-                prog_bar=False,
-                sync_dist=False,
-            )
-            if self.draw_test and self.trainer.is_global_zero:
-                for key, histpath in plot_dict.items():
-                    log_name = "test_" + key
-                    self.logger.experiment.log({log_name: wandb.Image(histpath)})
-            self.wasserstein_test.reset()
+        test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
+        self.log(
+            "test_wasserstein",
+            test_wass,
+            on_epoch=True,
+            prog_bar=False,
+            sync_dist=False,
+        )
+        if self.draw_test and self.trainer.is_global_zero:
+            for key, histpath in plot_dict.items():
+                log_name = "test_" + key
+                self.logger.experiment.log({log_name: wandb.Image(histpath)})
+        self.wasserstein_test.reset()
 
     # Prediction step
     def predict_step(self, batch, batch_idx):

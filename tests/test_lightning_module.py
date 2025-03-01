@@ -108,7 +108,7 @@ def test_lofdata(tmp_path):
     assert len(kin_truth) == 2 * np.sum(tp190)
     assert ak.all(ak.ravel(ak.count(kin, axis=1)) == 3)
     plot = data_module.get_plotting()
-    assert plot.shape == (2 * np.sum(p190), 25)
+    assert plot.shape == (2 * np.sum(p190), 26)
     src_p190 = data_module.get_source_pass190()
     assert np.all(src_p190 == p190)
     trg_p190 = data_module.get_target_pass190()
