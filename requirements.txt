@@ -30,7 +30,6 @@ MarkupSafe==3.0.2
 matplotlib==3.10.1
 mpmath==1.3.0
 multidict==6.1.0
-nersc-pymon==0.2.1
 networkx==3.4.2
 numpy==2.2.3
 nvidia-cublas-cu12==12.4.5.8
