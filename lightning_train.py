@@ -437,17 +437,16 @@ if __name__ == "__main__":
     # Ensure only the rank zero process does this
     def handle_signal(signum, frame):
         """Signal handler for the program."""
-        if trainer.trainer.is_global_zero:
-            print(f"Received signal {signum}, saving checkpoint.")
-            trainer.trainer.save_checkpoint(
-                f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
-            )
-            os.system("sync")
-            # Requeue on timeout, not needed on preemption
-            if signum == signal.SIGUSR1:
-                time.sleep(60)
-                print("Requeue job!")
-                os.system("scontrol requeue $SLURM_JOB_ID")
+        print(f"Received signal {signum}, saving checkpoint.")
+        trainer.trainer.save_checkpoint(
+            f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
+        )
+        os.system("sync")
+        # Requeue on timeout, not needed on preemption
+        if trainer.trainer.is_global_zero and signum == signal.SIGUSR1:
+            time.sleep(60)
+            print("Requeue job!")
+            os.system("scontrol requeue $SLURM_JOB_ID")
 
     signal.signal(signal.SIGUSR1, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
