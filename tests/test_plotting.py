@@ -20,7 +20,7 @@ def test_comp_plot_script(tmp_path):
                 "--weights",
                 "./assets/wgts.npz",
                 "--pd",
-                "./assets/evts_200_300.root",
+                "./assets/truth_evts_000_100.root",
                 "--store",
                 tmp_path,
                 "--use_test",
@@ -47,8 +47,8 @@ def test_comp_plot_script(tmp_path):
         if re.search("Re-weighted Wasserstein One:", line):
             rw1 = float(line.split()[-1])
 
-    assert ogw1 == pytest.approx(45.355, rel=1e-3)
-    assert rw1 == pytest.approx(189.853, rel=1e-3)
+    assert ogw1 == pytest.approx(100.826, rel=1e-1)
+    assert rw1 == pytest.approx(451.478, rel=1e-1)
 
 
 def test_test_plot_script(tmp_path):

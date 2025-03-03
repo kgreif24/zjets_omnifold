@@ -14,6 +14,9 @@ interactive: False
 # Number of iterations to run the Omnifold algorithm
 num_iterations: 1
 
+# Path to checkpoint which will be used as the starting pointfor all iterations
+pretrain_checkpoint: ./assets/full_checkpoint.ckpt
+
 # Path for the MC training data
 mc_train_path: ./assets/evts_000_100.root
 
@@ -34,9 +37,6 @@ split_seed: -1
 
 # Maximum number of tracks to use in the data
 max_tracks: 264
-
-# Number of pieces to split the pretraining data into
-num_pretrain_pieces: 1
 
 # Maximum number of events to use in the target data
 max_events_target: 500000
@@ -63,10 +63,16 @@ num_gpus: 0
 num_nodes: 1
 
 # Minimum learning rate for pre-training
-pt_min_lr: 0.000008000
+pt_min_lr: 0.000010000
 
 # Maximum learning rate for pre-training
-pt_max_lr: 0.000050000
+pt_max_lr: 0.000100000
+
+# Number of steps in a cycle for pre-training
+pt_cycle_steps: 32000
+
+# Number of steps to warm up the learning rate for pre-training
+pt_warmup_steps: 8000
 
 # Minimum learning rate for step one training
 s1_min_lr: 0.000008000
@@ -74,26 +80,35 @@ s1_min_lr: 0.000008000
 # Maximum learning rate for step one training
 s1_max_lr: 0.000050000
 
+# Number of steps in a cycle for step one training
+s1_cycle_steps: 5000
+
+# Number of steps to warm up the learning rate for step one training
+s1_warmup_steps: 0
+
 # Minimum learning rate for step two training
 s2_min_lr: 0.000050000
 
 # Maximum learning rate for step two training
 s2_max_lr: 0.000100000
 
+# Number of steps in a cycle for step two training
+s2_cycle_steps: 12000
+
+# Number of steps to warm up the learning rate for step two training
+s2_warmup_steps: 0
+
 # Decay with iteration for step one trainings maximum learning rate
-s1_max_decay: 1.000000000
+s1_lr_decay: 1.000000000
 
 # Decay with iteration for step two trainings maximum learning rate
-s2_max_decay: 1.000000000
-
-# Number of steps in a cycle
-cycle_steps: 50000
-
-# Number of steps to warm up the learning rate
-warmup_steps: 10000
+s2_lr_decay: 1.000000000
 
 # Gamma for the learning rate scheduler
 gamma: 0.850000000
+
+# Weight decay for the optimizer
+weight_decay: 0.01
 
 # Use wandb for logging
 wandb: False

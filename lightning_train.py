@@ -4,7 +4,7 @@ and training for an omnifolder classifier using pytorch lightning. It also defin
 easy parallelism.
 
 Author: Kevin Greif
-Last updated 03/08/2024
+Last updated 02/21/2025
 python3
 """
 
@@ -94,15 +94,12 @@ class OfTrain:
 
         # If we are running itertaion >= 1, get warm start path
         if iteration >= 1:
-            if step == 1:
+            if self.config.pretrain_checkpoint is None:
                 ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
             else:
-                ws_path = f"{root_dir}/pretrain_step_2/best_model.ckpt"
+                ws_path = self.config.pretrain_checkpoint
             if not os.path.exists(ws_path):
-                raise FileNotFoundError(
-                    f"Could not find warm start path {ws_path}. "
-                    "Please ensure the pretraining runs have completed."
-                )
+                raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
         else:
             ws_path = None
 
@@ -116,77 +113,53 @@ class OfTrain:
 
         # ---------------- Lightning setup ----------------
 
-        # Initialise the wandb logger
-        if self.config.wandb:
-
-            # Build the logger
-            self.wandb_logger = WandbLogger(
-                project=self.config.project_name,
-                group=self.config.group_name,
-                name=run_name,
-                save_dir=self.checkpoint_dir,
-            )
-
-            # Get run ID
-            self.run_id = self.wandb_logger.experiment.id
-
-        # Else we use no logger and set a dummy run ID
-        else:
-            self.wandb_logger = None
-            self.run_id = "test_run"
-
-        # Initialise the callbacks
-        self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(
-            logging_interval="step"
-        )
-        self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
-            monitor="val_loss",
-            filename="{epoch}-{val_loss:.4f}",
-            save_top_k=self.config.top_k_checkpoints,
-            mode="min",
-            dirpath=self.checkpoint_dir,
-        )
-        self.early_stopping = L.pytorch.callbacks.EarlyStopping(
-            monitor="val_loss", patience=self.config.early_stopping_patience, mode="min"
-        )
-
-        # Build trainer
-        # Only need to reload dataloaders if we are pretraining and request in config
-        reload_dataloaders = (
-            True
-            if (self.iteration == 0 and self.config.num_pretrain_pieces > 1)
-            else False
-        )
-        self.trainer = L.Trainer(
-            accelerator="auto" if (self.config.debug or unit_test) else "gpu",
-            num_nodes=self.config.num_nodes,
-            devices=(
-                "auto" if (self.config.debug or unit_test) else self.config.num_gpus
-            ),
-            logger=self.wandb_logger,
-            callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
-            plugins=[SLURMEnvironment(auto_requeue=False)],
-            default_root_dir=self.checkpoint_dir,
-            max_epochs=self.config.max_epochs,
-            enable_progress_bar=self.config.interactive,
-            reload_dataloaders_every_n_epochs=reload_dataloaders,
-            use_distributed_sampler=False,
-        )
-
-        # Get min/max learning rates depending on step
+        # Get min/max learning rates and cycle rates depending on step
         if self.iteration == 0:
             min_lr = self.config.pt_min_lr
             max_lr = self.config.pt_max_lr
+            cycle_steps = self.config.pt_cycle_steps
+            warmup_steps = self.config.pt_warmup_steps
         elif self.step == 1:
-            min_lr = self.config.s1_min_lr
-            max_lr = self.config.s1_max_lr * (self.config.s1_max_decay**self.iteration)
+            min_lr = self.config.s1_min_lr * (
+                self.config.s1_lr_decay ** (self.iteration - 1)
+            )
+            max_lr = self.config.s1_max_lr * (
+                self.config.s1_lr_decay ** (self.iteration - 1)
+            )
+            cycle_steps = self.config.s1_cycle_steps
+            warmup_steps = self.config.s1_warmup_steps
         else:
-            min_lr = self.config.s2_min_lr
-            max_lr = self.config.s2_max_lr * (self.config.s2_max_decay**self.iteration)
+            min_lr = self.config.s2_min_lr * (
+                self.config.s2_lr_decay ** (self.iteration - 1)
+            )
+            max_lr = self.config.s2_max_lr * (
+                self.config.s2_lr_decay ** (self.iteration - 1)
+            )
+            cycle_steps = self.config.s2_cycle_steps
+            warmup_steps = self.config.s2_warmup_steps
 
         # Build lightning module from scratch if we are not given a warm start parth
         # or a restart path
         if (ws_path is None) and (self.restart_path is None):
+
+            # If using wandb, make a logger and get a new run ID
+            if self.config.wandb:
+
+                # Build the logger
+                self.wandb_logger = WandbLogger(
+                    project=self.config.project_name,
+                    group=self.config.group_name,
+                    name=run_name,
+                    save_dir=self.checkpoint_dir,
+                )
+
+                # Get run ID
+                run_id = self.wandb_logger.experiment.id
+
+            # Else we use no logger and set a dummy run ID
+            else:
+                self.wandb_logger = None
+                run_id = "test_run"
 
             block_params = {
                 "dropout": self.config.block_dropout,
@@ -202,14 +175,16 @@ class OfTrain:
             self.l_module = LOfTransformer(
                 input_dim=self.config.input_dim,
                 debug=self.config.debug,
-                # Include the seed just so it is logged to W&B
-                seed=self.split_seed,
+                # Include the seed and run ID just so they are logged to W&B
+                seed=seed,
+                run_id=run_id,
                 # Include the OF step for plots
                 step=self.step,
                 min_lr=min_lr,
                 max_lr=max_lr,
-                cycle_steps=self.config.cycle_steps,
-                warmup_steps=self.config.warmup_steps,
+                weight_decay=self.config.weight_decay,
+                cycle_steps=cycle_steps,
+                warmup_steps=warmup_steps,
                 gamma=self.config.gamma,
                 # Everything below here are parameters for the network
                 num_classes=1,
@@ -233,18 +208,79 @@ class OfTrain:
             # Note we give preference to the restart path if it exists
             use_path = self.restart_path if self.restart_path is not None else ws_path
             rank_zero_info(f"Loading model from path {use_path}")
-
             self.l_module = LOfTransformer.load_from_checkpoint(
                 use_path,
                 debug=self.config.debug,
-                seed=self.split_seed,
                 step=self.step,
                 min_lr=min_lr,
                 max_lr=max_lr,
-                cycle_steps=self.config.cycle_steps,
-                warmup_steps=self.config.warmup_steps,
+                weight_decay=self.config.weight_decay,
+                cycle_steps=cycle_steps,
+                warmup_steps=warmup_steps,
                 gamma=self.config.gamma,
             )
+
+            # Get the seed from the checkpoint if this is a restart, else use seed
+            # passed into training job. Note this needs to be explicitly reset
+            # in wandb
+            if self.restart_path is not None:
+                seed = self.l_module.seed
+            else:
+                self.l_module.reset_seed(seed)
+
+            # Build wandb logger, note that we get a new run ID for a warm start
+            # but use the ID stored in the checkpoint for a restart.
+            # In case of warm start, need to reset the run ID in the module
+            # to the ID assigned for this run by wandb
+            if self.config.wandb:
+                run_id = self.l_module.run_id if self.restart_path is not None else None
+                self.wandb_logger = WandbLogger(
+                    project=self.config.project_name,
+                    group=self.config.group_name,
+                    name=run_name,
+                    save_dir=self.checkpoint_dir,
+                    id=run_id,
+                    resume="must" if self.restart_path is not None else "never",
+                )
+                if run_id is None:
+                    run_id = self.wandb_logger.experiment.id
+                    self.l_module.reset_run_id(run_id)
+            else:
+                self.wandb_logger = None
+                run_id = "test_run"
+
+        # Initialise the callbacks
+        self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(
+            logging_interval="step"
+        )
+        self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
+            monitor="val_wasserstein",
+            filename="{epoch}-{val_wasserstein:.4f}",
+            save_top_k=self.config.top_k_checkpoints,
+            mode="min",
+            dirpath=self.checkpoint_dir,
+        )
+        self.early_stopping = L.pytorch.callbacks.EarlyStopping(
+            monitor="val_wasserstein",
+            patience=self.config.early_stopping_patience,
+            mode="min",
+        )
+
+        # Build trainer
+        self.trainer = L.Trainer(
+            accelerator="auto" if (self.config.debug or unit_test) else "gpu",
+            num_nodes=self.config.num_nodes,
+            devices=(
+                "auto" if (self.config.debug or unit_test) else self.config.num_gpus
+            ),
+            logger=self.wandb_logger,
+            callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
+            plugins=[SLURMEnvironment(auto_requeue=False)],
+            default_root_dir=self.checkpoint_dir,
+            max_epochs=self.config.max_epochs,
+            enable_progress_bar=self.config.interactive,
+            use_distributed_sampler=False,
+        )
 
         # ---------------- Data setup ----------------
 
@@ -316,27 +352,21 @@ class OfTrain:
             target_file=target_file,
             source_weight_path=source_weight_file,
             target_weight_path=target_weight_file,
-            data_divisor=(
-                self.config.num_pretrain_pieces if self.iteration == 0 else 1
-            ),  # Only need to use data divisor in pretraining
+            data_divisor=1,
             total_rank=int(self.config.num_nodes * self.config.num_gpus),
             rank=self.trainer.global_rank,
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.batch_size,
-            split_seed=self.split_seed,
-            dataloader_workers=1,
+            split_seed=seed,
+            dataloader_workers=0,
             testing=False,
             use_truth=use_truth,
         )
 
     def run(self):
         """run - This function runs the training for the Omnifold classifier.
-
-        Arguments:
-        None
-        Returns:
-        {string} - The run id for this training run
+        No arguments or returns
         """
 
         # Run training, pickup from restart path if available
@@ -358,9 +388,6 @@ class OfTrain:
         # Close W&B
         if self.config.wandb:
             wandb.finish()
-
-        # Return the run id and best checkpoint path
-        return self.run_id, best_model_path
 
 
 # ------------------ MAIN FUNCTION ------------------
@@ -406,22 +433,26 @@ if __name__ == "__main__":
         index=args.index,
     )
 
-    # Override SIGUSR1 and SIGTERM signals to only save a checkpoint
+    # Override SIGUSR1 and SIGTERM signals to save a checkpoint and requeue
+    # Ensure only the rank zero process does this
     def handle_signal(signum, frame):
         """Signal handler for the program."""
         print(f"Received signal {signum}, saving checkpoint.")
         trainer.trainer.save_checkpoint(
             f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
         )
+        os.system("sync")
+        # Requeue on timeout, not needed on preemption
+        if trainer.trainer.is_global_zero and signum == signal.SIGUSR1:
+            time.sleep(60)
+            print("Requeue job!")
+            os.system("scontrol requeue $SLURM_JOB_ID")
 
     signal.signal(signal.SIGUSR1, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
     # Run the training
-    run_id, best_path = trainer.run()
-
-    # Print the run id and best model path
-    rank_zero_info(f"\n###RUN ID###\n{run_id}")
+    trainer.run()
 
     # Print something and sleep a bit to flush the output
     print("...")

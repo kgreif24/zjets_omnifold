@@ -10,6 +10,7 @@ python3
 """
 
 import os
+import time
 import argparse
 import signal
 
@@ -37,7 +38,6 @@ class OfEval:
 
     def __init__(
         self,
-        run_id,
         config_path,
         iteration,
         step,
@@ -51,7 +51,6 @@ class OfEval:
         used for this run of Omnifold, plus the iteration and step of this evaluation.
 
         Arguments:
-        run_id - The ID of the run for evaluation
         config_path - The path of the of config file
         iteration - The iteration number for this training
         step - The step number for this training
@@ -73,7 +72,6 @@ class OfEval:
 
         # Store the configuration
         self.config = OfConfig(config_name=config_path)
-        self.run_id = run_id
         self.iteration = iteration
         self.step = step
         self.verify = verify
@@ -123,22 +121,6 @@ class OfEval:
 
         # ----------------- Lightning setup -----------------
 
-        # Initialise the wandb logger
-        if self.config.wandb:
-
-            self.wandb_logger = WandbLogger(
-                project=self.config.project_name,
-                group=self.config.group_name,
-                name=self.run_name,
-                save_dir=self.checkpoint_dir,
-                id=self.run_id,
-                resume="allow",
-            )
-
-        # Else we use no logger
-        else:
-            self.wandb_logger = None
-
         # Load model checkpoint
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
@@ -146,6 +128,20 @@ class OfEval:
             debug=self.config.debug,
             step=self.step,
         )
+
+        # Initialise the wandb logger
+        if self.config.wandb:
+            self.wandb_logger = WandbLogger(
+                project=self.config.project_name,
+                group=self.config.group_name,
+                name=self.run_name,
+                save_dir=self.checkpoint_dir,
+                id=self.model.run_id,
+                resume="allow",
+                settings=wandb.Settings(init_timeout=90),
+            )
+        else:
+            self.wandb_logger = None
 
         # Make lightning trainer for testing
         self.trainer = L.Trainer(
@@ -271,6 +267,7 @@ class OfEval:
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             dataloader_workers=30,
+            persistent_workers=True,
             load_all=True,
             testing=True,
             use_truth=use_truth,
@@ -466,7 +463,7 @@ class OfEval:
         if not self.verify:
             print("Run testing")
             self.run_testing()
-            if self.unit_test or (not self.trainer.is_global_zero):
+            if self.unit_test:
                 return
 
         # Run prediction, unless this is pretraining
@@ -484,9 +481,6 @@ class OfEval:
 # This function will be called as a subprocess from the Omnifolder class
 if __name__ == "__main__":
 
-    # Override the signal handler for SIGUSR1
-    signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run the omnifold evaluation")
     parser.add_argument(
@@ -494,9 +488,6 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Path to the checkpoint to evaluate",
-    )
-    parser.add_argument(
-        "--run_id", type=str, default=None, help="ID of the run for evaluation"
     )
     parser.add_argument(
         "--config_path", type=str, default=None, help="Path to the configuration file"
@@ -526,13 +517,23 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
+    # Signal handler just requeues the job on SIGUSR1. 
+    # This is done automatically on SIGTERM
+    def handle_signal(signum, frame):
+        """Signal handler for the program."""
+        print(f"Received signal {signum}, requeue job.")
+        time.sleep(60)
+        os.system("sync")
+        os.system("scontrol requeue $SLURM_JOB_ID")
+
+    signal.signal(signal.SIGUSR1, handle_signal)
+
     # Run the evaluation
     evaluator = OfEval(
+        args.config_path,
+        args.iteration,
+        args.step,
         check_path=args.check_path,
-        run_id=args.run_id,
-        config_path=args.config_path,
-        iteration=args.iteration,
-        step=args.step,
         verify=args.verify,
         store=args.store,
         index=args.index,
