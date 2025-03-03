@@ -12,7 +12,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
 #SBATCH -t 0-00:30:00
-#SBATCH --signal=USR1@120
+#SBATCH --signal=USR1@240
 #SBATCH --requeue
 #SBATCH --open-mode=append
 

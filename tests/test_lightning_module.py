@@ -54,8 +54,8 @@ def test_overfit(tmp_path):
 
     # Pass predictions through sigmoid and check they are reasonable
     probs = 1 / (1 + np.exp(-predictions))
-    right_answers_low = np.concatenate([np.zeros(82), np.ones(83) - 0.5])
-    right_answers_high = np.concatenate([np.zeros(82) + 0.5, np.ones(83)])
+    right_answers_low = np.concatenate([np.zeros(78), np.ones(100) - 0.5])
+    right_answers_high = np.concatenate([np.zeros(78) + 0.5, np.ones(100)])
     test = np.logical_and(probs >= right_answers_low, probs <= right_answers_high)
     assert np.all(test)
 

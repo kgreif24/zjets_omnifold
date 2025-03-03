@@ -442,10 +442,10 @@ if __name__ == "__main__":
             trainer.trainer.save_checkpoint(
                 f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
             )
+            os.system("sync")
             # Requeue on timeout, not needed on preemption
             if signum == signal.SIGUSR1:
                 time.sleep(60)
-                os.system("sync")
                 print("Requeue job!")
                 os.system("scontrol requeue $SLURM_JOB_ID")
 
