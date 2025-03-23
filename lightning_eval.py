@@ -517,13 +517,14 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
-    # Signal handler just requeues the job on SIGUSR1. 
+    # Signal handler just requeues the job on SIGUSR1
     # This is done automatically on SIGTERM
     def handle_signal(signum, frame):
         """Signal handler for the program."""
         print(f"Received signal {signum}, requeue job.")
-        time.sleep(60)
+        time.sleep(10)
         os.system("sync")
+        time.sleep(10)
         os.system("scontrol requeue $SLURM_JOB_ID")
 
     signal.signal(signal.SIGUSR1, handle_signal)

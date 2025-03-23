@@ -103,9 +103,9 @@ class OfTrain:
         else:
             ws_path = None
 
-        # If the checkpoint directory contains a restart checkpoint,
+        # If the checkpoint directory contains a checkpoint,
         # we will restart training from the most recent checkpoint file
-        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/restart*.ckpt")
+        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/*.ckpt")
         if len(checkpoint_glob) > 0:
             self.restart_path = sorted(
                 checkpoint_glob, key=os.path.getmtime, reverse=True
@@ -433,18 +433,15 @@ if __name__ == "__main__":
         index=args.index,
     )
 
-    # Override SIGUSR1 and SIGTERM signals to save a checkpoint and requeue
-    # Ensure only the rank zero process does this
+    # Override SIGUSR1 and SIGTERM signals to requeue
     def handle_signal(signum, frame):
         """Signal handler for the program."""
-        print(f"Received signal {signum}, saving checkpoint.")
-        trainer.trainer.save_checkpoint(
-            f"{trainer.checkpoint_dir}/restart_{time.strftime('%H-%M-%S')}.ckpt"
-        )
+        print(f"Received signal {signum}, requeue!.")
+        time.sleep(10)
         os.system("sync")
-        # Requeue on timeout, not needed on preemption
+        time.sleep(10)
+        # Requeue on timeout, not needed on preemption since it is done automatically
         if trainer.trainer.is_global_zero and signum == signal.SIGUSR1:
-            time.sleep(60)
             print("Requeue job!")
             os.system("scontrol requeue $SLURM_JOB_ID")
 
