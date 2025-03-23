@@ -38,11 +38,28 @@ parser.add_argument(
     choices=["multifold", "ibu"],
     help="Which comparison to make",
 )
+parser.add_argument(
+    "--region",
+    type=int,
+    default=0,
+    help=(
+        "Integer which sets which region of the phase space to apply cuts to, if any."
+        "0: No cuts, 1: high pT_Z, 2: electroweak enhanced, 3, diboson enhanced"
+    ),
+)
+parser.add_argument(
+    "--fine_binning",
+    action="store_true",
+    help="If true, will use fine binning for the multifold comparison",
+)
 args = parser.parse_args()
+
+# Set max PD events
+max_pd_events = 1000000
 
 # Load Omnifold measurement data
 f_mctest = uproot.open(
-    "./dataloc/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root"
+    "./dataloc/WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723_shuffled.root"
 )
 t_mctest = f_mctest["OmniTree"]
 f_truthpd = uproot.open(
@@ -52,64 +69,78 @@ t_truthpd = f_truthpd["OmniTree"]
 
 # Get the Omnifold filters
 filter_of = ak.to_numpy(t_mctest["truth_pass190"].array())
-filter_of_target = ak.to_numpy(t_truthpd["truth_pass190"].array())
+filter_of_target = ak.to_numpy(t_truthpd["truth_pass190"].array(entry_stop=max_pd_events))
 
 # If we are comparing to multifold, need to restrict dimuon pT to > 200 GeV
 if args.compare == "multifold":
     of_ptll = ak.to_numpy(t_mctest["truth_pT_ll"].array())
-    of_ptll_target = ak.to_numpy(t_truthpd["truth_pT_ll"].array())
+    of_ptll_target = ak.to_numpy(t_truthpd["truth_pT_ll"].array(entry_stop=max_pd_events))
     filter_of = np.logical_and(filter_of, of_ptll > 200)
     filter_of_target = np.logical_and(filter_of_target, of_ptll_target > 200)
+    print("N source events:", np.sum(filter_of))
+    print("N target events:", np.sum(filter_of_target))
+
+# # If we are applying a region cut, do so here
+# if args.region == 1:
+#     of_ptll = ak.to_numpy(t_mctest["truth_pT_ll"].array())
+#     of_ptll_target = ak.to_numpy(t_truthpd["truth_pT_ll"].array())
+#     of_pt_j2 = ak.to_numpy(t_mctest["truth_pT_trackj2"].array())
+#     of_pt_j2_target = ak.to_numpy(t_truthpd["truth_pT_trackj2"].array())
+#     filter_of = np.logical_and(filter_of, of_ptll > 350, of_pt_j2 > 50)
+#     filter_of_target = np.logical_and(
+#         filter_of_target, of_ptll_target > 350, of_pt_j2_target > 50
+#     )
 
 # Get the Omnifold weights
 weight_files = sorted(glob.glob(args.weight_card))
 ensemble_weights_of = [
-    np.load(weight_file)["test"][filter_of == 1] for weight_file in weight_files
+    np.load(weight_file)["test"][filter_of == 1].clip(max=100) for weight_file in weight_files
 ]
 mean_weights_of = np.mean(ensemble_weights_of, axis=0)
-target_weights_of = ak.to_numpy(t_truthpd["weight_mc"].array())[filter_of_target == 1]
+target_weights_of = ak.to_numpy(t_truthpd["weight_mc"].array(entry_stop=max_pd_events))[filter_of_target == 1]
 
-# Load multifold measurement data
-if args.compare == "multifold":
-    multifold = pd.read_hdf(
-        "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/multifold.h5"
-    )
-    multifold_target = pd.read_hdf(
-        "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/target.h5"
-    )
+# # Load multifold measurement data
+# if args.compare == "multifold":
+#     multifold = pd.read_hdf(
+#         "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/multifold.h5"
+#     )
+#     multifold_target = pd.read_hdf(
+#         "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/target.h5"
+#     )
 
-    # Take the first N network ensemble weights
-    ensemble_names = [
-        col for col in multifold.keys() if col.startswith("weights_ensemble_")
-    ][: len(weight_files)]
-    ensemble_weights_mf = [multifold[ensemble_name] for ensemble_name in ensemble_names]
-    mean_weights_mf = np.mean(ensemble_weights_mf, axis=0)
-    target_weights_mf = multifold_target["weight_mc"]
+#     # Get nominal multifold weights
+#     # mean_weights_mf = multifold["weights_nominal"]
+#     ensemble_weights_mf = np.array([
+#         multifold[key] for key in multifold.keys() if "weights_ensemble" in key
+#     ])
+#     mean_weights_mf = multifold["weights_nominal"]
+#     print("N ensemble weights:", len(ensemble_weights_mf))
+#     target_weights_mf = multifold_target["weight_mc"]
 
-    # Counter for keeping track of multifold W1 distances
-    w1_counter = 0
+#     # Counter for keeping track of multifold W1 distances
+#     w1_counter = 0
 
-# Else load IBU data
-else:
-    ibu = np.load(
-        "/global/cfs/cdirs/m3246/ZjetOmnifold/data/ibu/ibu.npy", allow_pickle=True
-    )
+# # Else load IBU data
+# else:
+#     ibu = np.load(
+#         "/global/cfs/cdirs/m3246/ZjetOmnifold/data/ibu/ibu.npy", allow_pickle=True
+#     )
 
-# Loop through the 24 multifold observables + Ntracks
+# Loop through the observables
 for key, obs_dict in pu.default_settings.items():
+
+    if key != "phi_l1":
+        continue
 
     print("Plotting observable", key)
 
-    # Set IBU binning if we are comparing to IBU
-    if args.compare == "ibu":
-        for ibu_dict in ibu:
-            if ibu_dict["file_label"] == key:
-                obs_dict.update({"bins": np.array(ibu_dict["bins"])})
-                break
+    # Update binning to fine binning if necessary
+    if not args.fine_binning:
+        obs_dict.update({"bins": np.array(pu.ibu_bins[key])})
 
     # Get the Omnifold data, take care to take the truth data
     obs_of = ak.to_numpy(t_mctest["truth_" + key].array())[filter_of == 1]
-    obs_of_target = ak.to_numpy(t_truthpd["truth_" + key].array())[
+    obs_of_target = ak.to_numpy(t_truthpd["truth_" + key].array(entry_stop=max_pd_events))[
         filter_of_target == 1
     ]
 
@@ -125,78 +156,82 @@ for key, obs_dict in pu.default_settings.items():
         err_multiple=args.err_multiple,
     )
     fig.savefig(f"{args.store}/of_{key}.png", dpi=300)
+    fig.savefig(f"{args.store}/of_{key}.pdf", dpi=300)
     plt.close()
 
-    # Repeat for comparison if this is not Ntracks
-    if key != "Ntracks":
+    # # Repeat for comparison if this is not Ntracks or HT
+    # if key not in ["Ntracks", "sum_pT_tracks"]:
 
-        # For multifold
-        if args.compare == "multifold":
+    #     # For multifold
+    #     if args.compare == "multifold":
 
-            # Get the multifold data
-            obs_mf = multifold[key]
-            obs_mf_target = multifold_target[key]
+    #         # Get the multifold data
+    #         obs_mf = multifold[key]
+    #         obs_mf_target = multifold_target[key]
 
-            # Calculate W1 distance for this dimension
-            w1 = scipy.stats.wasserstein_distance(
-                obs_mf,
-                obs_mf_target,
-                u_weights=mean_weights_mf,
-                v_weights=target_weights_mf,
-            )
-            w1_counter += w1
+    #         # Calculate W1 distance for this dimension
+    #         w1 = scipy.stats.wasserstein_distance(
+    #             obs_mf,
+    #             obs_mf_target,
+    #             u_weights=mean_weights_mf,
+    #             v_weights=target_weights_mf,
+    #         )
+    #         w1_counter += w1
 
-            # Make multifold plot
-            obs_dict.update({"color": "green", "name": "Multifold"})
-            fig = pu.unfold_performance_plot(
-                obs_mf,
-                mean_weights_mf,
-                obs_mf_target,
-                target_weights_mf,
-                ensemble_weights_mf,
-                plot_params=obs_dict,
-                err_multiple=args.err_multiple,
-            )
-            fig.savefig(f"{args.store}/mf_{key}.png", dpi=300)
-            plt.close()
+    #         # Make multifold plot
+    #         obs_dict.update({"color": "green", "name": "Multifold"})
+    #         fig = pu.unfold_performance_plot(
+    #             obs_mf,
+    #             mean_weights_mf,
+    #             obs_mf_target,
+    #             target_weights_mf,
+    #             ensemble_weights_mf,
+    #             plot_params=obs_dict,
+    #             err_multiple=args.err_multiple,
+    #         )
+    #         fig.savefig(f"{args.store}/mf_{key}.png", dpi=300)
+    #         fig.savefig(f"{args.store}/mf_{key}.pdf", dpi=300)
+    #         plt.close()
 
-        # For IBU
-        else:
+    #     # For IBU
+    #     else:
 
-            # Loop through IBU results and find the one that matches the observables
-            for ibu_dict in ibu:
-                if ibu_dict["file_label"] == key:
-                    obs_data = ibu_dict
-                    break
+    #         # Loop through IBU results and find the one that matches the observables
+    #         for ibu_dict in ibu:
+    #             if ibu_dict["file_label"] == key:
+    #                 obs_data = ibu_dict
+    #                 break
 
-            # Make IBU plot
-            obs_dict.update({"color": "blue", "name": "IBU"})
-            fig = pu.ibu_performance_plot(
-                obs_data, obs_of_target, target_weights_of, obs_dict
-            )
-            fig.savefig(f"{args.store}/ibu_{key}.png", dpi=300)
-            plt.close()
+    #         # Make IBU plot
+    #         obs_dict.update({"color": "blue", "name": "IBU"})
+    #         fig = pu.ibu_performance_plot(
+    #             obs_data, obs_of_target, target_weights_of, obs_dict
+    #         )
+    #         fig.savefig(f"{args.store}/ibu_{key}.png", dpi=300)
+    #         fig.savefig(f"{args.store}/ibu_{key}.pdf", dpi=300)
+    #         plt.close()
 
 # Print the total W1 distance for multifold
 if args.compare == "multifold":
     print(f"Total W1 distance for multifold: {w1_counter}")
+    print("NOTE: this distance does not include the Ntracks or HT observables")
 
-# Make omnifold plot for H_T
-track_pt = t_mctest["truth_pT_tracks"].array()[filter_of == 1]
-track_pt_target = t_truthpd["truth_pT_tracks"].array()[filter_of_target == 1]
-ht = ak.sum(track_pt, axis=1)
-ht_target = ak.sum(track_pt_target, axis=1)
+# # Make omnifold plot for H_T
+# track_pt = t_mctest["truth_pT_tracks"].array()[filter_of == 1]
+# track_pt_target = t_truthpd["truth_pT_tracks"].array()[filter_of_target == 1]
+# ht = ak.sum(track_pt, axis=1)
+# ht_target = ak.sum(track_pt_target, axis=1)
 
-obs_dict = pu.track_hists["alltrack_Ht"]
-obs_dict.update({"color": "purple", "name": "Omnifold"})
-fig = pu.unfold_performance_plot(
-    ht,
-    mean_weights_of,
-    ht_target,
-    target_weights_of,
-    ensemble_weights_of,
-    plot_params=obs_dict,
-    err_multiple=args.err_multiple,
-)
-fig.savefig(f"{args.store}/of_alltrack_Ht.png", dpi=300)
-plt.close()
+# obs_dict = pu.track_hists["alltrack_Ht"]
+# obs_dict.update({"color": "purple", "name": "Omnifold"})
+# fig = pu.unfold_performance_plot(
+#     ht,
+#     mean_weights_of,
+#     ht_target,
+#     target_weights_of,
+#     ensemble_weights_of,
+#     plot_params=obs_dict,
+#     err_multiple=args.err_multiple,
+# )
+# fig.savefig(f"{args.store}/of_alltrack_Ht.png", dpi=300)
+# plt.close()

@@ -39,6 +39,11 @@ parser.add_argument(
         "in addition to truth"
     ),
 )
+parser.add_argument(
+    "--make_track_plots",
+    action="store_true",
+    help="If true, will make track level plots",
+)
 args = parser.parse_args()
 
 # Set max events and max tracks to use for plotting
@@ -101,7 +106,7 @@ else:
     mc_end_weights_track = mc_end_weights
 mc_end_weights_track = mc_end_weights_track[mc_track_filter == 1]
 
-# Get pseudodata weights (dropping 3 events that have negative weights)
+# Get pseudodata weights
 pd_weights = ak.to_numpy(pd_tree["weight_mc"].array(entry_stop=max_events))
 
 # Truncate and filter weights
@@ -154,19 +159,20 @@ pd_plotting = du.get_plotting(
 plotting = ak.concatenate([mc_plotting, pd_plotting], axis=0)
 
 # Get the track kinematics
-mc_kinematics, _ = du.get_kinematics(
-    mc_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth
-)
-pd_kinematics, _ = du.get_kinematics(
-    pd_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth
-)
-kinematics = ak.concatenate([mc_kinematics, pd_kinematics], axis=0)
+if args.make_track_plots:
+    mc_kinematics, _ = du.get_kinematics(
+        mc_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth
+    )
+    pd_kinematics, _ = du.get_kinematics(
+        pd_tree, get_truth=True, stop=max_track_events, passBoth=args.passBoth
+    )
+    kinematics = ak.concatenate([mc_kinematics, pd_kinematics], axis=0)
 
-# Drop the muons
-kinematics = kinematics[:, :, 2:]
+    # Drop the muons
+    kinematics = kinematics[:, :, 2:]
 
-# Zero pad the kinematics, sends kinematics to a numpy array
-kinematics = du.pad_kinematics(kinematics)
+    # Zero pad the kinematics, sends kinematics to a numpy array
+    kinematics = du.pad_kinematics(kinematics)
 
 # Modify the legends to show the truth level data
 new_settings = pu.default_settings.copy()
@@ -204,12 +210,15 @@ wass = WassersteinOne(hist_info=new_settings, draw_plots=True, save_location=arg
 wass.update(plotting, start_weights, end_weights, labels)
 w1, plot_dict = wass.compute(from_torch=False, names=names, is_comp=True)
 print(f"Re-weighted Wasserstein One: {w1}")
-pu.make_inclusive_track_plots(
-    kinematics,
-    labels_track,
-    start_weights_track,
-    end_weights=end_weights_track,
-    definitions=new_track_settings,
-    save_location=args.store,
-    names=names,
-)
+
+# Finally make track plots if requested
+if args.make_track_plots:
+    pu.make_inclusive_track_plots(
+        kinematics,
+        labels_track,
+        start_weights_track,
+        end_weights=end_weights_track,
+        definitions=new_track_settings,
+        save_location=args.store,
+        names=names,
+    )

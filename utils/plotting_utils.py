@@ -184,9 +184,10 @@ ibu_bins["tau2_trackj1"] = [0.0, 0.025, 0.05, 0.08, 0.12, 0.17, 0.2, 0.5]
 ibu_bins["tau2_trackj2"] = [0.0, 0.025, 0.1, 0.17, 0.25, 0.5]
 ibu_bins["tau3_trackj1"] = [0.0, 0.025, 0.05, 0.1, 0.3]
 ibu_bins["tau3_trackj2"] = [0.0, 0.025, 0.08, 0.14, 0.3]
-ibu_bins["Ntracks"] = np.arange(
-    0, 256, 1
+ibu_bins["Ntracks"] = np.linspace(
+    0, 256, 10
 )  # Note not yet included in IBU so use Omnifold default binning
+ibu_bins["sum_pT_tracks"] = np.linspace(0, 2000, 10)
 
 # Default settings for histograms
 common_hist_settings = {
@@ -342,7 +343,7 @@ event_hists = {
     "Ntracks": {
         "key": "Ntracks",
         "xlabel": "# of tracks",
-        "bins": np.arange(0, 256, 3),
+        "bins": np.arange(0, 256, 1),
     },
     "sum_pT_tracks": {
         "key": "sum_pT_tracks",
@@ -407,6 +408,7 @@ def make_logged_plots(
     definitions=default_settings,
     save_location="./plot_storage",
     is_comp=False,
+    region=0,
     display=False,
     **kwargs,
 ):
@@ -825,9 +827,12 @@ def construct_hist_and_error(
     source, source_weight, target, target_weight, bins, bs_weights
 ):
     """construct_hist_and_error - This function will construct a histogram comparing
-    source and target distributions. It will also calculate the error on the source
-    distribution using the "bs_weights" argument, which is a list of weights obtained
-    via some ensembling or bootstrap.
+    source and target distributions. It will also quantify the raw statistical
+    uncertainty in the comparison, by looking at the sum of the weights squared
+    in each bin, for both the source and target distributions.
+    Finally it will also calculate the error on the source
+    distribution from some stochastic uncertainty using the "bs_weights" argument,
+    which is a list of weights obtained via some ensembling or bootstrap.
 
     Arguments:
     source - numpy array of source data (N events,)
@@ -840,21 +845,43 @@ def construct_hist_and_error(
     Returns:
     nom - numpy array of source histogram
     target - numpy array of target histogram
-    var - numpy array of the standard variance of the source histogram
+    source_stat - numpy array of the variance of the source histogram due to
+        statistical uncertainty
+    target_stat - numpy array of the variance of the target histogram due to
+        statistical uncertainty
+    mbias - numpy array of the "method bias" uncertainty in the source histogram
+    var - numpy array of the variance of the source histogram due to some
+        stochastic uncertainty assessed through bootstrapping / ensembling
     """
 
     # Construct source and target histograms
-    nom, _ = np.histogram(source, bins=bins, weights=source_weight, density=True)
-    tar, _ = np.histogram(target, bins=bins, weights=target_weight, density=True)
+    nom, _ = np.histogram(source, bins=bins, weights=source_weight, density=False)
+    tar, _ = np.histogram(target, bins=bins, weights=target_weight, density=False)
+    print("Nominal histogram: ", nom)
 
-    # Evaluate standard error on source histogram
+    # Normalize target histogram to source
+    norm_factor = np.sum(nom) / np.sum(tar)
+    tar = tar * norm_factor
+    print("Target histogram: ", tar)
+
+    # Find sum of squared weights in each bin
+    source_sumw2 = np.histogram(source, bins=bins, weights=source_weight**2)[0]
+    target_sumw2 = np.histogram(target, bins=bins, weights=target_weight**2)[0] * norm_factor
+
+    # Calculate method bias
+    mbias = (nom - tar) ** 2
+
+    # Calculate stochastic uncertainty from bs_weights
     var_hists = []
-    for bs in bs_weights:
-        varHist, _ = np.histogram(source, bins=bins, weights=bs, density=True)
+    for i, bs in enumerate(bs_weights):
+        varHist, _ = np.histogram(source, bins=bins, weights=bs, density=False)
+        norm_factor = np.sum(nom) / np.sum(varHist)
+        varHist = varHist * norm_factor
+        print(f"Bootstrap {i} histogram: ", varHist)
         var_hists.append(varHist)
-    var = np.var(var_hists, axis=0) / len(bs_weights)
+    var = np.var(var_hists, axis=0)
 
-    return nom, tar, var
+    return nom, tar, source_sumw2, target_sumw2, mbias, var
 
 
 def unfold_performance_plot(
@@ -894,31 +921,37 @@ def unfold_performance_plot(
 
     # Construct histograms and errors
     bins = plot_params["bins"]
-    nom, tar, var = construct_hist_and_error(
+    nom, tar, source_stat_var, target_stat_var, mbias_var, nn_var = construct_hist_and_error(
         source, source_weight, target, target_weight, bins, bs_weights
     )
 
-    # Calculate the bias squared
-    bias2 = (nom - tar) ** 2
-
-    # Repeat last bin of target for plotting
-    plot_tar = np.append(tar, tar[-1])
-
-    # Scale the error
-    plot_err = np.sqrt(var) * err_multiple
+    # Calculate total variance
+    total_var = source_stat_var + nn_var + mbias_var
 
     # Plot
     bin_centers = (bins[1:] + bins[:-1]) / 2
     fig, (ax, rax, vax) = plt.subplots(
-        3, 1, figsize=(6, 7), sharex=True, gridspec_kw={"height_ratios": [2, 1, 1]}
+        3, 1, figsize=(6, 6.8), sharex=True, gridspec_kw={"height_ratios": [2, 1, 1]}
     )
-    plt.subplots_adjust(hspace=0)
+    plt.subplots_adjust(hspace=0, top=0.95)
 
+    # Densities
+    plot_tar = np.append(tar, tar[-1])
+    plot_target_stat = np.sqrt(np.append(target_stat_var, target_stat_var[-1]))
     ax.plot(bins, plot_tar, "--", label="Target", color="black", drawstyle="steps-post")
+    ax.fill_between(
+        bins,
+        plot_tar - plot_target_stat,
+        plot_tar + plot_target_stat,
+        step="post",
+        color="gray",
+        alpha=0.3,
+        label="Target stat. unc.",
+    )
     ax.errorbar(
         bin_centers,
         nom,
-        yerr=plot_err,
+        yerr=np.sqrt(total_var) * err_multiple,
         fmt=".",
         label=plot_params["name"],
         color=plot_params["color"],
@@ -929,22 +962,46 @@ def unfold_performance_plot(
     ax.set_ylabel("Normalized counts")
     ax.legend()
 
+    # Ratios
+    ratio = nom / tar
+    ratio_err = ratio * np.sqrt(total_var / nom**2 + source_stat_var / tar**2)
     rax.axhline(1, color="black", linestyle="--")
     rax.errorbar(
-        bin_centers, nom / tar, yerr=plot_err / tar, fmt=".", color=plot_params["color"]
+        bin_centers, ratio, yerr=ratio_err, fmt=".", color=plot_params["color"]
     )
     rax.set_ylim(0.5, 1.5)
     rax.set_yticks([0.75, 1.0, 1.25])
     rax.set_ylabel("Ratio to target")
     rax.tick_params(axis="x", direction="in", bottom=True, top=False)
 
-    vax.plot(bin_centers, bias2 / tar**2, ".", color="blue", label="Bias^2")
-    vax.plot(bin_centers, var / tar**2, ".", color="red", label="Variance")
-    vax.set_yscale("log")
-    vax.set_ylim(1e-6, 10)
+    # Uncertainties
+    rel_source_stat_err = np.sqrt(source_stat_var) / nom
+    rel_nn_err = np.sqrt(nn_var) / nom
+    rel_mbias_err = np.sqrt(mbias_var) / tar
+    rel_total_err = np.sqrt(rel_source_stat_err**2 + rel_nn_err**2 + rel_mbias_err**2)
+    plot_stat_err = np.append(rel_source_stat_err, rel_source_stat_err[-1])
+    plot_nn_err = np.append(rel_nn_err, rel_nn_err[-1])
+    plot_mbias_err = np.append(rel_mbias_err, rel_mbias_err[-1])
+    plot_total_err = np.append(rel_total_err, rel_total_err[-1])
+    vax.plot(
+        bins,
+        plot_total_err,
+        "--",
+        color="black",
+        label="Total unc.",
+        drawstyle="steps-post",
+    )
+    vax.fill_between(
+        bins, 0, plot_total_err, step="post", color="gray", alpha=0.3
+    )
+    vax.plot(bins, plot_nn_err, "-", color="blue", label="NN Init", drawstyle="steps-post")
+    vax.plot(bins, plot_mbias_err, "-", color="red", label="Method bias", drawstyle="steps-post")
+    vax.plot(bins, plot_stat_err, "-", color="green", label="MC stat", drawstyle="steps-post")
+    vax.plot()
+    vax.set_ylim(0, 0.2)
     vax.set_xlabel(plot_params["xlabel"])
-    vax.set_ylabel("Error / Target^2")
-    vax.legend()
+    vax.set_ylabel("Uncertainty")
+    vax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=4)
 
     return fig
 
