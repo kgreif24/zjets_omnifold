@@ -1,4 +1,4 @@
-""" lightning_data_module.py - This file defines the LOfData class.
+"""lightning_data_module.py - This file defines the LOfData class.
 It builds OfDatasets from the input ROOT files and provides dataloaders for training
 and testing.
 
@@ -18,7 +18,6 @@ import awkward as ak
 
 from of_dataset import OfDataset
 import utils.data_utils as du
-import utils.plotting_utils as pu
 import utils.subprocess_utils as su
 
 
@@ -217,7 +216,7 @@ class LOfData(L.LightningDataModule):
 
     def _rebuild_dataset(self, filename, piece=0):
         """rebuild_dataset - This function builds the pytorch datasets for the source
-        or target data. It will load the kinematics, index, weight, label, and plotting
+        or target data. It will load the kinematics, index, weight, label, and w1 obs
         info, and use them to build the "source dataset", which is used for prediction,
         and the "all_dataset", which is used for training / validation / testing.
         It will load a piece of the data based on the piece argument, and the data
@@ -261,7 +260,7 @@ class LOfData(L.LightningDataModule):
         # -------------------- Load the data ----------------------------
 
         # Get the data from file
-        kinematics, indeces, weights, plotting = self._load_data_from_file(
+        kinematics, indeces, weights, w1_obs = self._load_data_from_file(
             filename, use_weight_path, start=start, stop=stop
         )
 
@@ -292,12 +291,12 @@ class LOfData(L.LightningDataModule):
         if filename == "source":
             self.source_kinematics = kinematics
             self.source_labels = labels
-            self.source_plotting = plotting
+            self.source_w1_obs = w1_obs
             self.source_dataset = OfDataset(
                 kinematics,
                 labels,
                 weights,
-                plotting,
+                w1_obs,
                 object_indeces=indeces,
                 n_jets=self.n_jets,
                 max_tracks=self.max_tracks,
@@ -305,12 +304,12 @@ class LOfData(L.LightningDataModule):
         elif filename == "target":
             self.target_kinematics = kinematics
             self.target_labels = labels
-            self.target_plotting = plotting
+            self.target_w1_obs = w1_obs
             self.target_dataset = OfDataset(
                 kinematics,
                 labels,
                 weights,
-                plotting,
+                w1_obs,
                 object_indeces=indeces,
                 n_jets=self.n_jets,
                 max_tracks=self.max_tracks,
@@ -367,7 +366,7 @@ class LOfData(L.LightningDataModule):
     ):
         """load_data_from_file - This function loads data from a file using uproot,
         and applies the relevant preprocessing. It returns the kinematics, mask,
-        plotting data, weights, and pass190 filter
+        observables for calculating W1 distances, weights, and pass190 filter
 
         Arguments:
             which_file {str} -- The file to load data from. Can be 'source' or 'target'
@@ -384,7 +383,7 @@ class LOfData(L.LightningDataModule):
             np.ndarray -- The mask data
             np.ndarray -- The weight data, for all events, regardless of start/stop.
                 Does not apply the pass190 filter!!
-            np.ndarray -- The plotting data
+            np.ndarray -- The W1 observable data
         """
 
         # Get tree to use
@@ -409,20 +408,17 @@ class LOfData(L.LightningDataModule):
             tree, which_file=which_file, path=weight_path, test=self.testing
         )
 
-        # Get plotting data
-        plotting_variables = [
-            hist_dict["key"] for hist_dict in pu.default_settings.values()
-        ]
-        plotting = du.get_plotting(
+        # Get observables for calculating W1 metrics
+        w1_keys = du.get_w1_obs()
+        w1_observables = du.get_observables(
             tree,
-            vars=plotting_variables,
-            muon_only=self.muon_only,
+            w1_keys,
             get_truth=self.use_truth,
             start=start,
             stop=stop,
         )
 
-        return kinematics, indeces, weights, plotting
+        return kinematics, indeces, weights, w1_observables
 
     def _load_weights(self, tree, which_file="source", path=None, test=False):
         """_load_weights - This function implements the logic for loading weights
@@ -604,13 +600,16 @@ class LOfData(L.LightningDataModule):
         # Gets pT, eta, phi, for all tracks (not muons)
         return all_kinematics[:, :3, 2:]
 
-    # Method for getting plotting data
-    def get_plotting(self):
-        return np.concatenate([self.source_plotting, self.target_plotting], axis=0)
+    # Method for getting W1 observable data
+    def get_w1_obs(self):
+        return np.concatenate([self.source_w1_obs, self.target_w1_obs], axis=0)
 
-    # Method for getting source root weights
+    # Methods for getting source and target weights
     def get_source_all_weights(self):
         return self.source_all_weights
+
+    def get_target_all_weights(self):   
+        return self.target_all_weights
 
     # Methods for getting pass 190 flags
     def get_source_pass190(self):

@@ -98,7 +98,7 @@ def test_get_kinematics():
     assert np.all(np.count_nonzero(ind1[:, 0, :] == -1, axis=1) == 2)
 
 
-def test_get_plotting():
+def test_get_observables():
 
     # Hardcode the location of the event sample
     sample = "./assets/evts_000_100.root"
@@ -107,7 +107,7 @@ def test_get_plotting():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Assert we have 100 events and 2 vars
-    plotting = du.get_plotting(t, vars=["Ntracks", "pT_ll"])
+    plotting = du.get_observables(t, ["Ntracks", "pT_ll"])
     assert plotting.shape == (np.sum(p190), 2)
 
 

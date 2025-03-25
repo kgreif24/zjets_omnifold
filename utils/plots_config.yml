@@ -1,0 +1,124 @@
+# This file contains configurations for all histograms of the data.
+# Default settings for histograms are stored in the "defaults" anchor.
+
+defaults: &default_plot
+  histtype: "bar"
+  density: true
+  linear_scale: false
+  nbins: 150
+  binlow: 0
+  binhigh: 200
+  ylim: null
+  ylabel: "A.U."
+  rlim:
+    - 0.5
+    - 1.5
+  w1_eval: true
+  truth_mc: false
+  truth_data: false
+  verbosity_level: 1
+  type: "precomputed"
+
+# The following sections define the configurations for different histograms.
+# Each section can override the default settings as needed.
+
+plots:
+  pT_l1:
+    <<: *default_plot
+    key: "pT_l1"
+    xlabel: '$p_{T,\mu1}$ [GeV]'
+    binlow: 0
+    binhigh: 1000
+    ibubins: 
+      - 25.0
+      - 125.0
+      - 200.0
+      - 300.0
+      - 400.0
+      - 600.0
+      - 800.0
+    verbosity_level: 2
+
+  pT_l2:
+    <<: *default_plot
+    key: "pT_l2"
+    xlabel: '$p_{T,\mu2}$ [GeV]'
+    binlow: 0
+    binhigh: 800
+    ibubins: 
+      - 25.0
+      - 50.0
+      - 75.0
+      - 100.0
+      - 150.0
+      - 300.0
+      - 400.0
+    verbosity_level: 2
+
+  m_trackj1:
+    <<: *default_plot
+    key: "m_trackj1"
+    xlabel: "$m_{track,j1}$ [GeV]"
+    binlow: 0
+    binhigh: 150
+    ibubins: 
+      - 0.0
+      - 8.0
+      - 16.0
+      - 24.0
+      - 32.0
+      - 42.0
+      - 70.0
+    verbosity_level: 1
+
+  Ntracks:
+    <<: *default_plot
+    key: "Ntracks"
+    xlabel: "$N_{ch}$"
+    nbins: 257
+    binlow: 0
+    binhigh: 256
+    ibubins: 
+      - 0.0
+      - 10.0
+      - 20.0
+      - 30.0
+      - 40.0
+      - 50.0
+      - 60.0
+      - 70.0
+      - 80.0
+      - 90.0
+    verbosity_level: 0
+
+  sum_pT_tracks:
+    <<: *default_plot
+    key: "sum_pT_tracks"
+    xlabel: "$H_{T,tracks}$ [GeV]"
+    binlow: 0
+    binhigh: 2000
+    ibubins: 
+      - 0.0
+      - 200.0
+      - 400.0
+      - 600.0
+      - 800.0
+      - 1000.0
+      - 1200.0
+      - 1400.0
+      - 1600.0
+      - 1800.0
+    verbosity_level: 0
+
+  pT_tracks:
+    <<: *default_plot
+    key: "pT_tracks"
+    xlabel: "$p_{T,tracks}$ [GeV]"
+    binlow: 0
+    binhigh: 5
+    verbosity_level: 2
+    type: "track"
+    w1_eval: false
+
+
+

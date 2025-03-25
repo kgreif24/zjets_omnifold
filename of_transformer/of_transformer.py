@@ -27,6 +27,8 @@ class OfTransformer(nn.Module):
         self,
         input_dim,
         num_classes=1,
+        no_w1=None,  # This is only for backwards compatibility
+        test_plots=None,  # This is only for backwards compatibility
         # network configurations
         pair_input_dim=3,
         pair_extra_dim=0,
