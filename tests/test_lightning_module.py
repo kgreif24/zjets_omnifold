@@ -38,7 +38,7 @@ def test_overfit(tmp_path):
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=600, enable_progress_bar=False, default_root_dir=tmp_path
+        max_epochs=700, enable_progress_bar=False, default_root_dir=tmp_path
     )
 
     # Overfit

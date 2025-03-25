@@ -13,6 +13,7 @@ Last updated 03/24/2025
 python3
 """
 
+import pathlib
 import yaml
 import uproot
 import awkward as ak
@@ -72,7 +73,7 @@ class Plotter:
         # Store instance variables
         self.source_tree = uproot.open(source_path)["OmniTree"]
         self.target_tree = uproot.open(target_path)["OmniTree"]
-        self.store = store
+        self.store = pathlib.Path(store)
         self.use_truth = use_truth
         self.labels = labels
         if labels is None:

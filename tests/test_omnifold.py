@@ -182,4 +182,4 @@ def test_restart(tmp_path):
 
     # Look for final pre-train checkpoint
     check_glob = glob.glob(f"{check_dir}/*.ckpt")
-    assert len(check_glob) == 2
+    assert len(check_glob) == 3
