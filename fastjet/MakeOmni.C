@@ -1,20 +1,39 @@
 #define MakeOmni_cxx
 #include "MakeOmni.h"
 #include <TH2.h>
-#include <TStyle.h>
-#include <TCanvas.h>
-#include <TGraphErrors.h>
 #include "jetHelpers.h"
-#include "analysisHelpers.h"
 #include "fastjet/ClusterSequence.hh"
 #include "fastjet/tools/Recluster.hh" 
 #include <TLorentzVector.h>
 #include "jetHelpers.h"
+#include "cnpy.h"
 #include <memory>
+#include <string>
 using namespace fastjet;
 using namespace std;
 
-void MakeOmni::Loop( Long64_t maxEvents ) {
+vector<float> MakeOmni::LoadWeights(string filename) {
+
+   // Access weights, assume we want the test weights
+   cnpy::npz_t npz_file = cnpy::npz_load(filename);
+   cnpy::NpyArray array = npz_file["test"];
+
+   // Convert to vector<float> and return
+   vector<float> vec(array.data<float>(), array.data<float>() + array.num_vals);
+   return vec;
+
+}
+
+void MakeOmni::Loop(Long64_t maxEvents) {
+
+   // If weights file is provided, load the weights
+   bool useLoadedWeights = false;
+   vector<float> loadedWeights;
+   if (weightName.size() >= 4 && weightName.substr(weightName.size() - 4) == ".npz") {
+      useLoadedWeights = true;
+      std::cout << "Loading weights from .npz file: " << weightName << std::endl;
+      loadedWeights = LoadWeights(weightName);
+   }
 
    // Define log-spaced bin edges for EEC plots
    Long64_t nbins = 80;
@@ -25,7 +44,8 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
       binEdges[i] = pow(10, logxmin + i*(logxmax-logxmin)/nbins);
    }
 
-   // Histograms for reco or truth
+   // Define histograms here
+   // Later add code for reading binning information from config file
 
    // R=0.4 jets
    unique_ptr<TH1D> hpT_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
@@ -66,84 +86,14 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
    // TEEC
    unique_ptr<TH1D> hTEEC = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
 
-   // Histograms for omni if this is reco
-   unique_ptr<TH1D> hpT_R04_omni;
-   unique_ptr<TH1D> hm1_R04_omni;
-   unique_ptr<TH1D> hm2_R04_omni;
-   unique_ptr<TH1D> hm3_R04_omni;
-   unique_ptr<TH1D> hm4_R04_omni;
-   unique_ptr<TH1D> hEEC_R04_omni;
-   unique_ptr<TH1D> hLund_z_R04_omni;
-   unique_ptr<TH1D> hLund_dR_R04_omni;
-   unique_ptr<TH2D> hLund_plane_R04_omni;
-   unique_ptr<TH1D> hpT_R06_omni;
-   unique_ptr<TH1D> hEEC_R06_omni;
-   unique_ptr<TH1D> hLund_z_R06_omni;
-   unique_ptr<TH1D> hLund_dR_R06_omni;
-   unique_ptr<TH2D> hLund_plane_R06_omni;
-   unique_ptr<TH1D> hpT_R10_omni;
-   unique_ptr<TH1D> hEEC_R10_omni;
-   unique_ptr<TH1D> hLund_z_R10_omni;
-   unique_ptr<TH1D> hLund_dR_R10_omni;
-   unique_ptr<TH2D> hLund_plane_R10_omni;
-   unique_ptr<TH1D> hpT_CA04_omni;
-   unique_ptr<TH1D> hEEC_CA04_omni;
-   unique_ptr<TH1D> hLund_z_CA04_omni;
-   unique_ptr<TH1D> hLund_dR_CA04_omni;
-   unique_ptr<TH2D> hLund_plane_CA04_omni;
-   unique_ptr<TH1D> h_fracpT_ring_omni;
-   unique_ptr<TH1D> h_fracE_ring_omni;
-   unique_ptr<TH1D> hTEEC_omni;
-
-   if (!isTruth) {
-
-      // R=0.4 jets
-      hpT_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-      hm1_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 100));
-      hm2_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 80));
-      hm3_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 50));
-      hm4_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 30));
-      hEEC_R04_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-      hLund_z_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 10));
-      hLund_dR_R04_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_R04_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-      // R=0.6 jets
-      hpT_R06_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-      hEEC_R06_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-      hLund_z_R06_omni = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
-      hLund_dR_R06_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_R06_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-      // R=1.0 jets
-      hpT_R10_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-      hEEC_R10_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-      hLund_z_R10_omni = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
-      hLund_dR_R10_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_R10_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-      // CA R=0.4 jets
-      hpT_CA04_omni = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-      hEEC_CA04_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-      hLund_z_CA04_omni = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
-      hLund_dR_CA04_omni = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-      hLund_plane_CA04_omni = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-      // Ring
-      h_fracpT_ring_omni = unique_ptr<TH1D>(new TH1D("", "", 100, 0, 1));
-      h_fracE_ring_omni = unique_ptr<TH1D>(new TH1D("", "", 100, 0, 1));
-
-      // TEEC
-      hTEEC_omni = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-
-   }
-
    // Jet definitions to consider
    JetDefinition jetdef_r04(antikt_algorithm, 0.4);
    JetDefinition jetdef_r06(antikt_algorithm, 0.6);
    JetDefinition jetdef_r10(antikt_algorithm, 1.0);
    JetDefinition jetdef_ca04(cambridge_algorithm, 0.4);
 
+
+   // ----------------------- Loop over events -----------------------
    if (fChain == 0) return;
 
    Long64_t nentries = fChain->GetEntriesFast();
@@ -159,38 +109,41 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
       if (jentry%100000==0) cout << " Entry #" << jentry << endl;
 
-      // Apply event selection, filtering on truth pass 190
-      if (truth_pass190==0) {
+      // Apply event selection, filtering on pass190 flag
+      if (pass190 == 0) {
          continue;
       }
 
-      // Which weight we use depends on whether we are processing truth or reco
+      // Choose which weight to use in building histograms.
+      // If a weights file is provided, use the weights from the file
+      // Else the filename is either "weights" or "weight_mc" and we use the corresponding weight
       float use_weight;
-      if (isTruth) {
+      if (useLoadedWeights) {
+         use_weight = loadedWeights[jentry];
+      } else if (weightName == "weight") {
+         use_weight = weight;
+      } else if (weightName == "weight_mc") {
          use_weight = weight_mc;
       } else {
-         use_weight = weight;
+         std::cerr << "Invalid weight filename provided. Exiting." << std::endl;
+         return;
       }
 
       // Create PseudoJet object of the ll system (Z-boson)
       TLorentzVector m1_tlv, m2_tlv;
-      m1_tlv.SetPtEtaPhiM(truth_pT_l1, truth_eta_l1, truth_phi_l1, 0.10566);
-      m2_tlv.SetPtEtaPhiM(truth_pT_l2, truth_eta_l2, truth_phi_l2, 0.10566);
+      m1_tlv.SetPtEtaPhiM(pT_l1, eta_l1, phi_l1, 0.10566);
+      m2_tlv.SetPtEtaPhiM(pT_l2, eta_l2, phi_l2, 0.10566);
       TLorentzVector zboson_tlv = m1_tlv + m2_tlv;
       PseudoJet zboson;
       zboson.reset_PtYPhiM(zboson_tlv.Pt(), zboson_tlv.Rapidity(), zboson_tlv.Phi(), zboson_tlv.M());
 
       // Create vector of PseudoJets from all tracks in event
       vector<PseudoJet> particles;
-      for (int i=0; i<ntruth_pT_tracks; i++){ 
+      for (int i=0; i<npT_tracks; i++){ 
          TLorentzVector constit_tlv;
          // Which track 3 vectors to use depend on whether we are processing truth or reco
          // Truth files use double precision while reco files use float precision
-         if (isTruth) { 
-            constit_tlv.SetPtEtaPhiM(dtruth_pT_tracks[i], dtruth_eta_tracks[i], dtruth_phi_tracks[i], 0.13957);
-         } else {
-            constit_tlv.SetPtEtaPhiM(ftruth_pT_tracks[i], ftruth_eta_tracks[i], ftruth_phi_tracks[i], 0.13957);
-         }
+         constit_tlv.SetPtEtaPhiM(pT_tracks[i], eta_tracks[i], phi_tracks[i], 0.13957);
          PseudoJet constit_pj;
          constit_pj.reset_PtYPhiM(constit_tlv.Pt(), constit_tlv.Rapidity(), constit_tlv.Phi(), constit_tlv.M());
          particles.push_back(constit_pj);
@@ -288,92 +241,11 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
 
       // TEEC
       FillEEC(hTEEC, etrans, tau, ETransTotal, use_weight);
-
-      // Fill histograms for omni if this is reco
-      if (!isTruth) {
-
-         // R=0.4 jets
-         hpT_R04_omni->Fill(R04_jets[0].pt(), omni_weight);
-         hm1_R04_omni->Fill(R04_jets[0].m(), omni_weight);
-         hm2_R04_omni->Fill(R04_jets[1].m(), omni_weight);
-         hm3_R04_omni->Fill(R04_jets[2].m(), omni_weight);
-         hm4_R04_omni->Fill(R04_jets[3].m(), omni_weight);
-         FillEEC( hEEC_R04_omni, R04_esum, R04_z, R04_Q2, omni_weight);
-         FillLund(hLund_z_R04_omni, hLund_dR_R04_omni, hLund_plane_R04_omni, R04_lundz, R04_lundDr, omni_weight);
-
-         // R=0.6 jets
-         hpT_R06_omni->Fill(R06_jets[0].pt(), omni_weight);
-         FillEEC( hEEC_R06_omni, R06_esum, R06_z, R06_Q2, omni_weight);
-         FillLund(hLund_z_R06_omni, hLund_dR_R06_omni, hLund_plane_R06_omni, R06_lundz, R06_lundDr, omni_weight);
-
-         // R=1.0 jets
-         hpT_R10_omni->Fill(R10_jets[0].pt(), omni_weight);
-         FillEEC( hEEC_R10_omni, R10_esum, R10_z, R10_Q2, omni_weight);
-         FillLund(hLund_z_R10_omni, hLund_dR_R10_omni, hLund_plane_R10_omni, R10_lundz, R10_lundDr, omni_weight);
-
-         // CA R=0.4 jets
-         hpT_CA04_omni->Fill(CA04_jets[0].pt(), omni_weight);
-         FillEEC( hEEC_CA04_omni, CA04_esum, CA04_z, CA04_Q2, omni_weight);
-         FillLund(hLund_z_CA04_omni, hLund_dR_CA04_omni, hLund_plane_CA04_omni, CA04_lundz, CA04_lundDr, omni_weight);
-
-         // Ring
-         h_fracpT_ring_omni->Fill(GetRing(R06_jets[0]), omni_weight);
-         h_fracE_ring_omni->Fill(0., omni_weight);
-
-         // TEEC
-         FillEEC(hTEEC_omni, etrans, tau, ETransTotal, omni_weight);
-
-      }
       
    }
 
-
-   std::cout << " === normalize histos === " << std::endl;
-   normalizeHisto(hpT_R04); normalizeHisto(hpT_R06); normalizeHisto(hpT_R10); normalizeHisto(hpT_CA04);
-   normalizeHisto(hm1_R04); normalizeHisto(hm2_R04); normalizeHisto(hm3_R04); normalizeHisto(hm4_R04);
-   normalizeHisto(hEEC_R04); normalizeHisto(hEEC_R06); normalizeHisto(hEEC_R10); normalizeHisto(hEEC_CA04);
-   normalizeHisto(hLund_z_R04); normalizeHisto(hLund_z_R06); normalizeHisto(hLund_z_R10); normalizeHisto(hLund_z_CA04);
-   normalizeHisto(hLund_dR_R04); normalizeHisto(hLund_dR_R06); normalizeHisto(hLund_dR_R10); normalizeHisto(hLund_dR_CA04);
-   normalizeHisto2D(hLund_plane_R04); normalizeHisto2D(hLund_plane_R06); normalizeHisto2D(hLund_plane_R10); normalizeHisto2D(hLund_plane_CA04);
-   normalizeHisto(h_fracpT_ring); normalizeHisto(h_fracE_ring);
-   normalizeHisto(hTEEC);
-
-   std::cout << " === y axis range for 1D histos === " << std::endl;
-   YAxisRangeUserName(hpT_R04); YAxisRangeUserName(hpT_R06); YAxisRangeUserName(hpT_R10); YAxisRangeUserName(hpT_CA04);
-   YAxisRangeUserName(hm1_R04); YAxisRangeUserName(hm2_R04); YAxisRangeUserName(hm3_R04); YAxisRangeUserName(hm4_R04);
-   SetEECAxisRange(hEEC_R04, "z", "EEC"); SetEECAxisRange(hEEC_R06, "z", "EEC"); SetEECAxisRange(hEEC_R10, "z", "EEC"); SetEECAxisRange(hEEC_CA04, "z", "EEC");
-   YAxisRangeUserName(hLund_z_R04); YAxisRangeUserName(hLund_z_R06); YAxisRangeUserName(hLund_z_R10); YAxisRangeUserName(hLund_z_CA04);
-   YAxisRangeUserName(hLund_dR_R04); YAxisRangeUserName(hLund_dR_R06); YAxisRangeUserName(hLund_dR_R10); YAxisRangeUserName(hLund_dR_CA04);
-   YAxisRangeUserName(h_fracpT_ring); YAxisRangeUserName(h_fracE_ring);
-   SetEECAxisRange(hTEEC, "tau", "TEEC");
-
-   // Do the same again for omni histograms if this is reco
-   if (!isTruth) {
-
-      normalizeHisto(hpT_R04_omni); normalizeHisto(hpT_R06_omni); normalizeHisto(hpT_R10_omni); normalizeHisto(hpT_CA04_omni);
-      normalizeHisto(hm1_R04_omni); normalizeHisto(hm2_R04_omni); normalizeHisto(hm3_R04_omni); normalizeHisto(hm4_R04_omni);
-      normalizeHisto(hEEC_R04_omni); normalizeHisto(hEEC_R06_omni); normalizeHisto(hEEC_R10_omni); normalizeHisto(hEEC_CA04_omni);
-      normalizeHisto(hLund_z_R04_omni); normalizeHisto(hLund_z_R06_omni); normalizeHisto(hLund_z_R10_omni); normalizeHisto(hLund_z_CA04_omni);
-      normalizeHisto(hLund_dR_R04_omni); normalizeHisto(hLund_dR_R06_omni); normalizeHisto(hLund_dR_R10_omni); normalizeHisto(hLund_dR_CA04_omni);
-      normalizeHisto2D(hLund_plane_R04_omni); normalizeHisto2D(hLund_plane_R06_omni); normalizeHisto2D(hLund_plane_R10_omni); normalizeHisto2D(hLund_plane_CA04_omni);
-      normalizeHisto(h_fracpT_ring_omni); normalizeHisto(h_fracE_ring_omni); 
-      normalizeHisto(hTEEC_omni);
-
-      YAxisRangeUserName(hpT_R04_omni); YAxisRangeUserName(hpT_R06_omni); YAxisRangeUserName(hpT_R10_omni); YAxisRangeUserName(hpT_CA04_omni);
-      YAxisRangeUserName(hm1_R04_omni); YAxisRangeUserName(hm2_R04_omni); YAxisRangeUserName(hm3_R04_omni); YAxisRangeUserName(hm4_R04_omni);
-      SetEECAxisRange(hEEC_R04_omni, "z", "EEC"); SetEECAxisRange(hEEC_R06_omni, "z", "EEC"); SetEECAxisRange(hEEC_R10_omni, "z", "EEC"); SetEECAxisRange(hEEC_CA04_omni, "z", "EEC");
-      YAxisRangeUserName(hLund_z_R04_omni); YAxisRangeUserName(hLund_z_R06_omni); YAxisRangeUserName(hLund_z_R10_omni); YAxisRangeUserName(hLund_z_CA04_omni);
-      YAxisRangeUserName(h_fracpT_ring_omni); YAxisRangeUserName(h_fracE_ring_omni);
-      SetEECAxisRange(hTEEC_omni, "tau", "TEEC");
-   
-   }
-
    std::cout << " === create output ROOT file === " << std::endl;
-   TString outputFileName = "out/output_omni.root";
-   if (isTruth) {
-      outputFileName = "out/output_truth.root";
-   }
-   TFile* foutput = new TFile(outputFileName, "recreate");
+   TFile* foutput = new TFile(saveName, "recreate");
 
    std::cout << " === write in file === " << std::endl;
    // R=0.4 jets
@@ -415,44 +287,7 @@ void MakeOmni::Loop( Long64_t maxEvents ) {
    // TEEC
    hTEEC->Write("hTEEC");
 
-   // Write omni histograms if this is reco
-   if (!isTruth) {
-
-      hpT_R04_omni->Write("hpT_R04_omni");
-      hm1_R04_omni->Write("hm1_R04_omni");
-      hm2_R04_omni->Write("hm2_R04_omni");
-      hm3_R04_omni->Write("hm3_R04_omni");
-      hm4_R04_omni->Write("hm4_R04_omni");
-      hEEC_R04_omni->Write("hEEC_R04_omni");
-      hLund_z_R04_omni->Write("hLund_z_R04_omni");
-      hLund_dR_R04_omni->Write("hLund_dR_R04_omni");
-      hLund_plane_R04_omni->Write("hLund_plane_R04_omni");
-
-      hpT_R06_omni->Write("hpT_R06_omni");
-      hEEC_R06_omni->Write("hEEC_R06_omni");
-      hLund_z_R06_omni->Write("hLund_z_R06_omni");
-      hLund_dR_R06_omni->Write("hLund_dR_R06_omni");
-      hLund_plane_R06_omni->Write("hLund_plane_R06_omni");
-
-      hpT_R10_omni->Write("hpT_R10_omni");
-      hEEC_R10_omni->Write("hEEC_R10_omni");
-      hLund_z_R10_omni->Write("hLund_z_R10_omni");
-      hLund_dR_R10_omni->Write("hLund_dR_R10_omni");
-      hLund_plane_R10_omni->Write("hLund_plane_R10_omni");
-
-      hpT_CA04_omni->Write("hpT_CA04_omni");
-      hEEC_CA04_omni->Write("hEEC_CA04_omni");
-      hLund_z_CA04_omni->Write("hLund_z_CA04_omni");
-      hLund_dR_CA04_omni->Write("hLund_dR_CA04_omni");
-      hLund_plane_CA04_omni->Write("hLund_plane_CA04_omni");
-
-      h_fracpT_ring_omni->Write("h_fracpT_ring_omni");
-      h_fracE_ring_omni->Write("h_fracE_ring_omni");
-
-      hTEEC_omni->Write("hTEEC_omni");
-
-   }
-
+   // Close file
    foutput->Close();
 
 }
