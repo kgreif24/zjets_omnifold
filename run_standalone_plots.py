@@ -56,7 +56,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_events",
     type=int,
-    default=1000000,
+    default=5000000,
     help="The maximum number of events to use for plotting",
 )
 parser.add_argument(
@@ -76,12 +76,12 @@ plotter = plotter.Plotter(
     use_pdf=args.pdf,
     max_events=args.max_events,
 )
-plot_dict = plotter.plot(
-    args.start_weights,
-    args.end_weights,
-    args.target_weights,
-    use_train=args.train,
-)
+# plot_dict = plotter.plot(
+#     args.start_weights,
+#     args.end_weights,
+#     args.target_weights,
+#     use_train=args.train,
+# )
 
 print("Plotting complete")
 
