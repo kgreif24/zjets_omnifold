@@ -4,7 +4,8 @@
 defaults: &default_plot
   histtype: "bar"
   density: true
-  linear_scale: false
+  linear_yscale: false
+  log_xscale: false
   nbins: 150
   binlow: 0
   binhigh: 200
@@ -23,497 +24,497 @@ defaults: &default_plot
 # Each section can override the default settings as needed.
 
 plots:
-  pT_l1:
-    <<: *default_plot
-    key: "pT_l1"
-    xlabel: '$p_{T,\mu1}$ [GeV]'
-    binlow: 0
-    binhigh: 1000
-    ibubins: 
-      - 25.0
-      - 125.0
-      - 200.0
-      - 300.0
-      - 400.0
-      - 600.0
-      - 800.0
-    verbosity_level: 1
+  # pT_l1:
+  #   <<: *default_plot
+  #   key: "pT_l1"
+  #   xlabel: '$p_{T,\mu1}$ [GeV]'
+  #   binlow: 0
+  #   binhigh: 1000
+  #   ibubins: 
+  #     - 25.0
+  #     - 125.0
+  #     - 200.0
+  #     - 300.0
+  #     - 400.0
+  #     - 600.0
+  #     - 800.0
+  #   verbosity_level: 1
 
-  pT_l2:
-    <<: *default_plot
-    key: "pT_l2"
-    xlabel: '$p_{T,\mu2}$ [GeV]'
-    binlow: 0
-    binhigh: 800
-    ibubins: 
-      - 25.0
-      - 50.0
-      - 75.0
-      - 100.0
-      - 150.0
-      - 300.0
-      - 400.0
-    verbosity_level: 1
+  # pT_l2:
+  #   <<: *default_plot
+  #   key: "pT_l2"
+  #   xlabel: '$p_{T,\mu2}$ [GeV]'
+  #   binlow: 0
+  #   binhigh: 800
+  #   ibubins: 
+  #     - 25.0
+  #     - 50.0
+  #     - 75.0
+  #     - 100.0
+  #     - 150.0
+  #     - 300.0
+  #     - 400.0
+  #   verbosity_level: 1
 
-  eta_l1:
-    <<: *default_plot
-    key: "eta_l1"
-    xlabel: '$\eta_{\mu1}$'
-    binlow: -2.5
-    binhigh: 2.5
-    ibubins: 
-      - -2.5
-      - -2.0
-      - -1.5
-      - -1.0
-      - -0.75
-      - -0.5
-      - -0.25
-      - 0.0
-      - 0.25
-      - 0.5
-      - 0.75
-      - 1.0
-      - 1.5
-      - 2.0
-      - 2.5
-    verbosity_level: 2
+  # eta_l1:
+  #   <<: *default_plot
+  #   key: "eta_l1"
+  #   xlabel: '$\eta_{\mu1}$'
+  #   binlow: -2.5
+  #   binhigh: 2.5
+  #   ibubins: 
+  #     - -2.5
+  #     - -2.0
+  #     - -1.5
+  #     - -1.0
+  #     - -0.75
+  #     - -0.5
+  #     - -0.25
+  #     - 0.0
+  #     - 0.25
+  #     - 0.5
+  #     - 0.75
+  #     - 1.0
+  #     - 1.5
+  #     - 2.0
+  #     - 2.5
+  #   verbosity_level: 2
 
-  eta_l2:
-    <<: *default_plot
-    key: "eta_l2"
-    xlabel: '$\eta_{\mu2}$'
-    binlow: -2.5
-    binhigh: 2.5
-    ibubins: 
-      - -2.5
-      - -2.0
-      - -1.5
-      - -1.0
-      - -0.75
-      - -0.5
-      - -0.25
-      - 0.0
-      - 0.25
-      - 0.5
-      - 0.75
-      - 1.0
-      - 1.5
-      - 2.0
-      - 2.5
-    verbosity_level: 2
+  # eta_l2:
+  #   <<: *default_plot
+  #   key: "eta_l2"
+  #   xlabel: '$\eta_{\mu2}$'
+  #   binlow: -2.5
+  #   binhigh: 2.5
+  #   ibubins: 
+  #     - -2.5
+  #     - -2.0
+  #     - -1.5
+  #     - -1.0
+  #     - -0.75
+  #     - -0.5
+  #     - -0.25
+  #     - 0.0
+  #     - 0.25
+  #     - 0.5
+  #     - 0.75
+  #     - 1.0
+  #     - 1.5
+  #     - 2.0
+  #     - 2.5
+  #   verbosity_level: 2
 
-  phi_l1:
-    <<: *default_plot
-    key: "phi_l1"
-    xlabel: '$\phi_{\mu1}$'
-    ylim:
-      - 0.0
-      - 0.2
-    rlim:
-      - 0.9
-      - 1.1
-    linear_scale: true
-    binlow: -3.2
-    binhigh: 3.2
-    ibubins: 
-      - -3.1416
-      - -2.8
-      - -2.4
-      - -2.0
-      - -1.6
-      - -1.2
-      - -0.8
-      - -0.4
-      - 0.0
-      - 0.4
-      - 0.8
-      - 1.2
-      - 1.6
-      - 2.0
-      - 2.4
-      - 2.8
-      - 3.1516
-    verbosity_level: 2
+  # phi_l1:
+  #   <<: *default_plot
+  #   key: "phi_l1"
+  #   xlabel: '$\phi_{\mu1}$'
+  #   ylim:
+  #     - 0.0
+  #     - 0.2
+  #   rlim:
+  #     - 0.9
+  #     - 1.1
+  #   linear_yscale: true
+  #   binlow: -3.2
+  #   binhigh: 3.2
+  #   ibubins: 
+  #     - -3.1416
+  #     - -2.8
+  #     - -2.4
+  #     - -2.0
+  #     - -1.6
+  #     - -1.2
+  #     - -0.8
+  #     - -0.4
+  #     - 0.0
+  #     - 0.4
+  #     - 0.8
+  #     - 1.2
+  #     - 1.6
+  #     - 2.0
+  #     - 2.4
+  #     - 2.8
+  #     - 3.1516
+  #   verbosity_level: 2
 
-  phi_l2:
-    <<: *default_plot
-    key: "phi_l2"
-    xlabel: '$\phi_{\mu2}$'
-    ylim:
-      - 0.0
-      - 0.2
-    rlim:
-      - 0.9
-      - 1.1
-    linear_scale: true
-    binlow: -3.2
-    binhigh: 3.2
-    ibubins: 
-      - -3.1416
-      - -2.8
-      - -2.4
-      - -2.0
-      - -1.6
-      - -1.2
-      - -0.8
-      - -0.4
-      - 0.0
-      - 0.4
-      - 0.8
-      - 1.2
-      - 1.6
-      - 2.0
-      - 2.4
-      - 2.8
-      - 3.1516
-    verbosity_level: 2
+  # phi_l2:
+  #   <<: *default_plot
+  #   key: "phi_l2"
+  #   xlabel: '$\phi_{\mu2}$'
+  #   ylim:
+  #     - 0.0
+  #     - 0.2
+  #   rlim:
+  #     - 0.9
+  #     - 1.1
+  #   linear_yscale: true
+  #   binlow: -3.2
+  #   binhigh: 3.2
+  #   ibubins: 
+  #     - -3.1416
+  #     - -2.8
+  #     - -2.4
+  #     - -2.0
+  #     - -1.6
+  #     - -1.2
+  #     - -0.8
+  #     - -0.4
+  #     - 0.0
+  #     - 0.4
+  #     - 0.8
+  #     - 1.2
+  #     - 1.6
+  #     - 2.0
+  #     - 2.4
+  #     - 2.8
+  #     - 3.1516
+  #   verbosity_level: 2
 
-  pT_ll:
-    <<: *default_plot
-    key: "pT_ll"
-    xlabel: '$p_{T,\mu\mu}$ [GeV]'
-    binlow: 0
-    binhigh: 1000
-    ibubins: 
-      - 200.0
-      - 230.0
-      - 300.0
-      - 450.0
-      - 600.0
-      - 1000.0
-    verbosity_level: 1
+  # pT_ll:
+  #   <<: *default_plot
+  #   key: "pT_ll"
+  #   xlabel: '$p_{T,\mu\mu}$ [GeV]'
+  #   binlow: 0
+  #   binhigh: 1000
+  #   ibubins: 
+  #     - 200.0
+  #     - 230.0
+  #     - 300.0
+  #     - 450.0
+  #     - 600.0
+  #     - 1000.0
+  #   verbosity_level: 1
 
-  y_ll:
-    <<: *default_plot
-    key: "y_ll"
-    xlabel: '$y_{\mu\mu}$'
-    binlow: -3.0
-    binhigh: 3.0
-    ibubins: 
-      - -2.5
-      - -2.0
-      - -1.5
-      - -1.0
-      - -0.75
-      - -0.5
-      - -0.25
-      - 0.0
-      - 0.25
-      - 0.5
-      - 0.75
-      - 1.0
-      - 1.5
-      - 2.0
-      - 2.5
-    verbosity_level: 2
+  # y_ll:
+  #   <<: *default_plot
+  #   key: "y_ll"
+  #   xlabel: '$y_{\mu\mu}$'
+  #   binlow: -3.0
+  #   binhigh: 3.0
+  #   ibubins: 
+  #     - -2.5
+  #     - -2.0
+  #     - -1.5
+  #     - -1.0
+  #     - -0.75
+  #     - -0.5
+  #     - -0.25
+  #     - 0.0
+  #     - 0.25
+  #     - 0.5
+  #     - 0.75
+  #     - 1.0
+  #     - 1.5
+  #     - 2.0
+  #     - 2.5
+  #   verbosity_level: 2
 
-  pT_trackj1:
-    <<: *default_plot
-    key: "pT_trackj1"
-    xlabel: "$p_{T,j1}$ [GeV]"
-    binlow: 0
-    binhigh: 1000.0
-    ibubins: 
-      - 5.0
-      - 50.0
-      - 100.0
-      - 150.0
-      - 200.0
-      - 300.0
-      - 1000.0
-    verbosity_level: 1
+  # pT_trackj1:
+  #   <<: *default_plot
+  #   key: "pT_trackj1"
+  #   xlabel: "$p_{T,j1}$ [GeV]"
+  #   binlow: 0
+  #   binhigh: 1000.0
+  #   ibubins: 
+  #     - 5.0
+  #     - 50.0
+  #     - 100.0
+  #     - 150.0
+  #     - 200.0
+  #     - 300.0
+  #     - 1000.0
+  #   verbosity_level: 1
 
-  pT_trackj2:
-    <<: *default_plot
-    key: "pT_trackj2"
-    xlabel: "$p_{T,j2}$ [GeV]"
-    binlow: 0
-    binhigh: 1000.0
-    ibubins: 
-      - 5.0
-      - 25.0
-      - 50.0
-      - 100.0
-      - 500.0
-    verbosity_level: 1
+  # pT_trackj2:
+  #   <<: *default_plot
+  #   key: "pT_trackj2"
+  #   xlabel: "$p_{T,j2}$ [GeV]"
+  #   binlow: 0
+  #   binhigh: 1000.0
+  #   ibubins: 
+  #     - 5.0
+  #     - 25.0
+  #     - 50.0
+  #     - 100.0
+  #     - 500.0
+  #   verbosity_level: 1
 
-  y_trackj1:
-    <<: *default_plot
-    key: "y_trackj1"
-    xlabel: "$y_{j1}$"
-    binlow: -3.0
-    binhigh: 3.0
-    ibubins: 
-      - -2.5
-      - -2.0
-      - -1.75
-      - -1.5
-      - -1.25
-      - -1.0
-      - -0.75
-      - -0.5
-      - -0.25
-      - 0.0
-      - 0.25
-      - 0.5
-      - 0.75
-      - 1.0
-      - 1.25
-      - 1.5
-      - 1.75
-      - 2.0
-      - 2.5
-    verbosity_level: 2
+  # y_trackj1:
+  #   <<: *default_plot
+  #   key: "y_trackj1"
+  #   xlabel: "$y_{j1}$"
+  #   binlow: -3.0
+  #   binhigh: 3.0
+  #   ibubins: 
+  #     - -2.5
+  #     - -2.0
+  #     - -1.75
+  #     - -1.5
+  #     - -1.25
+  #     - -1.0
+  #     - -0.75
+  #     - -0.5
+  #     - -0.25
+  #     - 0.0
+  #     - 0.25
+  #     - 0.5
+  #     - 0.75
+  #     - 1.0
+  #     - 1.25
+  #     - 1.5
+  #     - 1.75
+  #     - 2.0
+  #     - 2.5
+  #   verbosity_level: 2
 
-  y_trackj2:
-    <<: *default_plot
-    key: "y_trackj2"
-    xlabel: "$y_{j2}$"
-    binlow: -3.0
-    binhigh: 3.0
-    ibubins: 
-      - -2.5
-      - -2.0
-      - -1.75
-      - -1.5
-      - -1.25
-      - -1.0
-      - -0.75
-      - -0.5
-      - -0.25
-      - 0.0
-      - 0.25
-      - 0.5
-      - 0.75
-      - 1.0
-      - 1.25
-      - 1.5
-      - 1.75
-      - 2.0
-      - 2.5
-    verbosity_level: 2
+  # y_trackj2:
+  #   <<: *default_plot
+  #   key: "y_trackj2"
+  #   xlabel: "$y_{j2}$"
+  #   binlow: -3.0
+  #   binhigh: 3.0
+  #   ibubins: 
+  #     - -2.5
+  #     - -2.0
+  #     - -1.75
+  #     - -1.5
+  #     - -1.25
+  #     - -1.0
+  #     - -0.75
+  #     - -0.5
+  #     - -0.25
+  #     - 0.0
+  #     - 0.25
+  #     - 0.5
+  #     - 0.75
+  #     - 1.0
+  #     - 1.25
+  #     - 1.5
+  #     - 1.75
+  #     - 2.0
+  #     - 2.5
+  #   verbosity_level: 2
 
-  phi_trackj1:
-    <<: *default_plot
-    key: "phi_trackj1"
-    xlabel: '$\phi_{j1}$'
-    ylim:
-      - 0.0
-      - 0.2
-    rlim:
-      - 0.9
-      - 1.1
-    linear_scale: true
-    binlow: -3.2
-    binhigh: 3.2
-    ibubins: 
-      - -3.1416
-      - -2.8
-      - -2.4
-      - -2.0
-      - -1.6
-      - -1.2
-      - -0.8
-      - -0.4
-      - 0.0
-      - 0.4
-      - 0.8
-      - 1.2
-      - 1.6
-      - 2.0
-      - 2.4
-      - 2.8
-      - 3.1516
-    verbosity_level: 2
+  # phi_trackj1:
+  #   <<: *default_plot
+  #   key: "phi_trackj1"
+  #   xlabel: '$\phi_{j1}$'
+  #   ylim:
+  #     - 0.0
+  #     - 0.2
+  #   rlim:
+  #     - 0.9
+  #     - 1.1
+  #   linear_yscale: true
+  #   binlow: -3.2
+  #   binhigh: 3.2
+  #   ibubins: 
+  #     - -3.1416
+  #     - -2.8
+  #     - -2.4
+  #     - -2.0
+  #     - -1.6
+  #     - -1.2
+  #     - -0.8
+  #     - -0.4
+  #     - 0.0
+  #     - 0.4
+  #     - 0.8
+  #     - 1.2
+  #     - 1.6
+  #     - 2.0
+  #     - 2.4
+  #     - 2.8
+  #     - 3.1516
+  #   verbosity_level: 2
 
-  phi_trackj2:
-    <<: *default_plot
-    key: "phi_trackj2"
-    xlabel: '$\phi_{j2}$'
-    ylim:
-      - 0.0
-      - 0.2
-    rlim:
-      - 0.9
-      - 1.1
-    linear_scale: true
-    binlow: -3.2
-    binhigh: 3.2
-    ibubins: 
-      - -3.1416
-      - -2.8
-      - -2.4
-      - -2.0
-      - -1.6
-      - -1.2
-      - -0.8
-      - -0.4
-      - 0.0
-      - 0.4
-      - 0.8
-      - 1.2
-      - 1.6
-      - 2.0
-      - 2.4
-      - 2.8
-      - 3.1516
-    verbosity_level: 2
+  # phi_trackj2:
+  #   <<: *default_plot
+  #   key: "phi_trackj2"
+  #   xlabel: '$\phi_{j2}$'
+  #   ylim:
+  #     - 0.0
+  #     - 0.2
+  #   rlim:
+  #     - 0.9
+  #     - 1.1
+  #   linear_yscale: true
+  #   binlow: -3.2
+  #   binhigh: 3.2
+  #   ibubins: 
+  #     - -3.1416
+  #     - -2.8
+  #     - -2.4
+  #     - -2.0
+  #     - -1.6
+  #     - -1.2
+  #     - -0.8
+  #     - -0.4
+  #     - 0.0
+  #     - 0.4
+  #     - 0.8
+  #     - 1.2
+  #     - 1.6
+  #     - 2.0
+  #     - 2.4
+  #     - 2.8
+  #     - 3.1516
+  #   verbosity_level: 2
 
-  m_trackj1:
-    <<: *default_plot
-    key: "m_trackj1"
-    xlabel: "$m_{j1}$ [GeV]"
-    binlow: 0
-    binhigh: 150
-    ibubins: 
-      - 0.0
-      - 8.0
-      - 16.0
-      - 24.0
-      - 32.0
-      - 42.0
-      - 70.0
-    verbosity_level: 1
+  # m_trackj1:
+  #   <<: *default_plot
+  #   key: "m_trackj1"
+  #   xlabel: "$m_{j1}$ [GeV]"
+  #   binlow: 0
+  #   binhigh: 150
+  #   ibubins: 
+  #     - 0.0
+  #     - 8.0
+  #     - 16.0
+  #     - 24.0
+  #     - 32.0
+  #     - 42.0
+  #     - 70.0
+  #   verbosity_level: 1
 
-  m_trackj2:
-    <<: *default_plot
-    key: "m_trackj2"
-    xlabel: "$m_{j2}$ [GeV]"
-    binlow: 0
-    binhigh: 150
-    ibubins: 
-      - 0.0
-      - 5.0
-      - 10.0
-      - 20.0
-      - 40.0
-    verbosity_level: 1
+  # m_trackj2:
+  #   <<: *default_plot
+  #   key: "m_trackj2"
+  #   xlabel: "$m_{j2}$ [GeV]"
+  #   binlow: 0
+  #   binhigh: 150
+  #   ibubins: 
+  #     - 0.0
+  #     - 5.0
+  #     - 10.0
+  #     - 20.0
+  #     - 40.0
+  #   verbosity_level: 1
 
-  tau1_trackj1:
-    <<: *default_plot
-    key: "tau1_trackj1"
-    xlabel: '$\tau_{1,j1}$'
-    binlow: 0
-    binhigh: 0.9
-    ibubins: 
-      - 0.0
-      - 0.05
-      - 0.1
-      - 0.17
-      - 0.25
-      - 0.35
-      - 0.4
-      - 0.9
-    verbosity_level: 2
+  # tau1_trackj1:
+  #   <<: *default_plot
+  #   key: "tau1_trackj1"
+  #   xlabel: '$\tau_{1,j1}$'
+  #   binlow: 0
+  #   binhigh: 0.9
+  #   ibubins: 
+  #     - 0.0
+  #     - 0.05
+  #     - 0.1
+  #     - 0.17
+  #     - 0.25
+  #     - 0.35
+  #     - 0.4
+  #     - 0.9
+  #   verbosity_level: 2
 
-  tau1_trackj2:
-    <<: *default_plot
-    key: "tau1_trackj2"
-    xlabel: '$\tau_{1,j2}$'
-    binlow: 0
-    binhigh: 0.9
-    ibubins: 
-      - 0.0
-      - 0.1
-      - 0.2
-      - 0.35
-      - 0.5
-      - 0.9
-    verbosity_level: 2
+  # tau1_trackj2:
+  #   <<: *default_plot
+  #   key: "tau1_trackj2"
+  #   xlabel: '$\tau_{1,j2}$'
+  #   binlow: 0
+  #   binhigh: 0.9
+  #   ibubins: 
+  #     - 0.0
+  #     - 0.1
+  #     - 0.2
+  #     - 0.35
+  #     - 0.5
+  #     - 0.9
+  #   verbosity_level: 2
 
-  tau2_trackj1:
-    <<: *default_plot
-    key: "tau2_trackj1"
-    xlabel: '$\tau_{2,j1}$'
-    binlow: 0
-    binhigh: 0.6
-    ibubins: 
-      - 0.0
-      - 0.025
-      - 0.05
-      - 0.08
-      - 0.12
-      - 0.17
-      - 0.2
-      - 0.5
-    verbosity_level: 2
+  # tau2_trackj1:
+  #   <<: *default_plot
+  #   key: "tau2_trackj1"
+  #   xlabel: '$\tau_{2,j1}$'
+  #   binlow: 0
+  #   binhigh: 0.6
+  #   ibubins: 
+  #     - 0.0
+  #     - 0.025
+  #     - 0.05
+  #     - 0.08
+  #     - 0.12
+  #     - 0.17
+  #     - 0.2
+  #     - 0.5
+  #   verbosity_level: 2
 
-  tau2_trackj2:
-    <<: *default_plot
-    key: "tau2_trackj2"
-    xlabel: '$\tau_{2,j2}$'
-    binlow: 0
-    binhigh: 0.6
-    ibubins: 
-      - 0.0
-      - 0.025
-      - 0.1
-      - 0.17
-      - 0.25
-      - 0.5
-    verbosity_level: 2
+  # tau2_trackj2:
+  #   <<: *default_plot
+  #   key: "tau2_trackj2"
+  #   xlabel: '$\tau_{2,j2}$'
+  #   binlow: 0
+  #   binhigh: 0.6
+  #   ibubins: 
+  #     - 0.0
+  #     - 0.025
+  #     - 0.1
+  #     - 0.17
+  #     - 0.25
+  #     - 0.5
+  #   verbosity_level: 2
 
-  tau3_trackj1:
-    <<: *default_plot
-    key: "tau3_trackj1"
-    xlabel: '$\tau_{3,j1}$'
-    binlow: 0
-    binhigh: 0.4
-    ibubins: 
-      - 0.0
-      - 0.025
-      - 0.05
-      - 0.1
-      - 0.3
-    verbosity_level: 2
+  # tau3_trackj1:
+  #   <<: *default_plot
+  #   key: "tau3_trackj1"
+  #   xlabel: '$\tau_{3,j1}$'
+  #   binlow: 0
+  #   binhigh: 0.4
+  #   ibubins: 
+  #     - 0.0
+  #     - 0.025
+  #     - 0.05
+  #     - 0.1
+  #     - 0.3
+  #   verbosity_level: 2
   
-  tau3_trackj2:
-    <<: *default_plot
-    key: "tau3_trackj2"
-    xlabel: '$\tau_{3,j2}$'
-    binlow: 0
-    binhigh: 0.4
-    ibubins: 
-      - 0.0
-      - 0.025
-      - 0.08
-      - 0.14
-      - 0.3
-    verbosity_level: 2
+  # tau3_trackj2:
+  #   <<: *default_plot
+  #   key: "tau3_trackj2"
+  #   xlabel: '$\tau_{3,j2}$'
+  #   binlow: 0
+  #   binhigh: 0.4
+  #   ibubins: 
+  #     - 0.0
+  #     - 0.025
+  #     - 0.08
+  #     - 0.14
+  #     - 0.3
+  #   verbosity_level: 2
 
-  Ntracks_trackj1:
-    <<: *default_plot
-    key: "Ntracks_trackj1"
-    xlabel: "$N_{ch,j1}$"
-    nbins: 81
-    binlow: 0
-    binhigh: 80
-    ibubins: 
-      - 0.5
-      - 6.5
-      - 10.5
-      - 14.5
-      - 19.5
-      - 25.5
-      - 39.5
-    verbosity_level: 1
+  # Ntracks_trackj1:
+  #   <<: *default_plot
+  #   key: "Ntracks_trackj1"
+  #   xlabel: "$N_{ch,j1}$"
+  #   nbins: 81
+  #   binlow: 0
+  #   binhigh: 80
+  #   ibubins: 
+  #     - 0.5
+  #     - 6.5
+  #     - 10.5
+  #     - 14.5
+  #     - 19.5
+  #     - 25.5
+  #     - 39.5
+  #   verbosity_level: 1
 
-  Ntracks_trackj2:
-    <<: *default_plot
-    key: "Ntracks_trackj2"
-    xlabel: "$N_{ch,j2}$"
-    nbins: 81
-    binlow: 0
-    binhigh: 80
-    ibubins: 
-      - 0.5
-      - 3.5
-      - 7.5
-      - 11.5
-      - 15.5
-      - 34.5
-    verbosity_level: 1
+  # Ntracks_trackj2:
+  #   <<: *default_plot
+  #   key: "Ntracks_trackj2"
+  #   xlabel: "$N_{ch,j2}$"
+  #   nbins: 81
+  #   binlow: 0
+  #   binhigh: 80
+  #   ibubins: 
+  #     - 0.5
+  #     - 3.5
+  #     - 7.5
+  #     - 11.5
+  #     - 15.5
+  #     - 34.5
+  #   verbosity_level: 1
 
   Ntracks:
     <<: *default_plot
@@ -554,39 +555,112 @@ plots:
       - 1800.0
     verbosity_level: 0
 
-  pT_tracks:
+  # pT_tracks:
+  #   <<: *default_plot
+  #   key: "pT_tracks"
+  #   xlabel: "$p_{T,tracks}$ [GeV]"
+  #   binlow: 0
+  #   binhigh: 5
+  #   verbosity_level: 2
+  #   type: "track"
+  #   w1_eval: false
+
+  # eta_tracks:
+  #   <<: *default_plot
+  #   key: "eta_tracks"
+  #   xlabel: '$\eta_{tracks}$'
+  #   binlow: -2.5
+  #   binhigh: 2.5
+  #   verbosity_level: 2
+  #   type: "track"
+  #   w1_eval: false
+
+  # phi_tracks:
+  #   <<: *default_plot
+  #   key: "phi_tracks"
+  #   xlabel: '$\phi_{tracks}$'
+  #   rlim:
+  #     - 0.9
+  #     - 1.1
+  #   linear_yscale: true
+  #   binlow: -3.2
+  #   binhigh: 3.2
+  #   verbosity_level: 2
+  #   type: "track"
+  #   w1_eval: false
+
+  hm3_R04:
     <<: *default_plot
-    key: "pT_tracks"
-    xlabel: "$p_{T,tracks}$ [GeV]"
-    binlow: 0
-    binhigh: 5
-    verbosity_level: 2
-    type: "track"
+    key: "hm3_R04"
+    xlabel: "$m_{j3}$ [GeV]"
+    verbosity_level: 3
     w1_eval: false
+    type: "fastjet"
 
-  eta_tracks:
+  hm4_R04:
     <<: *default_plot
-    key: "eta_tracks"
-    xlabel: '$\eta_{tracks}$'
-    binlow: -2.5
-    binhigh: 2.5
-    verbosity_level: 2
-    type: "track"
+    key: "hm4_R04"
+    xlabel: "$m_{j4}$ [GeV]"
+    verbosity_level: 3
     w1_eval: false
+    type: "fastjet"
 
-  phi_tracks:
+  hpT_R06:
     <<: *default_plot
-    key: "phi_tracks"
-    xlabel: '$\phi_{tracks}$'
-    rlim:
-      - 0.9
-      - 1.1
-    linear_scale: true
-    binlow: -3.2
-    binhigh: 3.2
-    verbosity_level: 2
-    type: "track"
+    key: "hpT_R06"
+    xlabel: "$p_{T,j1}$ Anti-kt R=0.6 [GeV]"
+    verbosity_level: 3
     w1_eval: false
+    type: "fastjet"
 
+  hpT_R10:
+    <<: *default_plot
+    key: "hpT_R10"
+    xlabel: "$p_{T,j1}$ Anti-kt R=1.0 [GeV]"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
 
+  hpT_CA04:
+    <<: *default_plot
+    key: "hpT_CA04"
+    xlabel: "$p_{T,j1}$ Cambridge/Aachen R=0.4 [GeV]"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
 
+  hEEC_R04:
+    <<: *default_plot
+    key: "hEEC_R04"
+    xlabel: "$EEC_{j1}$ Anti-kt R=0.4 [GeV]"
+    log_xscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+
+  hEEC_R06:
+    <<: *default_plot
+    key: "hEEC_R06"
+    xlabel: "$EEC_{j1}$ Anti-kt R=0.6 [GeV]"
+    log_xscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+
+  hEEC_R10:
+    <<: *default_plot
+    key: "hEEC_R10"
+    xlabel: "$EEC_{j1}$ Anti-kt R=1.0 [GeV]"
+    log_xscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+
+  hEEC_CA04:
+    <<: *default_plot
+    key: "hEEC_CA04"
+    xlabel: "$EEC_{j1}$ Cambridge/Aachen R=0.4 [GeV]"
+    log_xscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"

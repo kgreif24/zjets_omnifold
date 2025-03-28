@@ -16,6 +16,16 @@ import plotter
 parser = argparse.ArgumentParser(description="Run plotting functions")
 parser.add_argument("--f1", type=str, help="The path to file 1")
 parser.add_argument("--f2", type=str, help="The path to file 2")
+parser.add_argument(
+    "--root_files",
+    type=str,
+    nargs="+",
+    default=None,
+    help=(
+        "If plotting observables that must be computed with fastjet"
+        ", provide the path to the root files in order (start, end target)"
+    ),
+)
 parser.add_argument("--name1", type=str, help="The name of file 1")
 parser.add_argument("--name2", type=str, help="The name of file 2")
 parser.add_argument(
@@ -63,6 +73,13 @@ parser.add_argument(
     "--calc_w1", action="store_true",
     help="If true, will calculate the wasserstein distances",
 )
+parser.add_argument(
+    "--recalculate", action="store_true",
+    help=(
+        "If true, recalculate all fastjet observables, regardless of whether root files"
+        "already exist."
+    ),
+)
 args = parser.parse_args()
 
 # Build the plotter and run
@@ -75,13 +92,15 @@ plotter = plotter.Plotter(
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,
+    root_files=args.root_files,
 )
-# plot_dict = plotter.plot(
-#     args.start_weights,
-#     args.end_weights,
-#     args.target_weights,
-#     use_train=args.train,
-# )
+plot_dict = plotter.plot(
+    args.start_weights,
+    args.end_weights,
+    args.target_weights,
+    recalculate=args.recalculate,
+    use_train=args.train,
+)
 
 print("Plotting complete")
 
