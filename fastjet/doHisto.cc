@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <vector>
 #include "TString.h"
 #include "MakeOmni.h"
 #include "TChain.h"
@@ -11,6 +12,7 @@ int main(int argc, char* argv[]){
 	// Read command line args
 	TString fileName;
 	string weights;
+	vector<string> ens_weights;
 	TString outFile;
 	bool isTruth = false;
 	int maxEvents = 5000000;
@@ -34,6 +36,20 @@ int main(int argc, char* argv[]){
 				std::cerr << "--weights option requires one argument." << std::endl;
 				return 1;
 			}
+		}
+		if (arg == "--ens_weights") {
+			// Loop through all the ens_weights arguments
+			int j = 1;
+			if (i + 1 < argc && argv[i+1][0] != '-') { // Make sure we aren't at the end of argv!
+				while (i + j < argc && argv[i+j][0] != '-') {
+					ens_weights.push_back(string(argv[i+j]));
+					j++; // Move to the next arg
+				}
+			} else { // Throw error if no argument provided
+				std::cerr << "--ens_weights option requires one argument." << std::endl;
+				return 1;
+			}
+			i += j - 1; // Move to the next arg
 		}
 		if (arg == "--outFile") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
@@ -63,12 +79,19 @@ int main(int argc, char* argv[]){
 	myChain->Add(fileName);
 	cout << "Building hists from file: " << fileName << endl;
 	cout << "Using weights: " << weights << endl;
+	if (ens_weights.size() > 0) {
+		cout << "Using ens_weights: ";
+		for (const auto& ens_weight : ens_weights) {
+			cout << ens_weight << " ";
+		}
+		cout << endl;
+	}
 	cout << "Using truth: " << isTruth << endl;
 	cout << "Has entries: " << myChain->GetEntries() << endl;
 	cout << "Max events: " << maxEvents << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weights, outFile, isTruth);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weights, ens_weights, outFile, isTruth);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;

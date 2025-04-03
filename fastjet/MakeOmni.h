@@ -11,12 +11,13 @@
 #include <TROOT.h>
 #include <TChain.h>
 #include <TFile.h>
+#include <TString.h>
 #include <TH1D.h>
 #include <TH2D.h>
-#include <TString.h>
 #include <vector>
 #include <string>
 #include <iostream>
+#include "HistoGroup.h"
 using namespace std;
 
 // Header file for the classes stored in the TTree if any.
@@ -29,7 +30,12 @@ public :
    bool isTruth; // Flag to indicate if we are processing truth data
    // bool loadSystematics; // Flag to indicate if we are loading systematics
    string weightName;
+   vector<string> ens_weight_names;
    TString saveName;
+
+   // HistoGroups
+   HistoGroup centralGroup;
+   vector<HistoGroup> histoGroups;
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
@@ -70,134 +76,6 @@ public :
    Float_t         tau1_trackj2;
    Float_t         tau2_trackj2;
    Float_t         tau3_trackj2;
-   // Float_t         syst_prwUp;
-   // Float_t         syst_prwDown;
-   // Float_t         syst_recoSFUp;
-   // Float_t         syst_recoSFDown;
-   // Float_t         syst_isoSFUp;
-   // Float_t         syst_isoSFDown;
-   // Float_t         syst_TTVASFUp;
-   // Float_t         syst_TTVASFDown;
-   // Float_t         syst_trigSFUp;
-   // Float_t         syst_trigSFDown;
-   // Float_t         syst_pT_l1_ID_Up;
-   // Float_t         syst_pT_l1_ID_Down;
-   // Float_t         syst_pT_l2_ID_Up;
-   // Float_t         syst_pT_l2_ID_Down;
-   // Float_t         syst_pT_l1_MS_Up;
-   // Float_t         syst_pT_l1_MS_Down;
-   // Float_t         syst_pT_l2_MS_Up;
-   // Float_t         syst_pT_l2_MS_Down;
-   // Float_t         syst_pT_l1_MSResbias_Up;
-   // Float_t         syst_pT_l1_MSResbias_Down;
-   // Float_t         syst_pT_l2_MSResbias_Up;
-   // Float_t         syst_pT_l2_MSResbias_Down;
-   // Float_t         syst_pT_l1_MSRho_Up;
-   // Float_t         syst_pT_l1_MSRho_Down;
-   // Float_t         syst_pT_l2_MSRho_Up;
-   // Float_t         syst_pT_l2_MSRho_Down;
-   // Float_t         syst_pT_l1_Scale_Up;
-   // Float_t         syst_pT_l1_Scale_Down;
-   // Float_t         syst_pT_l2_Scale_Up;
-   // Float_t         syst_pT_l2_Scale_Down;
-   // Float_t         syst_pT_ll_ID_Up;
-   // Float_t         syst_pT_ll_ID_Down;
-   // Float_t         syst_pT_ll_MS_Up;
-   // Float_t         syst_pT_ll_MS_Down;
-   // Float_t         syst_pT_ll_MSResbias_Up;
-   // Float_t         syst_pT_ll_MSResbias_Down;
-   // Float_t         syst_pT_ll_MSRho_Up;
-   // Float_t         syst_pT_ll_MSRho_Down;
-   // Float_t         syst_pT_ll_Scale_Up;
-   // Float_t         syst_pT_ll_Scale_Down;
-   // Float_t         syst_m_ll_ID_Up;
-   // Float_t         syst_m_ll_ID_Down;
-   // Float_t         syst_m_ll_MS_Up;
-   // Float_t         syst_m_ll_MS_Down;
-   // Float_t         syst_m_ll_MSResbias_Up;
-   // Float_t         syst_m_ll_MSResbias_Down;
-   // Float_t         syst_m_ll_MSRho_Up;
-   // Float_t         syst_m_ll_MSRho_Down;
-   // Float_t         syst_m_ll_Scale_Up;
-   // Float_t         syst_m_ll_Scale_Down;
-   // Float_t         syst_y_ll_ID_Up;
-   // Float_t         syst_y_ll_ID_Down;
-   // Float_t         syst_y_ll_MS_Up;
-   // Float_t         syst_y_ll_MS_Down;
-   // Float_t         syst_y_ll_MSResbias_Up;
-   // Float_t         syst_y_ll_MSResbias_Down;
-   // Float_t         syst_y_ll_MSRho_Up;
-   // Float_t         syst_y_ll_MSRho_Down;
-   // Float_t         syst_y_ll_Scale_Up;
-   // Float_t         syst_y_ll_Scale_Down;
-   // Float_t         syst_TrackFilter_pT_trackj1;
-   // Float_t         syst_TrackFilter_y_trackj1;
-   // Float_t         syst_TrackFilter_phi_trackj1;
-   // Float_t         syst_TrackFilter_m_trackj1;
-   // Float_t         syst_TrackFilter_tau1_trackj1;
-   // Float_t         syst_TrackFilter_tau2_trackj1;
-   // Float_t         syst_TrackFilter_tau3_trackj1;
-   // Float_t         syst_TrackFilter_pT_trackj2;
-   // Float_t         syst_TrackFilter_y_trackj2;
-   // Float_t         syst_TrackFilter_phi_trackj2;
-   // Float_t         syst_TrackFilter_m_trackj2;
-   // Float_t         syst_TrackFilter_tau1_trackj2;
-   // Float_t         syst_TrackFilter_tau2_trackj2;
-   // Float_t         syst_TrackFilter_tau3_trackj2;
-   // Float_t         syst_JetTrackFilter_pT_trackj1;
-   // Float_t         syst_JetTrackFilter_y_trackj1;
-   // Float_t         syst_JetTrackFilter_phi_trackj1;
-   // Float_t         syst_JetTrackFilter_m_trackj1;
-   // Float_t         syst_JetTrackFilter_tau1_trackj1;
-   // Float_t         syst_JetTrackFilter_tau2_trackj1;
-   // Float_t         syst_JetTrackFilter_tau3_trackj1;
-   // Float_t         syst_JetTrackFilter_pT_trackj2;
-   // Float_t         syst_JetTrackFilter_y_trackj2;
-   // Float_t         syst_JetTrackFilter_phi_trackj2;
-   // Float_t         syst_JetTrackFilter_m_trackj2;
-   // Float_t         syst_JetTrackFilter_tau1_trackj2;
-   // Float_t         syst_JetTrackFilter_tau2_trackj2;
-   // Float_t         syst_JetTrackFilter_tau3_trackj2;
-   // Float_t         syst_Fake_pT_trackj1;
-   // Float_t         syst_Fake_y_trackj1;
-   // Float_t         syst_Fake_phi_trackj1;
-   // Float_t         syst_Fake_m_trackj1;
-   // Float_t         syst_Fake_tau1_trackj1;
-   // Float_t         syst_Fake_tau2_trackj1;
-   // Float_t         syst_Fake_tau3_trackj1;
-   // Float_t         syst_Fake_pT_trackj2;
-   // Float_t         syst_Fake_y_trackj2;
-   // Float_t         syst_Fake_phi_trackj2;
-   // Float_t         syst_Fake_m_trackj2;
-   // Float_t         syst_Fake_tau1_trackj2;
-   // Float_t         syst_Fake_tau2_trackj2;
-   // Float_t         syst_Fake_tau3_trackj2;
-   // Float_t         syst_pTScale_pT_trackj1;
-   // Float_t         syst_pTScale_y_trackj1;
-   // Float_t         syst_pTScale_phi_trackj1;
-   // Float_t         syst_pTScale_m_trackj1;
-   // Float_t         syst_pTScale_tau1_trackj1;
-   // Float_t         syst_pTScale_tau2_trackj1;
-   // Float_t         syst_pTScale_tau3_trackj1;
-   // Float_t         syst_pTScale_pT_trackj2;
-   // Float_t         syst_pTScale_y_trackj2;
-   // Float_t         syst_pTScale_phi_trackj2;
-   // Float_t         syst_pTScale_m_trackj2;
-   // Float_t         syst_pTScale_tau1_trackj2;
-   // Float_t         syst_pTScale_tau2_trackj2;
-   // Float_t         syst_pTScale_tau3_trackj2;
-   // Int_t           syst_TrackFilter_Ntracks_trackj1;
-   // Int_t           syst_TrackFilter_Ntracks_trackj2;
-   // Int_t           syst_JetTrackFilter_Ntracks_trackj1;
-   // Int_t           syst_JetTrackFilter_Ntracks_trackj2;
-   // Int_t           syst_Fake_Ntracks_trackj1;
-   // Int_t           syst_Fake_Ntracks_trackj2;
-   // Int_t           syst_pTScale_Ntracks_trackj1;
-   // Int_t           syst_pTScale_Ntracks_trackj2;
-   // Int_t           syst_TrackFilter_NtrackJets20;
-   // Int_t           syst_JetTrackFilter_NtrackJets20;
-   // Int_t           syst_Fake_NtrackJets20;
-   // Int_t           syst_pTScale_NtrackJets20;
    Int_t           EventNumber;
    Int_t           RunNumber;
    Int_t           Ntracks;
@@ -252,134 +130,6 @@ public :
    TBranch        *b_tau1_trackj2;   //!
    TBranch        *b_tau2_trackj2;   //!
    TBranch        *b_tau3_trackj2;   //!
-   // TBranch        *b_syst_prwUp;   //!
-   // TBranch        *b_syst_prwDown;   //!
-   // TBranch        *b_syst_recoSFUp;   //!
-   // TBranch        *b_syst_recoSFDown;   //!
-   // TBranch        *b_syst_isoSFUp;   //!
-   // TBranch        *b_syst_isoSFDown;   //!
-   // TBranch        *b_syst_TTVASFUp;   //!
-   // TBranch        *b_syst_TTVASFDown;   //!
-   // TBranch        *b_syst_trigSFUp;   //!
-   // TBranch        *b_syst_trigSFDown;   //!
-   // TBranch        *b_syst_pT_l1_ID_Up;   //!
-   // TBranch        *b_syst_pT_l1_ID_Down;   //!
-   // TBranch        *b_syst_pT_l2_ID_Up;   //!
-   // TBranch        *b_syst_pT_l2_ID_Down;   //!
-   // TBranch        *b_syst_pT_l1_MS_Up;   //!
-   // TBranch        *b_syst_pT_l1_MS_Down;   //!
-   // TBranch        *b_syst_pT_l2_MS_Up;   //!
-   // TBranch        *b_syst_pT_l2_MS_Down;   //!
-   // TBranch        *b_syst_pT_l1_MSResbias_Up;   //!
-   // TBranch        *b_syst_pT_l1_MSResbias_Down;   //!
-   // TBranch        *b_syst_pT_l2_MSResbias_Up;   //!
-   // TBranch        *b_syst_pT_l2_MSResbias_Down;   //!
-   // TBranch        *b_syst_pT_l1_MSRho_Up;   //!
-   // TBranch        *b_syst_pT_l1_MSRho_Down;   //!
-   // TBranch        *b_syst_pT_l2_MSRho_Up;   //!
-   // TBranch        *b_syst_pT_l2_MSRho_Down;   //!
-   // TBranch        *b_syst_pT_l1_Scale_Up;   //!
-   // TBranch        *b_syst_pT_l1_Scale_Down;   //!
-   // TBranch        *b_syst_pT_l2_Scale_Up;   //!
-   // TBranch        *b_syst_pT_l2_Scale_Down;   //!
-   // TBranch        *b_syst_pT_ll_ID_Up;   //!
-   // TBranch        *b_syst_pT_ll_ID_Down;   //!
-   // TBranch        *b_syst_pT_ll_MS_Up;   //!
-   // TBranch        *b_syst_pT_ll_MS_Down;   //!
-   // TBranch        *b_syst_pT_ll_MSResbias_Up;   //!
-   // TBranch        *b_syst_pT_ll_MSResbias_Down;   //!
-   // TBranch        *b_syst_pT_ll_MSRho_Up;   //!
-   // TBranch        *b_syst_pT_ll_MSRho_Down;   //!
-   // TBranch        *b_syst_pT_ll_Scale_Up;   //!
-   // TBranch        *b_syst_pT_ll_Scale_Down;   //!
-   // TBranch        *b_syst_m_ll_ID_Up;   //!
-   // TBranch        *b_syst_m_ll_ID_Down;   //!
-   // TBranch        *b_syst_m_ll_MS_Up;   //!
-   // TBranch        *b_syst_m_ll_MS_Down;   //!
-   // TBranch        *b_syst_m_ll_MSResbias_Up;   //!
-   // TBranch        *b_syst_m_ll_MSResbias_Down;   //!
-   // TBranch        *b_syst_m_ll_MSRho_Up;   //!
-   // TBranch        *b_syst_m_ll_MSRho_Down;   //!
-   // TBranch        *b_syst_m_ll_Scale_Up;   //!
-   // TBranch        *b_syst_m_ll_Scale_Down;   //!
-   // TBranch        *b_syst_y_ll_ID_Up;   //!
-   // TBranch        *b_syst_y_ll_ID_Down;   //!
-   // TBranch        *b_syst_y_ll_MS_Up;   //!
-   // TBranch        *b_syst_y_ll_MS_Down;   //!
-   // TBranch        *b_syst_y_ll_MSResbias_Up;   //!
-   // TBranch        *b_syst_y_ll_MSResbias_Down;   //!
-   // TBranch        *b_syst_y_ll_MSRho_Up;   //!
-   // TBranch        *b_syst_y_ll_MSRho_Down;   //!
-   // TBranch        *b_syst_y_ll_Scale_Up;   //!
-   // TBranch        *b_syst_y_ll_Scale_Down;   //!
-   // TBranch        *b_syst_TrackFilter_pT_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_y_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_phi_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_m_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_tau1_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_tau2_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_tau3_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_pT_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_y_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_phi_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_m_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_tau1_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_tau2_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_tau3_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_pT_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_y_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_phi_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_m_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_tau1_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_tau2_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_tau3_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_pT_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_y_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_phi_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_m_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_tau1_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_tau2_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_tau3_trackj2;   //!
-   // TBranch        *b_syst_Fake_pT_trackj1;   //!
-   // TBranch        *b_syst_Fake_y_trackj1;   //!
-   // TBranch        *b_syst_Fake_phi_trackj1;   //!
-   // TBranch        *b_syst_Fake_m_trackj1;   //!
-   // TBranch        *b_syst_Fake_tau1_trackj1;   //!
-   // TBranch        *b_syst_Fake_tau2_trackj1;   //!
-   // TBranch        *b_syst_Fake_tau3_trackj1;   //!
-   // TBranch        *b_syst_Fake_pT_trackj2;   //!
-   // TBranch        *b_syst_Fake_y_trackj2;   //!
-   // TBranch        *b_syst_Fake_phi_trackj2;   //!
-   // TBranch        *b_syst_Fake_m_trackj2;   //!
-   // TBranch        *b_syst_Fake_tau1_trackj2;   //!
-   // TBranch        *b_syst_Fake_tau2_trackj2;   //!
-   // TBranch        *b_syst_Fake_tau3_trackj2;   //!
-   // TBranch        *b_syst_pTScale_pT_trackj1;   //!
-   // TBranch        *b_syst_pTScale_y_trackj1;   //!
-   // TBranch        *b_syst_pTScale_phi_trackj1;   //!
-   // TBranch        *b_syst_pTScale_m_trackj1;   //!
-   // TBranch        *b_syst_pTScale_tau1_trackj1;   //!
-   // TBranch        *b_syst_pTScale_tau2_trackj1;   //!
-   // TBranch        *b_syst_pTScale_tau3_trackj1;   //!
-   // TBranch        *b_syst_pTScale_pT_trackj2;   //!
-   // TBranch        *b_syst_pTScale_y_trackj2;   //!
-   // TBranch        *b_syst_pTScale_phi_trackj2;   //!
-   // TBranch        *b_syst_pTScale_m_trackj2;   //!
-   // TBranch        *b_syst_pTScale_tau1_trackj2;   //!
-   // TBranch        *b_syst_pTScale_tau2_trackj2;   //!
-   // TBranch        *b_syst_pTScale_tau3_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_Ntracks_trackj1;   //!
-   // TBranch        *b_syst_TrackFilter_Ntracks_trackj2;   //!
-   // TBranch        *b_syst_JetTrackFilter_Ntracks_trackj1;   //!
-   // TBranch        *b_syst_JetTrackFilter_Ntracks_trackj2;   //!
-   // TBranch        *b_syst_Fake_Ntracks_trackj1;   //!
-   // TBranch        *b_syst_Fake_Ntracks_trackj2;   //!
-   // TBranch        *b_syst_pTScale_Ntracks_trackj1;   //!
-   // TBranch        *b_syst_pTScale_Ntracks_trackj2;   //!
-   // TBranch        *b_syst_TrackFilter_NtrackJets20;   //!
-   // TBranch        *b_syst_JetTrackFilter_NtrackJets20;   //!
-   // TBranch        *b_syst_Fake_NtrackJets20;   //!
-   // TBranch        *b_syst_pTScale_NtrackJets20;   //!
    TBranch        *b_EventNumber;   //!
    TBranch        *b_RunNumber;   //!
    TBranch        *b_Ntracks;   //!
@@ -397,7 +147,7 @@ public :
    TBranch        *b_ntrackJetIndex_tracks;   //!
    TBranch        *b_trackJetIndex_tracks;   //!
 
-   MakeOmni(TTree*, string, TString, bool runTruth = false);
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false);
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -407,20 +157,32 @@ public :
    virtual Bool_t   Notify();
    virtual void     Show(Long64_t entry = -1);
    virtual vector<float> LoadWeights(string);
-   virtual void     FillEEC(unique_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight);
-   virtual void     FillLund(unique_ptr<TH1D>& hz, unique_ptr<TH1D>& hdr, unique_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
+   virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight);
+   virtual void     FillLund(shared_ptr<TH1D>& hz, shared_ptr<TH1D>& hdr, shared_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
 };
 
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, TString outFile, bool runTruth) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> ens_weights, TString outFile, bool runTruth) : fChain(0) 
 {
 
    // Store instance variables
    weightName = weightFile; // Store the weight file name
+   ens_weight_names = ens_weights; // Store the ensemble weights
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
+
+   // Initialize histogram groups
+   for (unsigned int i = 0; i < ens_weights.size() + 1; ++i) {
+      string ens_w;
+      if (i == 0) {
+         ens_w = "";
+      } else {
+         ens_w = "ens_" + to_string(i) + "_";
+      }
+      histoGroups.push_back(HistoGroup(ens_w.c_str()));
+   }
 
    // Initialize the tree
    Init(tree);
@@ -548,155 +310,6 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("phi_tracks", &phi_tracks, &b_phi_tracks);
       fChain->SetBranchAddress("trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
    }
-   // // Set branch addresses for systematics, only in MC file
-   // if (loadSystematics) {
-   //    fChain->SetBranchAddress("pass190_syst_ID_Up", &pass190_syst_ID_Up, &b_pass190_syst_ID_Up);
-   //    fChain->SetBranchAddress("pass190_syst_ID_Down", &pass190_syst_ID_Down, &b_pass190_syst_ID_Down);
-   //    fChain->SetBranchAddress("pass190_syst_MS_Up", &pass190_syst_MS_Up, &b_pass190_syst_MS_Up);
-   //    fChain->SetBranchAddress("pass190_syst_MS_Down", &pass190_syst_MS_Down, &b_pass190_syst_MS_Down);
-   //    fChain->SetBranchAddress("pass190_syst_MSResbias_Up", &pass190_syst_MSResbias_Up, &b_pass190_syst_MSResbias_Up);
-   //    fChain->SetBranchAddress("pass190_syst_MSResbias_Down", &pass190_syst_MSResbias_Down, &b_pass190_syst_MSResbias_Down);
-   //    fChain->SetBranchAddress("pass190_syst_MSRho_Up", &pass190_syst_MSRho_Up, &b_pass190_syst_MSRho_Up);
-   //    fChain->SetBranchAddress("pass190_syst_MSRho_Down", &pass190_syst_MSRho_Down, &b_pass190_syst_MSRho_Down);
-   //    fChain->SetBranchAddress("pass190_syst_Scale_Up", &pass190_syst_Scale_Up, &b_pass190_syst_Scale_Up);
-   //    fChain->SetBranchAddress("pass190_syst_Scale_Down", &pass190_syst_Scale_Down, &b_pass190_syst_Scale_Down);
-   //    fChain->SetBranchAddress("syst_prwUp", &syst_prwUp, &b_syst_prwUp);
-   //    fChain->SetBranchAddress("syst_prwDown", &syst_prwDown, &b_syst_prwDown);
-   //    fChain->SetBranchAddress("syst_recoSFUp", &syst_recoSFUp, &b_syst_recoSFUp);
-   //    fChain->SetBranchAddress("syst_recoSFDown", &syst_recoSFDown, &b_syst_recoSFDown);
-   //    fChain->SetBranchAddress("syst_isoSFUp", &syst_isoSFUp, &b_syst_isoSFUp);
-   //    fChain->SetBranchAddress("syst_isoSFDown", &syst_isoSFDown, &b_syst_isoSFDown);
-   //    fChain->SetBranchAddress("syst_TTVASFUp", &syst_TTVASFUp, &b_syst_TTVASFUp);
-   //    fChain->SetBranchAddress("syst_TTVASFDown", &syst_TTVASFDown, &b_syst_TTVASFDown);
-   //    fChain->SetBranchAddress("syst_trigSFUp", &syst_trigSFUp, &b_syst_trigSFUp);
-   //    fChain->SetBranchAddress("syst_trigSFDown", &syst_trigSFDown, &b_syst_trigSFDown);
-   //    fChain->SetBranchAddress("syst_pT_l1_ID_Up", &syst_pT_l1_ID_Up, &b_syst_pT_l1_ID_Up);
-   //    fChain->SetBranchAddress("syst_pT_l1_ID_Down", &syst_pT_l1_ID_Down, &b_syst_pT_l1_ID_Down);
-   //    fChain->SetBranchAddress("syst_pT_l2_ID_Up", &syst_pT_l2_ID_Up, &b_syst_pT_l2_ID_Up);
-   //    fChain->SetBranchAddress("syst_pT_l2_ID_Down", &syst_pT_l2_ID_Down, &b_syst_pT_l2_ID_Down);
-   //    fChain->SetBranchAddress("syst_pT_l1_MS_Up", &syst_pT_l1_MS_Up, &b_syst_pT_l1_MS_Up);
-   //    fChain->SetBranchAddress("syst_pT_l1_MS_Down", &syst_pT_l1_MS_Down, &b_syst_pT_l1_MS_Down);
-   //    fChain->SetBranchAddress("syst_pT_l2_MS_Up", &syst_pT_l2_MS_Up, &b_syst_pT_l2_MS_Up);
-   //    fChain->SetBranchAddress("syst_pT_l2_MS_Down", &syst_pT_l2_MS_Down, &b_syst_pT_l2_MS_Down);
-   //    fChain->SetBranchAddress("syst_pT_l1_MSResbias_Up", &syst_pT_l1_MSResbias_Up, &b_syst_pT_l1_MSResbias_Up);
-   //    fChain->SetBranchAddress("syst_pT_l1_MSResbias_Down", &syst_pT_l1_MSResbias_Down, &b_syst_pT_l1_MSResbias_Down);
-   //    fChain->SetBranchAddress("syst_pT_l2_MSResbias_Up", &syst_pT_l2_MSResbias_Up, &b_syst_pT_l2_MSResbias_Up);
-   //    fChain->SetBranchAddress("syst_pT_l2_MSResbias_Down", &syst_pT_l2_MSResbias_Down, &b_syst_pT_l2_MSResbias_Down);
-   //    fChain->SetBranchAddress("syst_pT_l1_MSRho_Up", &syst_pT_l1_MSRho_Up, &b_syst_pT_l1_MSRho_Up);
-   //    fChain->SetBranchAddress("syst_pT_l1_MSRho_Down", &syst_pT_l1_MSRho_Down, &b_syst_pT_l1_MSRho_Down);
-   //    fChain->SetBranchAddress("syst_pT_l2_MSRho_Up", &syst_pT_l2_MSRho_Up, &b_syst_pT_l2_MSRho_Up);
-   //    fChain->SetBranchAddress("syst_pT_l2_MSRho_Down", &syst_pT_l2_MSRho_Down, &b_syst_pT_l2_MSRho_Down);
-   //    fChain->SetBranchAddress("syst_pT_l1_Scale_Up", &syst_pT_l1_Scale_Up, &b_syst_pT_l1_Scale_Up);
-   //    fChain->SetBranchAddress("syst_pT_l1_Scale_Down", &syst_pT_l1_Scale_Down, &b_syst_pT_l1_Scale_Down);
-   //    fChain->SetBranchAddress("syst_pT_l2_Scale_Up", &syst_pT_l2_Scale_Up, &b_syst_pT_l2_Scale_Up);
-   //    fChain->SetBranchAddress("syst_pT_l2_Scale_Down", &syst_pT_l2_Scale_Down, &b_syst_pT_l2_Scale_Down);
-   //    fChain->SetBranchAddress("syst_pT_ll_ID_Up", &syst_pT_ll_ID_Up, &b_syst_pT_ll_ID_Up);
-   //    fChain->SetBranchAddress("syst_pT_ll_ID_Down", &syst_pT_ll_ID_Down, &b_syst_pT_ll_ID_Down);
-   //    fChain->SetBranchAddress("syst_pT_ll_MS_Up", &syst_pT_ll_MS_Up, &b_syst_pT_ll_MS_Up);
-   //    fChain->SetBranchAddress("syst_pT_ll_MS_Down", &syst_pT_ll_MS_Down, &b_syst_pT_ll_MS_Down);
-   //    fChain->SetBranchAddress("syst_pT_ll_MSResbias_Up", &syst_pT_ll_MSResbias_Up, &b_syst_pT_ll_MSResbias_Up);
-   //    fChain->SetBranchAddress("syst_pT_ll_MSResbias_Down", &syst_pT_ll_MSResbias_Down, &b_syst_pT_ll_MSResbias_Down);
-   //    fChain->SetBranchAddress("syst_pT_ll_MSRho_Up", &syst_pT_ll_MSRho_Up, &b_syst_pT_ll_MSRho_Up);
-   //    fChain->SetBranchAddress("syst_pT_ll_MSRho_Down", &syst_pT_ll_MSRho_Down, &b_syst_pT_ll_MSRho_Down);
-   //    fChain->SetBranchAddress("syst_pT_ll_Scale_Up", &syst_pT_ll_Scale_Up, &b_syst_pT_ll_Scale_Up);
-   //    fChain->SetBranchAddress("syst_pT_ll_Scale_Down", &syst_pT_ll_Scale_Down, &b_syst_pT_ll_Scale_Down);
-   //    fChain->SetBranchAddress("syst_m_ll_ID_Up", &syst_m_ll_ID_Up, &b_syst_m_ll_ID_Up);
-   //    fChain->SetBranchAddress("syst_m_ll_ID_Down", &syst_m_ll_ID_Down, &b_syst_m_ll_ID_Down);
-   //    fChain->SetBranchAddress("syst_m_ll_MS_Up", &syst_m_ll_MS_Up, &b_syst_m_ll_MS_Up);
-   //    fChain->SetBranchAddress("syst_m_ll_MS_Down", &syst_m_ll_MS_Down, &b_syst_m_ll_MS_Down);
-   //    fChain->SetBranchAddress("syst_m_ll_MSResbias_Up", &syst_m_ll_MSResbias_Up, &b_syst_m_ll_MSResbias_Up);
-   //    fChain->SetBranchAddress("syst_m_ll_MSResbias_Down", &syst_m_ll_MSResbias_Down, &b_syst_m_ll_MSResbias_Down);
-   //    fChain->SetBranchAddress("syst_m_ll_MSRho_Up", &syst_m_ll_MSRho_Up, &b_syst_m_ll_MSRho_Up);
-   //    fChain->SetBranchAddress("syst_m_ll_MSRho_Down", &syst_m_ll_MSRho_Down, &b_syst_m_ll_MSRho_Down);
-   //    fChain->SetBranchAddress("syst_m_ll_Scale_Up", &syst_m_ll_Scale_Up, &b_syst_m_ll_Scale_Up);
-   //    fChain->SetBranchAddress("syst_m_ll_Scale_Down", &syst_m_ll_Scale_Down, &b_syst_m_ll_Scale_Down);
-   //    fChain->SetBranchAddress("syst_y_ll_ID_Up", &syst_y_ll_ID_Up, &b_syst_y_ll_ID_Up);
-   //    fChain->SetBranchAddress("syst_y_ll_ID_Down", &syst_y_ll_ID_Down, &b_syst_y_ll_ID_Down);
-   //    fChain->SetBranchAddress("syst_y_ll_MS_Up", &syst_y_ll_MS_Up, &b_syst_y_ll_MS_Up);
-   //    fChain->SetBranchAddress("syst_y_ll_MS_Down", &syst_y_ll_MS_Down, &b_syst_y_ll_MS_Down);
-   //    fChain->SetBranchAddress("syst_y_ll_MSResbias_Up", &syst_y_ll_MSResbias_Up, &b_syst_y_ll_MSResbias_Up);
-   //    fChain->SetBranchAddress("syst_y_ll_MSResbias_Down", &syst_y_ll_MSResbias_Down, &b_syst_y_ll_MSResbias_Down);
-   //    fChain->SetBranchAddress("syst_y_ll_MSRho_Up", &syst_y_ll_MSRho_Up, &b_syst_y_ll_MSRho_Up);
-   //    fChain->SetBranchAddress("syst_y_ll_MSRho_Down", &syst_y_ll_MSRho_Down, &b_syst_y_ll_MSRho_Down);
-   //    fChain->SetBranchAddress("syst_y_ll_Scale_Up", &syst_y_ll_Scale_Up, &b_syst_y_ll_Scale_Up);
-   //    fChain->SetBranchAddress("syst_y_ll_Scale_Down", &syst_y_ll_Scale_Down, &b_syst_y_ll_Scale_Down);
-   //    fChain->SetBranchAddress("syst_TrackFilter_pT_trackj1", &syst_TrackFilter_pT_trackj1, &b_syst_TrackFilter_pT_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_y_trackj1", &syst_TrackFilter_y_trackj1, &b_syst_TrackFilter_y_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_phi_trackj1", &syst_TrackFilter_phi_trackj1, &b_syst_TrackFilter_phi_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_m_trackj1", &syst_TrackFilter_m_trackj1, &b_syst_TrackFilter_m_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_tau1_trackj1", &syst_TrackFilter_tau1_trackj1, &b_syst_TrackFilter_tau1_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_tau2_trackj1", &syst_TrackFilter_tau2_trackj1, &b_syst_TrackFilter_tau2_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_tau3_trackj1", &syst_TrackFilter_tau3_trackj1, &b_syst_TrackFilter_tau3_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_pT_trackj2", &syst_TrackFilter_pT_trackj2, &b_syst_TrackFilter_pT_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_y_trackj2", &syst_TrackFilter_y_trackj2, &b_syst_TrackFilter_y_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_phi_trackj2", &syst_TrackFilter_phi_trackj2, &b_syst_TrackFilter_phi_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_m_trackj2", &syst_TrackFilter_m_trackj2, &b_syst_TrackFilter_m_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_tau1_trackj2", &syst_TrackFilter_tau1_trackj2, &b_syst_TrackFilter_tau1_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_tau2_trackj2", &syst_TrackFilter_tau2_trackj2, &b_syst_TrackFilter_tau2_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_tau3_trackj2", &syst_TrackFilter_tau3_trackj2, &b_syst_TrackFilter_tau3_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_pT_trackj1", &syst_JetTrackFilter_pT_trackj1, &b_syst_JetTrackFilter_pT_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_y_trackj1", &syst_JetTrackFilter_y_trackj1, &b_syst_JetTrackFilter_y_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_phi_trackj1", &syst_JetTrackFilter_phi_trackj1, &b_syst_JetTrackFilter_phi_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_m_trackj1", &syst_JetTrackFilter_m_trackj1, &b_syst_JetTrackFilter_m_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_tau1_trackj1", &syst_JetTrackFilter_tau1_trackj1, &b_syst_JetTrackFilter_tau1_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_tau2_trackj1", &syst_JetTrackFilter_tau2_trackj1, &b_syst_JetTrackFilter_tau2_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_tau3_trackj1", &syst_JetTrackFilter_tau3_trackj1, &b_syst_JetTrackFilter_tau3_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_pT_trackj2", &syst_JetTrackFilter_pT_trackj2, &b_syst_JetTrackFilter_pT_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_y_trackj2", &syst_JetTrackFilter_y_trackj2, &b_syst_JetTrackFilter_y_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_phi_trackj2", &syst_JetTrackFilter_phi_trackj2, &b_syst_JetTrackFilter_phi_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_m_trackj2", &syst_JetTrackFilter_m_trackj2, &b_syst_JetTrackFilter_m_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_tau1_trackj2", &syst_JetTrackFilter_tau1_trackj2, &b_syst_JetTrackFilter_tau1_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_tau2_trackj2", &syst_JetTrackFilter_tau2_trackj2, &b_syst_JetTrackFilter_tau2_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_tau3_trackj2", &syst_JetTrackFilter_tau3_trackj2, &b_syst_JetTrackFilter_tau3_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_pT_trackj1", &syst_Fake_pT_trackj1, &b_syst_Fake_pT_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_y_trackj1", &syst_Fake_y_trackj1, &b_syst_Fake_y_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_phi_trackj1", &syst_Fake_phi_trackj1, &b_syst_Fake_phi_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_m_trackj1", &syst_Fake_m_trackj1, &b_syst_Fake_m_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_tau1_trackj1", &syst_Fake_tau1_trackj1, &b_syst_Fake_tau1_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_tau2_trackj1", &syst_Fake_tau2_trackj1, &b_syst_Fake_tau2_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_tau3_trackj1", &syst_Fake_tau3_trackj1, &b_syst_Fake_tau3_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_pT_trackj2", &syst_Fake_pT_trackj2, &b_syst_Fake_pT_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_y_trackj2", &syst_Fake_y_trackj2, &b_syst_Fake_y_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_phi_trackj2", &syst_Fake_phi_trackj2, &b_syst_Fake_phi_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_m_trackj2", &syst_Fake_m_trackj2, &b_syst_Fake_m_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_tau1_trackj2", &syst_Fake_tau1_trackj2, &b_syst_Fake_tau1_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_tau2_trackj2", &syst_Fake_tau2_trackj2, &b_syst_Fake_tau2_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_tau3_trackj2", &syst_Fake_tau3_trackj2, &b_syst_Fake_tau3_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_pT_trackj1", &syst_pTScale_pT_trackj1, &b_syst_pTScale_pT_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_y_trackj1", &syst_pTScale_y_trackj1, &b_syst_pTScale_y_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_phi_trackj1", &syst_pTScale_phi_trackj1, &b_syst_pTScale_phi_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_m_trackj1", &syst_pTScale_m_trackj1, &b_syst_pTScale_m_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_tau1_trackj1", &syst_pTScale_tau1_trackj1, &b_syst_pTScale_tau1_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_tau2_trackj1", &syst_pTScale_tau2_trackj1, &b_syst_pTScale_tau2_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_tau3_trackj1", &syst_pTScale_tau3_trackj1, &b_syst_pTScale_tau3_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_pT_trackj2", &syst_pTScale_pT_trackj2, &b_syst_pTScale_pT_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_y_trackj2", &syst_pTScale_y_trackj2, &b_syst_pTScale_y_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_phi_trackj2", &syst_pTScale_phi_trackj2, &b_syst_pTScale_phi_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_m_trackj2", &syst_pTScale_m_trackj2, &b_syst_pTScale_m_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_tau1_trackj2", &syst_pTScale_tau1_trackj2, &b_syst_pTScale_tau1_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_tau2_trackj2", &syst_pTScale_tau2_trackj2, &b_syst_pTScale_tau2_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_tau3_trackj2", &syst_pTScale_tau3_trackj2, &b_syst_pTScale_tau3_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_Ntracks_trackj1", &syst_TrackFilter_Ntracks_trackj1, &b_syst_TrackFilter_Ntracks_trackj1);
-   //    fChain->SetBranchAddress("syst_TrackFilter_Ntracks_trackj2", &syst_TrackFilter_Ntracks_trackj2, &b_syst_TrackFilter_Ntracks_trackj2);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_Ntracks_trackj1", &syst_JetTrackFilter_Ntracks_trackj1, &b_syst_JetTrackFilter_Ntracks_trackj1);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_Ntracks_trackj2", &syst_JetTrackFilter_Ntracks_trackj2, &b_syst_JetTrackFilter_Ntracks_trackj2);
-   //    fChain->SetBranchAddress("syst_Fake_Ntracks_trackj1", &syst_Fake_Ntracks_trackj1, &b_syst_Fake_Ntracks_trackj1);
-   //    fChain->SetBranchAddress("syst_Fake_Ntracks_trackj2", &syst_Fake_Ntracks_trackj2, &b_syst_Fake_Ntracks_trackj2);
-   //    fChain->SetBranchAddress("syst_pTScale_Ntracks_trackj1", &syst_pTScale_Ntracks_trackj1, &b_syst_pTScale_Ntracks_trackj1);
-   //    fChain->SetBranchAddress("syst_pTScale_Ntracks_trackj2", &syst_pTScale_Ntracks_trackj2, &b_syst_pTScale_Ntracks_trackj2);
-   //    fChain->SetBranchAddress("syst_TrackFilter_NtrackJets20", &syst_TrackFilter_NtrackJets20, &b_syst_TrackFilter_NtrackJets20);
-   //    fChain->SetBranchAddress("syst_JetTrackFilter_NtrackJets20", &syst_JetTrackFilter_NtrackJets20, &b_syst_JetTrackFilter_NtrackJets20);
-   //    fChain->SetBranchAddress("syst_Fake_NtrackJets20", &syst_Fake_NtrackJets20, &b_syst_Fake_NtrackJets20);
-   //    fChain->SetBranchAddress("syst_pTScale_NtrackJets20", &syst_pTScale_NtrackJets20, &b_syst_pTScale_NtrackJets20);
-   //    fChain->SetBranchAddress("pT_tracks", &fpT_tracks, &b_fpT_tracks);
-   //    fChain->SetBranchAddress("eta_tracks", &feta_tracks, &b_feta_tracks);
-   //    fChain->SetBranchAddress("phi_tracks", &fphi_tracks, &b_fphi_tracks);
-   //    fChain->SetBranchAddress("trackJetIndex_tracks", &ftrackJetIndex_tracks, &b_ftrackJetIndex_tracks);
-   //    fChain->SetBranchAddress("truth_pT_tracks", &ftruth_pT_tracks, &b_ftruth_pT_tracks);
-   //    fChain->SetBranchAddress("truth_eta_tracks", &ftruth_eta_tracks, &b_ftruth_eta_tracks);
-   //    fChain->SetBranchAddress("truth_phi_tracks", &ftruth_phi_tracks, &b_ftruth_phi_tracks);
-   //    fChain->SetBranchAddress("truth_trackJetIndex_tracks", &ftruth_trackJetIndex_tracks, &b_ftruth_trackJetIndex_tracks);
-   //    fChain->SetBranchAddress("omni_weight", &omni_weight, &b_omni_weight);
    
    Notify();
 

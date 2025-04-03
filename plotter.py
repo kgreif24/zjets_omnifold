@@ -52,6 +52,7 @@ class Plotter:
         use_pdf=False,
         max_events=1e6,
         root_files=None,
+        ibu_bins=False,
     ):
         """Initializes the Plotter class with the source and target paths
         for the root files. The verbosity level controls how many plots are
@@ -75,6 +76,7 @@ class Plotter:
                 fastjet observables from. In order [source_start, source_end, target].
                 Defaults to None, in which case there should be no fastjet observables
                 in the config.
+            ibu_bins (bool): If true use coarse IBU bins instead of fine bins
         """
 
         # Store instance variables
@@ -91,6 +93,7 @@ class Plotter:
         self.use_pdf = use_pdf
         self.max_events = max_events
         self.root_files = root_files
+        self.ibu_bins = ibu_bins
 
         # Find number of events to use in plotting
         self.source_events = self.source_tree.num_entries
@@ -175,7 +178,7 @@ class Plotter:
                 if recalculate and pathlib.Path(file).exists():
                     os.remove(file)
                 if not pathlib.Path(file).exists():
-                    self._run_fastjet(i, use_weights, file)
+                    self._run_fastjet(use_weights, file, is_target=(i == 2))
 
         # Get event level weights
         gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
@@ -200,12 +203,22 @@ class Plotter:
         for plot in self.plots:
 
             # Get histograms
-            use_weights = [source_start, source_end, target]
-            if plot["type"] == "track":
-                # For track level observables, use the track weights
-                use_weights = [source_start_trk, source_end_trk, target_trk]
-            histograms, bins = self._get_histograms(plot, weights=use_weights)
-            source_start_hist, source_end_hist, target_hist = histograms
+            source_start_hist, bins = self._get_histogram(
+                plot,
+                weights=source_start_trk if plot["type"] == "track" else source_start,
+                density=True,
+            )
+            source_end_hist, _ = self._get_histogram(
+                plot,
+                weights=source_end_trk if plot["type"] == "track" else source_end,
+                density=True,
+            )
+            target_hist, _ = self._get_histogram(
+                plot,
+                weights=target_trk if plot["type"] == "track" else target,
+                density=True,
+                is_target=True,
+            )
 
             # Calculate ratios
             start_ratio = source_start_hist / target_hist
@@ -350,27 +363,36 @@ class Plotter:
 
         return w1_start_value, w1_end_value
 
-    def _get_histograms(self, plot_dict, weights=None):
-        """_get_histograms - This function computes histograms for a given
+    def _get_histogram(
+        self,
+        plot_dict,
+        weights=None,
+        density=False,
+        root_index=0,
+        ens_index=None,
+        **kwargs,
+    ):
+        """_get_histogram - This function computes a histogram for a given
         plot dictionary (observable) and vector of weights.
         It uses the key from the plot dictionary to access the data from the
         trees if the observable is precomputed or a track variable.
         If the observable is computed using fastjet it directly loads the
         histograms from the root files whose path is provided in the
-        root_files argument, in order [start, end, target]. In this case the
-        weights vector is not used.
+        root_files argument. In this case the weights vector is not used,
+        and the correct weight file is .
 
         Arguments:
             plot_dict (dict): Dictionary containing the plot configuration
                 including the key for the observable.
-            weights (list of np.array): Weights to use for histogram
-                computation, in order [source_start, source_end, target].
-                If the observable is computed using fastjet, this argument
-                is ignored. Default is None.
-            root_files (list of str): List of root files to load histograms from,
-                in order [source_start, source_end, target]. Default is None.
-                Required if the observable is not present in the trees and
-                was computed using fastjet.
+            weights (np.array): Weights to use for histogram in building
+                the histogram
+            density (bool): If True, will normalize the histogram to
+                form a probability density function (PDF). Default is False.
+            root_index (int): Index of the root file to use for fastjet
+                observables. Default is 0, or the first root file provided.
+            ens_index (int): Index of the ensemble from which to retrieve
+                the histogram. Default is None, in which case the central
+                value is taken.
 
         Returns:
             tuple: A tuple containing the histograms for the source start,
@@ -383,46 +405,37 @@ class Plotter:
         # the histograms using uproot
         if plot_dict["type"] == "fastjet":
 
+            assert self.root_files is not None
+            assert root_index < len(self.root_files)
+
             key = plot_dict["key"]
-            source_start_hist, bins = uproot.open(self.root_files[0])[key].to_numpy()
-            source_end_hist, bins2 = uproot.open(self.root_files[1])[key].to_numpy()
-            target_hist, bins3 = uproot.open(self.root_files[2])[key].to_numpy()
-            assert np.array_equal(bins, bins2)
-            assert np.array_equal(bins, bins3)
+            if ens_index is not None:
+                key = "ens_" + str(ens_index) + "_" + key
+            hist, bins = uproot.open(self.root_files[root_index])[key].to_numpy()
 
         # Else the data is loaded and binned from the trees directly
         else:
-
-            assert len(weights) == 3
 
             # Get filtered data
             pull_key = (
                 "truth_" + plot_dict["key"] if self.use_truth else plot_dict["key"]
             )
-            source_data, target_data = self._get_data(pull_key)
+            data = self._get_data(pull_key, **kwargs)
 
-            # Get bins and make histograms, selecting correct weights
-            # depending on whether we are using track level or event level
-            # observables
-            bins = np.linspace(
-                plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
-            )
-            source_start_hist, _ = np.histogram(
-                source_data, bins=bins, weights=weights[0], density=False
-            )
-            source_end_hist, _ = np.histogram(
-                source_data, bins=bins, weights=weights[1], density=False
-            )
-            target_hist, _ = np.histogram(
-                target_data, bins=bins, weights=weights[2], density=False
-            )
+            # Make histogram
+            if self.ibu_bins:
+                bins = np.array(plot_dict["ibubins"])
+            else:
+                bins = np.linspace(
+                    plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
+                )
+            hist, bins = np.histogram(data, bins=bins, weights=weights, density=False)
 
-        # Normalize histograms
-        source_start_hist = self._normalize_to(source_start_hist, val=1.0)
-        source_end_hist = self._normalize_to(source_end_hist, val=1.0)
-        target_hist = self._normalize_to(target_hist, val=1.0)
+        # Normalize histogram if desired
+        if density:
+            hist = self._normalize_to(hist, val=1.0)
 
-        return (source_start_hist, source_end_hist, target_hist), bins
+        return hist, bins
 
     def _normalize_to(self, hist, val=1.0):
         """_normalize_to - This function normalizes a histogram to a given value.
@@ -525,9 +538,9 @@ class Plotter:
 
         return ak.to_numpy(ak.flatten(weights, axis=None))
 
-    def _get_data(self, key):
+    def _get_data(self, key, is_target=False):
         """_get_data - This function gets the data for a given key
-        from the source and target trees. It returns the data as
+        from the source or target tree. It returns the data as
         numpy arrays. The data is filtered by the pass190 flags.
 
         If the data is track level, it will be flattened to a 1D array
@@ -535,24 +548,20 @@ class Plotter:
 
         Args:
             key (str): Key to get data for
+            is_target (bool): If true, pull from the target tree instead of source
 
         Returns:
-            source_data (ak.Array): Source data
-            target_data (ak.Array): Target data
+            (ak.Array): The data as an awkward array
         """
 
-        source_data = self.source_tree[key].array(entry_stop=self.source_events)
-        target_data = self.target_tree[key].array(entry_stop=self.target_events)
+        if is_target:
+            data = self.target_tree[key].array(entry_stop=self.target_events)
+            data = data[self.target_pass190 == 1]
+        else:
+            data = self.source_tree[key].array(entry_stop=self.source_events)
+            data = data[self.source_pass190 == 1]
 
-        # Filter data by pass190 flags
-        source_data = source_data[self.source_pass190 == 1]
-        target_data = target_data[self.target_pass190 == 1]
-
-        # Flatten data and send to numpy
-        source_data = ak.to_numpy(ak.flatten(source_data, axis=None))
-        target_data = ak.to_numpy(ak.flatten(target_data, axis=None))
-
-        return source_data, target_data
+        return ak.to_numpy(ak.flatten(data, axis=None))
 
     def _add_ratios(self, fig):
         """_add_ratios - This function adds ratio pads to a given matplotlib figure.
@@ -572,47 +581,48 @@ class Plotter:
 
         return ax, axr
 
-    def _run_fastjet(self, index, weights, save_file):
+    def _run_fastjet(self, weights, save_file, ens_weights=None, is_target=False):
         """_run_fastjet - This function computes fastjet observables for a given
         data set and weights, and saves them to a root file.
         Computation is done by launching a subprocess which compiles and executes
         the C++ code in the fastjet subdirectory.
-        The distribution is controlled by the index argument, which is an integer
-        that accepts the following settings:
-        0 - Source start (source_start)
-        1 - Source end (source_end)
-        2 - Target (target)
 
         Arguments:
-        index - int - The index of the distribution to compute fastjet observables for.
-            This determines which ROOT file is used as input.
-        weights - str - The path to the weights file or branch name to use for
-            fastjet computation. This will be passed to the C++ code as an argument.
+        weights - pathlib.Path or str - The path to the weights file or branch name
+            to use for fastjet computation.
+            This will be passed to the C++ code as an argument.
         save_file - str - The path to the root file where the fastjet observables
+        ens_weights - list of str - List of paths to weights that make up the 
+            ensemble which we use to set the NN init uncertainty. 
+            These weights will also be used to bin the data, and a set of
+            histograms for each additional weight vector will be added to the output
+            root file
+        is_target - bool - If true, use the target data for fastjet computation
+            instead of source.
 
         No returns
         """
 
-        # Check if the index is valid
-        if index not in [0, 1, 2]:
-            raise ValueError("Index must be 0, 1, or 2 for fastjet computation.")
-
         # Determine the commands to run based on the index
-        inpath = self.source_path if index in [0, 1] else self.target_path
-        inpath = "../" + inpath
-        weightpath = "../" + weights if weights.endswith(".npz") else weights
-        outpath = "../" + save_file
+        inpath = self.target_path if is_target else self.source_path
         command = [
             "./doHisto.out",
-            "--file", inpath,
-            "--weights", weightpath,
-            "--outFile", outpath,
-            "--maxEvents", str(self.max_events),
+            "--file",
+            inpath,
+            "--weights",
+            str(weights),
+            "--outFile",
+            str(save_file),
+            "--maxEvents",
+            str(self.max_events),
         ]
         if self.use_truth:
-            command += "--truth"
+            command.append("--truth")
+        if ens_weights is not None:
+            command.append("--ens_weights")
+            command.extend([str(ens) for ens in ens_weights])
 
-        # Run fastjet compuatation
+        # Run fastjet computation
         try:
             print(f"Calculating fastjet observables with command: {command}")
             subprocess.run(command, cwd="./fastjet/", capture_output=True, check=True)

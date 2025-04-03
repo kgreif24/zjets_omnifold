@@ -10,7 +10,7 @@ OBJDIR = obj
 EXTS = .c .C .cc .cxx
 
 # Source files and object files for plots
-SRCS = doHisto.cc MakeOmni.C jetHelpers.cxx cnpy.cxx
+SRCS = doHisto.cc MakeOmni.C jetHelpers.cxx cnpy.cxx HistoGroup.cxx
 OBJS = $(patsubst %.c,obj/%.o,$(patsubst %.C,obj/%.o,$(patsubst %.cc,obj/%.o,$(patsubst %.cxx,obj/%.o,$(SRCS)))))
 
 # Target files
