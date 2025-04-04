@@ -5,11 +5,8 @@ information and comparisons are handled by classes that inherit from here.
 Class also has a method that calculates the W1 distance between the source
 and target distributions, using the WassersteinMetric class.
 
-At the moment this class only uses pre-computed / track observables.
-Hopefully I can also include code for calculating new observables with fastjet soon.
-
 Author: Kevin Greif
-Last updated 03/24/2025
+Last updated 04/04/2025
 python3
 """
 
@@ -178,7 +175,14 @@ class Plotter:
                 if recalculate and pathlib.Path(file).exists():
                     os.remove(file)
                 if not pathlib.Path(file).exists():
-                    self._run_fastjet(use_weights, file, is_target=(i == 2))
+                    # Need to shift paths of weights and save file up one directory
+                    up_weights = (
+                        pathlib.Path("..") / use_weights
+                        if use_weights.endswith(".npz")
+                        else use_weights
+                    )
+                    up_file = pathlib.Path("..") / file
+                    self._run_fastjet(up_weights, up_file, is_target=(i == 2))
 
         # Get event level weights
         gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
@@ -207,17 +211,20 @@ class Plotter:
                 plot,
                 weights=source_start_trk if plot["type"] == "track" else source_start,
                 density=True,
+                root_index=0,
             )
             source_end_hist, _ = self._get_histogram(
                 plot,
                 weights=source_end_trk if plot["type"] == "track" else source_end,
                 density=True,
+                root_index=1,
             )
             target_hist, _ = self._get_histogram(
                 plot,
                 weights=target_trk if plot["type"] == "track" else target,
                 density=True,
                 is_target=True,
+                root_index=2,
             )
 
             # Calculate ratios
@@ -251,16 +258,16 @@ class Plotter:
             )
             ax.plot(
                 bins,
+                target_hist,
+                drawstyle="steps-post",
+                label=self.labels[1],
+            )
+            ax.plot(
+                bins,
                 source_end_hist,
                 drawstyle="steps-post",
                 label="Reweighted",
                 color="black",
-            )
-            ax.plot(
-                bins,
-                target_hist,
-                drawstyle="steps-post",
-                label=self.labels[1],
             )
             if plot["ylim"] is not None:
                 ax.set_ylim(plot["ylim"])
@@ -592,8 +599,8 @@ class Plotter:
             to use for fastjet computation.
             This will be passed to the C++ code as an argument.
         save_file - str - The path to the root file where the fastjet observables
-        ens_weights - list of str - List of paths to weights that make up the 
-            ensemble which we use to set the NN init uncertainty. 
+        ens_weights - list of str - List of paths to weights that make up the
+            ensemble which we use to set the NN init uncertainty.
             These weights will also be used to bin the data, and a set of
             histograms for each additional weight vector will be added to the output
             root file
@@ -605,6 +612,7 @@ class Plotter:
 
         # Determine the commands to run based on the index
         inpath = self.target_path if is_target else self.source_path
+        inpath = str(pathlib.Path("..") / inpath)
         command = [
             "./doHisto.out",
             "--file",
@@ -625,7 +633,6 @@ class Plotter:
         # Run fastjet computation
         try:
             print(f"Calculating fastjet observables with command: {command}")
-            subprocess.run(command, cwd="./fastjet/", capture_output=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error running fastjet computation: {e.stderr}")
             print(f"Return code: {e.returncode}")
