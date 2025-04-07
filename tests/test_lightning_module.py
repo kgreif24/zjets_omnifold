@@ -3,13 +3,10 @@ test_lightning_module.py - Test suite for the LOfTransformer and LOfData classes
 """
 
 
-import lightning as L
 import numpy as np
 import uproot
 import awkward as ak
-import pytest
 
-from lightning_module import LOfTransformer
 from lightning_data_module import LOfData
 
 
