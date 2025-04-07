@@ -633,6 +633,14 @@ class Plotter:
         # Run fastjet computation
         try:
             print(f"Calculating fastjet observables with command: {command}")
+            process = subprocess.run(
+                command,
+                cwd="./fastjet/",
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            print(process.stdout)
         except subprocess.CalledProcessError as e:
             print(f"Error running fastjet computation: {e.stderr}")
             print(f"Return code: {e.returncode}")

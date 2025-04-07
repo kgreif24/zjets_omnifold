@@ -163,7 +163,7 @@ for obs_dict in plots:
                 break
 
         # Make IBU plot
-        obs_dict.update({"color": "blue", "name": "IBU"})
+        obs_dict.update({"color": "red", "name": "IBU"})
         fig = pu.ibu_performance_plot(
             obs_data, obs_of_target, target_weights_of, obs_dict
         )

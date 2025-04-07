@@ -1,4 +1,4 @@
-""" plotting_utils - This file contains some helper functions for generating plots,
+"""plotting_utils - This file contains some helper functions for generating plots,
 usually histograms showing the quality of a given reweighting.
 
 Author: Kevin Greif
@@ -7,7 +7,6 @@ python3
 """
 
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gs
 import numpy as np
 
 
@@ -76,7 +75,12 @@ def unfold_performance_plot(
     target,
     target_weight,
     bs_weights,
-    plot_params={"color": "blue", "linear_yscale": False, "xlabel": "Obs", "bins": None},
+    plot_params={
+        "color": "blue",
+        "linear_yscale": False,
+        "xlabel": "Obs",
+        "bins": None,
+    },
 ):
     """unfold_performance_plot - This function will generate a plot showing the
     performance of a unbinned unfolding (multifold or omnifold) in a given dimension.
@@ -165,17 +169,26 @@ def unfold_performance_plot(
         label="Total unc.",
         drawstyle="steps-post",
     )
-    vax.fill_between(
-        bins, 0, plot_total_err, step="post", color="gray", alpha=0.3
+    vax.fill_between(bins, 0, plot_total_err, step="post", color="gray", alpha=0.3)
+    vax.plot(
+        bins, plot_nn_err, "-", color="blue", label="NN Init", drawstyle="steps-post"
     )
-    vax.plot(bins, plot_nn_err, "-", color="blue", label="NN Init", drawstyle="steps-post")
-    vax.plot(bins, plot_mbias_err, "-", color="red", label="Method bias", drawstyle="steps-post")
-    vax.plot(bins, plot_stat_err, "-", color="green", label="MC stat", drawstyle="steps-post")
+    vax.plot(
+        bins,
+        plot_mbias_err,
+        "-",
+        color="red",
+        label="Method bias",
+        drawstyle="steps-post",
+    )
+    vax.plot(
+        bins, plot_stat_err, "-", color="green", label="MC stat", drawstyle="steps-post"
+    )
     vax.plot()
     vax.set_ylim(0, 0.2)
     vax.set_xlabel(plot_params["xlabel"])
     vax.set_ylabel("Uncertainty")
-    vax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=4)
+    vax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=4)
 
     fig.tight_layout()
     fig.subplots_adjust(hspace=0, top=0.95)
@@ -228,7 +241,7 @@ def ibu_performance_plot(obs_dict, target, target_weight, plot_params):
 
     # Plot
     fig, (ax, rax, vax) = plt.subplots(
-        3, 1, figsize=(6, 7), sharex=True, gridspec_kw={"height_ratios": [2, 1, 1]}
+        3, 1, figsize=(6, 6.8), sharex=True, gridspec_kw={"height_ratios": [2, 1, 1]}
     )
     plt.subplots_adjust(hspace=0, top=0.95)
 
@@ -236,7 +249,7 @@ def ibu_performance_plot(obs_dict, target, target_weight, plot_params):
     ax.plot(
         bin_centers,
         ibu_hist,
-        ".",
+        "o",
         label=plot_params["name"],
         color=plot_params["color"],
     )
@@ -247,17 +260,24 @@ def ibu_performance_plot(obs_dict, target, target_weight, plot_params):
     ax.legend()
 
     rax.axhline(1, color="black", linestyle="--")
-    rax.plot(bin_centers, ibu_hist / target_hist, ".", color=plot_params["color"])
+    rax.plot(bin_centers, ibu_hist / target_hist, "o", color=plot_params["color"])
     rax.set_ylim(0.85, 1.15)
     rax.set_yticks([0.9, 1.0, 1.1])
     rax.set_ylabel("Ratio to target")
     rax.tick_params(axis="x", direction="in", bottom=True, top=False)
 
-    vax.plot(bins, plot_mbias_err, "-", color="red", label="Method bias", drawstyle="steps-post")
+    vax.plot(
+        bins,
+        plot_mbias_err,
+        "-",
+        color="red",
+        label="Method bias",
+        drawstyle="steps-post",
+    )
     vax.set_ylim(0.0, 0.2)
     vax.set_xlabel(plot_params["xlabel"])
     vax.set_ylabel("Uncertainty")
-    vax.legend()
+    vax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=4)
 
     fig.tight_layout()
     fig.subplots_adjust(hspace=0, top=0.95)
