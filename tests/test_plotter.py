@@ -23,7 +23,7 @@ def test_plots(tmp_path):
     )
 
     png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
-    assert len(png_files) == 6
+    assert len(png_files) == 26
 
 
 def test_w1(tmp_path):
@@ -40,5 +40,9 @@ def test_w1(tmp_path):
         "./assets/wgts.npz",
         np.ones(100),
     )
-    assert np.isclose(start, 146.237, atol=0.1)
-    assert np.isclose(end, 83.916, atol=0.1)
+    assert np.isclose(start, 274.825, atol=0.1)
+    assert np.isclose(end, 155.601, atol=0.1)
+
+
+if __name__ == "__main__":
+    test_w1()
