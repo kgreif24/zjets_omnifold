@@ -3,11 +3,14 @@ test_lightning_module.py - Test suite for the LOfTransformer and LOfData classes
 """
 
 
+import pytest
 import numpy as np
 import uproot
 import awkward as ak
+import lightning as L
 
 from lightning_data_module import LOfData
+from lightning_module import LOfTransformer
 
 
 @pytest.mark.slow
@@ -30,12 +33,12 @@ def test_overfit(tmp_path):
 
     # Initialize model
     model = LOfTransformer(
-        debug=True, input_dim=10, min_lr=1e-4, max_lr=2e-4, no_w1=True
+        debug=True, input_dim=10, min_lr=5e-5, max_lr=1e-4, no_w1=True
     )
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=700, enable_progress_bar=False, default_root_dir=tmp_path
+        max_epochs=1000, enable_progress_bar=False, default_root_dir=tmp_path
     )
 
     # Overfit
