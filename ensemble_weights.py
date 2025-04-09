@@ -42,15 +42,18 @@ results = {}
 # Loop over vectors
 for vector in vector_names:
 
+    if "pass190" in vector:
+        continue
+
     # Take mean or median
     if args.reduction == "mean":
         results[vector] = np.mean(
-            [np.load(file)[vector] for file in weight_files], axis=0
-        ).clip(max=100)
+            [np.load(file)[vector].clip(max=100) for file in weight_files], axis=0
+        )
     elif args.reduction == "median":
         results[vector] = np.median(
-            [np.load(file)[vector] for file in weight_files], axis=0
-        ).clip(max=100)
+            [np.load(file)[vector].clip(max=100) for file in weight_files], axis=0
+        )
 
 # Save results
 np.savez(args.output, **results)

@@ -15,8 +15,6 @@ import argparse
 import signal
 
 import numpy as np
-import uproot
-import awkward as ak
 import lightning as L
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 import wandb
@@ -24,8 +22,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 from lightning_module import LOfTransformer
 from lightning_data_module import LOfData
-import utils.plotting_utils as pu
-import utils.data_utils as du
+from plotter import Plotter
 from cli.of_config import OfConfig
 from wasserstein_metric import WassersteinOne
 
@@ -157,9 +154,7 @@ class OfEval:
 
         # Make wasserstein metric object for comparing derived reweighting
         # to truth level pseudo data
-        self.wasserstein = WassersteinOne(
-            pu.default_settings, draw_plots=True, save_location=self.comp_dir
-        )
+        self.wasserstein = WassersteinOne()
 
         # ---------------------- Data setup ----------------------
 
@@ -273,6 +268,32 @@ class OfEval:
             use_truth=use_truth,
         )
 
+        # Make plotter objects
+        if step == 1:
+            labels = ("RecoMC", "RecoPD")
+        else:
+            labels = ("TruthMC", "PulledWeightsMC")
+
+        self.test_plotter = Plotter(
+            test_source_file,
+            test_target_file,
+            self.test_dir,
+            use_truth=use_truth,
+            labels=labels,
+            verbosity=1,
+        )
+
+        if step == 2:
+            self.comp_plotter = Plotter(
+                self.config.mc_test_path,
+                self.config.truth_data_path,
+                self.comp_dir,
+                use_truth=use_truth,
+                labels=("TruthMC", "TruthPD"),
+                verbosity=2,
+                max_events=int(1e7),
+            )
+
     def run_testing(self):
         """run_testing - Run testing over the test data module.
         The point here is to get performance metrics (AUC and test loss)
@@ -350,6 +371,17 @@ class OfEval:
             target_truth_pass190_test=target_truth_pass190_test,
         )
 
+        # Make and log test plots
+        test_plot_dict = self.test_plotter.plot(
+            self.d_module_test.get_source_all_weights(),
+            self.all_updated_weights_test,
+            self.d_module_test.get_target_all_weights(),
+        )
+        if self.config.wandb:
+            for key, histpath in test_plot_dict.items():
+                log_name = f"test_{key}"
+                self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
+
         # Evaluate difference between reweighted truth MC and truth data
         # if this is step 2
         if self.step == 2:
@@ -361,97 +393,31 @@ class OfEval:
         No arguments or returns
         """
 
-        # Load truth level MC and pseudodata from scratch
-        f_mc = uproot.open(self.config.mc_test_path)  # Compare testing set MC to data
-        tree_mc = f_mc["OmniTree"]
-        f_pd = uproot.open(self.config.truth_data_path)
-        tree_pd = f_pd["OmniTree"]
-
-        # Get the truth level pass190 filters
-        filter_mc = ak.to_numpy(
-            tree_mc["truth_pass190"].array(entry_stop=self.n_compare_events)
-        )
-        filter_pd = ak.to_numpy(
-            tree_pd["truth_pass190"].array(entry_stop=self.n_compare_events)
-        )
-
-        # Get the plot data
-        plotting_mc = du.get_plotting(
-            tree_mc,
-            vars=pu.default_settings.keys(),
-            get_truth=True,
-            stop=self.n_compare_events,
-        )
-        plotting_pd = du.get_plotting(
-            tree_pd,
-            vars=pu.default_settings.keys(),
-            get_truth=True,
-            stop=self.n_compare_events,
-        )
-
-        # Get the track kinematics
-        kinematics_mc, _ = du.get_kinematics(
-            tree_mc, get_truth=True, stop=self.n_compare_events
-        )
-        kinematics_pd, _ = du.get_kinematics(
-            tree_pd, get_truth=True, stop=self.n_compare_events
-        )
-
-        # Pad kinematics
-        kinematics_mc = du.pad_kinematics(kinematics_mc, max_tracks=self.max_tracks)
-        kinematics_pd = du.pad_kinematics(kinematics_pd, max_tracks=self.max_tracks)
-
-        # Slice the track kinematics (log pT, eta, cos(phi), sin(phi))
-        kinematics_mc = kinematics_mc[:, :3, 2:]
-        kinematics_pd = kinematics_pd[:, :3, 2:]
-
-        # Concatenate the truth level MC and truth level pseudodata
-        plotting = np.concatenate([plotting_mc, plotting_pd], axis=0)
-        kinematics = np.concatenate([kinematics_mc, kinematics_pd], axis=0)
-
-        # Make labels
-        labels_mc = np.zeros(plotting_mc.shape[0])
-        labels_pd = np.ones(plotting_pd.shape[0])
-        labels = np.concatenate([labels_mc, labels_pd], axis=0)
-
-        # Get start weights for MC and truth pseudodata
-        root_weights_mc = ak.to_numpy(
-            tree_mc["weight"].array(entry_stop=self.n_compare_events)
-        )
-        root_weights_mc = root_weights_mc[filter_mc == 1]
-        root_weights_pd = ak.to_numpy(
-            tree_pd["weight"].array(entry_stop=self.n_compare_events)
-        )
-        root_weights_pd = root_weights_pd[filter_pd == 1]
-        start_weights = np.concatenate([root_weights_mc, root_weights_pd], axis=0)
-
-        # Make end weights
+        # Get end weights for MC and truncate if necessary
         mc_end_weights = self.all_updated_weights_test
         if len(self.all_updated_weights_test) > self.n_compare_events:
-            mc_end_weights = self.all_updated_weights_test[: self.n_compare_events]
-        mc_end_weights = mc_end_weights[filter_mc == 1]
-        end_weights = np.concatenate([mc_end_weights, root_weights_pd], axis=0)
+            mc_end_weights = self.all_updated_weights_test[:self.n_compare_events]
 
-        # Update and compute metrics, generate plots
-        self.wasserstein.update(plotting, start_weights, end_weights, labels)
-        comp_wass, plot_dict = self.wasserstein.compute(
-            from_torch=False, names=("TruthMC", "TruthPD"), is_comp=True
+        # Compute and log wasserstein metric with plotter class
+        _, w1_end = self.comp_plotter.wasserstein_distance(
+            "weight",
+            mc_end_weights,
+            "weight_mc",
         )
-        track_dict = pu.make_inclusive_track_plots(
-            kinematics, labels, start_weights, end_weights, save_location=self.comp_dir
-        )
-        plot_dict = {**plot_dict, **track_dict}
-        print("Reweighted truth MC to truth PD Wasserstein metric:", comp_wass)
-
-        # Log wasserstein metric and plots if we are using wandb
+        print("Reweighted truth MC to truth PD Wasserstein metric:", w1_end)
         if self.config.wandb:
-            self.wandb_logger.experiment.log({"comp_wasserstein": comp_wass})
+            self.wandb_logger.experiment.log({"comp_wasserstein": w1_end})
+
+        # Generate and log plots with plotter class
+        plot_dict = self.comp_plotter.plot(
+            self.d_module_test.get_source_all_weights(),
+            mc_end_weights,
+            self.d_module_test.get_target_all_weights(),
+        )
+        if self.config.wandb:
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
                 self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
-
-        # Reset metric
-        self.wasserstein.reset()
 
     def run(self):
         """run - This function runs the evaluation routine for an omnifold classifier

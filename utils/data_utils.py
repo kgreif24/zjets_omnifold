@@ -6,6 +6,7 @@ Author: Kevin Greif
 python3
 """
 
+import yaml
 import numpy as np
 import awkward as ak
 
@@ -200,25 +201,22 @@ def get_kinematics(
     return kinematics, indeces
 
 
-def get_plotting(
+def get_observables(
     tree,
-    vars=[],
-    muon_only=False,
+    key_list,
     get_truth=False,
     start=None,
     stop=None,
     passBoth=False,
     **kwargs
 ):
-    """get_plotting - This function will accept an uproot TTree object, and return the
-    requested branches as numpy arrays. Branches are passed in as a list of strings
-    to the "vars" keyword argument.
+    """get_observables - This function will accept an uproot TTree object, and
+    return the requested branches as numpy arrays.
+    Branches are passed in as a list of strings to the "vars" keyword argument.
 
     Arguments:
     tree - uproot TTree object
     vars - list of strings of branches to return
-    muon_only - boolean to return only muon kinematics, in practice just does not
-    truncate away the 11k events with missing track information
     get_truth - If true, get the truth level data instead of reco
     start - starting event index, optional
     stop - stopping event index, optional
@@ -229,7 +227,7 @@ def get_plotting(
     """
 
     # Initialize empty list to hold requested branches
-    plotting = []
+    observables = []
 
     # Get filter
     prekey = ""
@@ -246,19 +244,30 @@ def get_plotting(
         evt_filter = np.logical_and(p190, truth_p190)
 
     # Loop over requested branches
-    for var in vars:
+    for key in key_list:
         if get_truth:
-            var = "truth_" + var
-        this_var = ak.to_numpy(tree[var].array(entry_start=start, entry_stop=stop))
-        plotting.append(this_var)
+            key = "truth_" + key
+        this_var = ak.to_numpy(tree[key].array(entry_start=start, entry_stop=stop))
+        observables.append(this_var)
 
     # Stack requested branches
-    plotting = np.stack(plotting, axis=1)
+    observables = np.stack(observables, axis=1)
 
     # Apply filter if passed
-    plotting = plotting[evt_filter == 1, ...]
+    observables = observables[evt_filter == 1, ...]
 
-    return plotting
+    return observables
+
+
+def get_w1_obs():
+    with open("./utils/plots_config.yml", "r") as stream:
+        plots_config = yaml.safe_load(stream)
+    w1_keys = [
+        plots_config["plots"][plot]["key"]
+        for plot in plots_config["plots"]
+        if plots_config["plots"][plot]["w1_eval"]
+    ]
+    return w1_keys
 
 
 def null_collate(batch):

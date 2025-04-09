@@ -26,15 +26,15 @@ def test_of_dataset():
     # Create dummy labels
     labels = np.random.randint(0, 2, len(kinematics))
 
-    # Get plotting data
-    plotting = du.get_plotting(t, vars=["Ntracks", "pT_ll"])
+    # Get observables for W1 calculations
+    obs = du.get_observables(t, ["Ntracks", "pT_ll"])
 
     # Make datasets
     d1 = ofd.OfDataset(
         kinematics,
         labels,
         weights,
-        plotting,
+        obs,
         object_indeces=ind,
         max_tracks=20,
         n_jets=2,
@@ -43,15 +43,15 @@ def test_of_dataset():
         kinematics,
         labels,
         weights,
-        plotting,
+        obs,
         object_indeces=ind,
         max_tracks=None,
         n_jets=5,
     )
 
     # Get some items
-    kin1, label1, mask1, weights1, plotting1 = d1[0]
-    kin2, label2, mask2, weights2, plotting2 = d2.__getitems__([1, 2, 3, 4, 5])
+    kin1, label1, mask1, weights1, obs1 = d1[0]
+    kin2, label2, mask2, weights2, obs2 = d2.__getitems__([1, 2, 3, 4, 5])
 
     # Ensure we have the correct shapes, labels, mask
     assert kin1.shape == (1, 7, 20)
@@ -62,10 +62,10 @@ def test_of_dataset():
     assert label1.numpy()[0] == labels[0]
     assert label2.numpy()[0] == labels[1]
     assert (
-        np.count_nonzero(mask1) == plotting1[0, 0] + 2 if plotting1[0, 0] < 20 else 20
+        np.count_nonzero(mask1) == obs1[0, 0] + 2 if obs1[0, 0] < 20 else 20
     )
     assert np.all(
-        np.count_nonzero(mask2[:, 0, :], axis=1) == plotting2[:, 0].numpy() + 2
+        np.count_nonzero(mask2[:, 0, :], axis=1) == obs2[:, 0].numpy() + 2
     )
 
     # Check the concatenate function

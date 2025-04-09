@@ -9,7 +9,6 @@ python3
 import torch
 import lightning as L
 import torchmetrics
-import wandb
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
@@ -18,7 +17,6 @@ from pytorch_optimizer import Lion
 from of_transformer.of_transformer import OfTransformer
 from of_transformer.simple_network import DumbNeuralNetwork
 from wasserstein_metric import WassersteinOne
-import utils.plotting_utils as pu
 
 
 class LOfTransformer(L.LightningModule):
@@ -33,15 +31,12 @@ class LOfTransformer(L.LightningModule):
     def __init__(
         self,
         input_dim=3,
-        test_plots=None,
         debug=False,
         seed=420,
         run_id=None,
         step=1,
         min_lr=1e-5,
         max_lr=1e-4,
-        optimizer=None,
-        no_w1=None,
         weight_decay=0.01,
         cycle_steps=30000,
         warmup_steps=8000,
@@ -56,9 +51,6 @@ class LOfTransformer(L.LightningModule):
 
         Arguments:
             input_dim {int} -- The input dimension of the model.
-            test_plots {str} -- The path to the directory where testing plots will be
-                stored for logging. None by default, in which case testing plots will
-                not be drawn
             debug {bool} -- Set to true if we are running in debug mode, use simple
                 network on muons only
             seed {int} -- The random seed to use for the train / val split. Only used
@@ -109,14 +101,11 @@ class LOfTransformer(L.LightningModule):
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task="binary")
         self.test_auc = torchmetrics.classification.AUROC(task="binary")
-        self.wasserstein_val = WassersteinOne(pu.default_settings, draw_plots=False)
-        self.draw_test = True if test_plots is not None else False
-        self.wasserstein_test = WassersteinOne(
-            pu.default_settings, draw_plots=self.draw_test, save_location=test_plots
-        )
+        self.wasserstein_val = WassersteinOne()
+        self.wasserstein_test = WassersteinOne()
 
         # Log hyperparameters
-        self.save_hyperparameters(ignore=["test_plots", "debug"])
+        self.save_hyperparameters(ignore=["run_id", "debug", "step"])
 
     # Add seed and run ID to the information written and read from checkpoints
     # Note these only need to run on the rank zero process
@@ -190,7 +179,7 @@ class LOfTransformer(L.LightningModule):
         self.val_auc.update(output, target)
 
         # Update wasserstein metric
-        self.wasserstein_val.update(plotting, start_weights, end_weights, target)
+        self.wasserstein_val.update(plotting, end_weights, target)
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
@@ -210,7 +199,7 @@ class LOfTransformer(L.LightningModule):
             self.val_auc.reset()
 
             # Calculate wasserstein metric and log
-            val_wass, _ = self.wasserstein_val.compute(names=self.names)
+            val_wass = self.wasserstein_val.compute()
             self.log(
                 "val_wasserstein",
                 val_wass,
@@ -235,7 +224,7 @@ class LOfTransformer(L.LightningModule):
         self.test_auc.update(output, target)
 
         # Update wasserstein metric
-        self.wasserstein_test.update(plotting, start_weights, end_weights, target)
+        self.wasserstein_test.update(plotting, end_weights, target)
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
@@ -253,7 +242,7 @@ class LOfTransformer(L.LightningModule):
         self.test_auc.reset()
 
         # Calculate and log wasserstein metric
-        test_wass, plot_dict = self.wasserstein_test.compute(names=self.names)
+        test_wass = self.wasserstein_test.compute()
         self.log(
             "test_wasserstein",
             test_wass,
@@ -261,10 +250,6 @@ class LOfTransformer(L.LightningModule):
             prog_bar=False,
             sync_dist=False,
         )
-        if self.draw_test and self.trainer.is_global_zero:
-            for key, histpath in plot_dict.items():
-                log_name = "test_" + key
-                self.logger.experiment.log({log_name: wandb.Image(histpath)})
         self.wasserstein_test.reset()
 
     # Prediction step

@@ -3,58 +3,61 @@ test_lightning_module.py - Test suite for the LOfTransformer and LOfData classes
 """
 
 
+import pytest
 import numpy as np
 import uproot
 import awkward as ak
+import lightning as L
 
 from lightning_data_module import LOfData
+from lightning_module import LOfTransformer
 
 
-# @pytest.mark.slow
-# def test_overfit(tmp_path):
+@pytest.mark.slow
+def test_overfit(tmp_path):
 
-#     # Get data class
-#     data_module = LOfData(
-#         source_file="./assets/evts_000_100.root",
-#         target_file="./assets/evts_200_300.root",
-#         source_weight_path=None,
-#         target_weight_path=None,
-#         batch_size=10,
-#         split_seed=-1,
-#         muon_only=True,
-#     )
+    # Get data class
+    data_module = LOfData(
+        source_file="./assets/evts_000_100.root",
+        target_file="./assets/evts_200_300.root",
+        source_weight_path=None,
+        target_weight_path=None,
+        batch_size=10,
+        split_seed=-1,
+        muon_only=True,
+    )
 
-#     # Get data loader
-#     dl_train = data_module.test_dataloader()
-#     dl_pred = data_module.test_dataloader()
+    # Get data loader
+    dl_train = data_module.test_dataloader()
+    dl_pred = data_module.test_dataloader()
 
-#     # Initialize model
-#     model = LOfTransformer(
-#         debug=True, input_dim=10, min_lr=1e-4, max_lr=5e-4, no_w1=True
-#     )
+    # Initialize model
+    model = LOfTransformer(
+        debug=True, input_dim=10, min_lr=5e-5, max_lr=1e-4, no_w1=True
+    )
 
-#     # Initialize trainer
-#     trainer = L.Trainer(
-#         max_epochs=1000, enable_progress_bar=False, default_root_dir=tmp_path
-#     )
+    # Initialize trainer
+    trainer = L.Trainer(
+        max_epochs=1000, enable_progress_bar=False, default_root_dir=tmp_path
+    )
 
-#     # Overfit
-#     trainer.fit(model, dl_train)
+    # Overfit
+    trainer.fit(model, dl_train)
 
-#     # Check that we have a small loss
-#     final_loss = trainer.callback_metrics.get("train_loss")
-#     assert final_loss < 0.1
+    # Check that we have a small loss
+    final_loss = trainer.callback_metrics.get("train_loss")
+    assert final_loss < 0.1
 
-#     # Run predict
-#     predictions = trainer.predict(model, dl_pred)
-#     predictions = np.concatenate([p.cpu().numpy().flatten() for p in predictions])
+    # Run predict
+    predictions = trainer.predict(model, dl_pred)
+    predictions = np.concatenate([p.cpu().numpy().flatten() for p in predictions])
 
-#     # Pass predictions through sigmoid and check they are reasonable
-#     probs = 1 / (1 + np.exp(-predictions))
-#     right_answers_low = np.concatenate([np.zeros(78), np.ones(100) - 0.5])
-#     right_answers_high = np.concatenate([np.zeros(78) + 0.5, np.ones(100)])
-#     test = np.logical_and(probs >= right_answers_low, probs <= right_answers_high)
-#     assert np.all(test)
+    # Pass predictions through sigmoid and check they are reasonable
+    probs = 1 / (1 + np.exp(-predictions))
+    right_answers_low = np.concatenate([np.zeros(78), np.ones(100) - 0.5])
+    right_answers_high = np.concatenate([np.zeros(78) + 0.5, np.ones(100)])
+    test = np.logical_and(probs >= right_answers_low, probs <= right_answers_high)
+    assert np.all(test)
 
 
 def test_lofdata(tmp_path):
@@ -104,8 +107,8 @@ def test_lofdata(tmp_path):
     assert len(kin) == 2 * np.sum(p190)
     assert len(kin_truth) == 2 * np.sum(tp190)
     assert ak.all(ak.ravel(ak.count(kin, axis=1)) == 3)
-    plot = data_module.get_plotting()
-    assert plot.shape == (2 * np.sum(p190), 26)
+    w1_obs = data_module.get_w1_obs()
+    assert w1_obs.shape == (2 * np.sum(p190), 26)
     src_p190 = data_module.get_source_pass190()
     assert np.all(src_p190 == p190)
     trg_p190 = data_module.get_target_pass190()

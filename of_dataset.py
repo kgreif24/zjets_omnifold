@@ -28,7 +28,7 @@ class OfDataset(torch.utils.data.Dataset):
         kinematics,
         labels,
         weights,
-        plotting,
+        w1_obs,
         object_indeces=None,
         n_jets=5,
         max_tracks=None,
@@ -42,7 +42,8 @@ class OfDataset(torch.utils.data.Dataset):
             Shape should be (n_events, n_features, VAR n_tracks)
         labels (np.ndarray) - The labels for the events
         weights (np.ndarray) - The weights for the events
-        plotting (np.ndarray) - The plotting dimensions for the events
+        w1_obs (np.ndarray) - The W1 observables for the events, used to calculate 
+            W1 metrics.
         object_indeces (np.ndarray) - The indeces of the objects to include in the
             dataset. If None, do not include one-hot encodings for the tracks in the
             data.
@@ -64,10 +65,10 @@ class OfDataset(torch.utils.data.Dataset):
         self.max_tracks = max_tracks
         self.n_jets = n_jets
 
-        # Send labels, weights, and plotting to torch tensors
+        # Send labels, weights, and W1 observables to torch tensors
         self.weights = torch.from_numpy(weights.astype(np.float32))
         self.labels = torch.from_numpy(labels.astype(np.float32))
-        self.plotting = torch.from_numpy(plotting.astype(np.float32))
+        self.w1_obs = torch.from_numpy(w1_obs.astype(np.float32))
 
         # Verify all of the datasets have the same shape in the 0th dimension
         try:
@@ -75,7 +76,7 @@ class OfDataset(torch.utils.data.Dataset):
                 len(self.kinematics)
                 == len(self.weights)
                 == len(self.labels)
-                == len(self.plotting)
+                == len(self.w1_obs)
             )
         except AssertionError:
             raise Exception(
@@ -113,7 +114,7 @@ class OfDataset(torch.utils.data.Dataset):
             )
         self.labels = torch.cat([self.labels, dataset.labels], dim=0)
         self.weights = torch.cat([self.weights, dataset.weights], dim=0)
-        self.plotting = torch.cat([self.plotting, dataset.plotting], dim=0)
+        self.w1_obs = torch.cat([self.w1_obs, dataset.w1_obs], dim=0)
 
     def __len__(self):
         """__len__ - Return the length of the dataset
@@ -139,7 +140,7 @@ class OfDataset(torch.utils.data.Dataset):
             mask - a mask for the zero-padded inputs
             labels - the labels for the event
             weights - the weights for the event
-            plotting - the plotting data for the event
+            w1_obs - the W1 observables for the event
         """
 
         indeces = [index]
@@ -159,7 +160,7 @@ class OfDataset(torch.utils.data.Dataset):
             mask - a mask for the zero-padded inputs
             labels - the labels for the event
             weights - the weights for the event
-            plotting - the plotting data for the event
+            w1_obs - the W1 observables for the event
         """
 
         # Flatten the indeces if necessary
@@ -205,10 +206,10 @@ class OfDataset(torch.utils.data.Dataset):
         mask[kinematics[:, 0, :] != 0] = True
         mask = torch.unsqueeze(mask, 1)
 
-        # ------------- Labels, Weights, Plotting -------------
+        # ------------- Labels, Weights, W1 Obs -------------
         labels = self.labels[indeces, ...]
         weights = self.weights[indeces, ...]
-        plotting = self.plotting[indeces, ...]
+        w1_obs = self.w1_obs[indeces, ...]
 
         # Return the data as a tuple
-        return kinematics, labels, mask, weights, plotting
+        return kinematics, labels, mask, weights, w1_obs
