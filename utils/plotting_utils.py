@@ -44,12 +44,10 @@ def construct_hist_and_error(
     # Construct source and target histograms
     nom, _ = np.histogram(source, bins=bins, weights=source_weight, density=False)
     tar, _ = np.histogram(target, bins=bins, weights=target_weight, density=False)
-    print("Nominal histogram: ", nom)
 
     # Normalize target histogram to source
     norm_factor = np.sum(nom) / np.sum(tar)
     tar = tar * norm_factor
-    print("Target histogram: ", tar)
 
     # Find sum of squared weights in each bin
     source_sumw2 = np.histogram(source, bins=bins, weights=source_weight**2)[0]
@@ -64,7 +62,7 @@ def construct_hist_and_error(
         norm_factor = np.sum(nom) / np.sum(varHist)
         varHist = varHist * norm_factor
         var_hists.append(varHist)
-    var = np.var(var_hists, axis=0)
+    var = np.var(var_hists, axis=0) / len(var_hists)
 
     return nom, tar, source_sumw2, mbias, var
 
@@ -156,7 +154,7 @@ def unfold_performance_plot(
     rel_source_stat_err = np.sqrt(source_stat_var) / nom
     rel_nn_err = np.sqrt(nn_var) / nom
     rel_mbias_err = np.sqrt(mbias_var) / tar
-    rel_total_err = np.sqrt(rel_source_stat_err**2 + rel_nn_err**2 + rel_mbias_err**2)
+    rel_total_err = np.sqrt(total_var) / nom
     plot_stat_err = np.append(rel_source_stat_err, rel_source_stat_err[-1])
     plot_nn_err = np.append(rel_nn_err, rel_nn_err[-1])
     plot_mbias_err = np.append(rel_mbias_err, rel_mbias_err[-1])

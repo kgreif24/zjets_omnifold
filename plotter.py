@@ -130,13 +130,6 @@ class Plotter:
             if plot["type"] == "fastjet":
                 self.fastjet = True
 
-        # Get keys of plots that have w1_eval set to True for W1 computation
-        self.w1_keys = [
-            config["plots"][plot]["key"]
-            for plot in config["plots"]
-            if config["plots"][plot]["w1_eval"] is True
-        ]
-
     def plot(self, source_start, source_end, target, recalculate=False, **kwargs):
         """plot - This function produces the reweighting plots given
         vectors of weights for the source and target data, and saves
@@ -338,17 +331,10 @@ class Plotter:
 
         # Get data and labels for W1 calculation
         w1_keys = du.get_w1_obs()
-        source_w1_obs = du.get_observables(
-            self.source_tree,
-            w1_keys,
-            get_truth=self.use_truth,
-            stop=self.source_events,
-        )
-        target_w1_obs = du.get_observables(
-            self.target_tree,
-            w1_keys,
-            get_truth=self.use_truth,
-            stop=self.target_events,
+        source_w1_obs = np.stack([self._get_data(key) for key in w1_keys], axis=-1)
+        target_w1_obs = np.stack(
+            [self._get_data(key, is_target=True) for key in w1_keys],
+            axis=-1,
         )
         w1_data = np.concatenate((source_w1_obs, target_w1_obs), axis=0)
         labels = np.concatenate(
@@ -385,8 +371,12 @@ class Plotter:
         trees if the observable is precomputed or a track variable.
         If the observable is computed using fastjet it directly loads the
         histograms from the root files whose path is provided in the
-        root_files argument. In this case the weights vector is not used,
-        and the correct weight file is .
+        root_files argument. In this case the weights vector is not used.
+
+        Some fastjet observables (Lund planes) are 2D histograms. In the case
+        that these histograms are requested, the function returns a tuple
+        of np.arrays (binsx, binsy) in place of a single np.array for the
+        bins.
 
         Arguments:
             plot_dict (dict): Dictionary containing the plot configuration
@@ -418,16 +408,20 @@ class Plotter:
             key = plot_dict["key"]
             if ens_index is not None:
                 key = "ens_" + str(ens_index) + "_" + key
-            hist, bins = uproot.open(self.root_files[root_index])[key].to_numpy()
+
+            tobject = uproot.open(self.root_files[root_index])[key]
+            if "TH2" in tobject.classname:
+                hist, binsx, binsy = tobject.to_numpy()
+                return hist, (binsx, binsy)
+            else:
+                hist, bins = tobject.to_numpy()
+                return hist, bins
 
         # Else the data is loaded and binned from the trees directly
         else:
 
             # Get filtered data
-            pull_key = (
-                "truth_" + plot_dict["key"] if self.use_truth else plot_dict["key"]
-            )
-            data = self._get_data(pull_key, **kwargs)
+            data = self._get_data(plot_dict["key"], **kwargs)
 
             # Make histogram
             if self.ibu_bins:
@@ -561,6 +555,9 @@ class Plotter:
             (ak.Array): The data as an awkward array
         """
 
+        if self.use_truth:
+            key = "truth_" + key
+
         if is_target:
             data = self.target_tree[key].array(entry_stop=self.target_events)
             data = data[self.target_pass190 == 1]
@@ -644,3 +641,35 @@ class Plotter:
         except subprocess.CalledProcessError as e:
             print(f"Error running fastjet computation: {e.stderr}")
             print(f"Return code: {e.returncode}")
+
+    def apply_kinematic_cuts(self, cuts):
+        """Applies kinematic cuts to the source_pass190 and target_pass190 vectors.
+
+        Args:
+            cuts (dict): A dictionary where keys are branch names and values are
+                         lambda functions defining the cut. For example:
+                         {"pT_ll": lambda x: x > 200}
+
+        Returns:
+            None
+        """
+
+        for branch, condition in cuts.items():
+
+            # Use the truth branch if needed
+            if self.use_truth:
+                branch = "truth_" + branch
+
+            # Apply cuts to the source tree
+            source_data = ak.to_numpy(
+                self.source_tree[branch].array(entry_stop=self.source_events)
+            )
+            source_cut = condition(source_data)
+            self.source_pass190 = np.logical_and(self.source_pass190, source_cut)
+
+            # Apply cuts to the target tree
+            target_data = ak.to_numpy(
+                self.target_tree[branch].array(entry_stop=self.target_events)
+            )
+            target_cut = condition(target_data)
+            self.target_pass190 = np.logical_and(self.target_pass190, target_cut)

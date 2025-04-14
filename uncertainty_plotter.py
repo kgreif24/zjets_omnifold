@@ -183,7 +183,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 norm_factor = np.sum(source_hist) / np.sum(member_hist)
                 member_hist *= norm_factor
                 var_hists.append(member_hist)
-            nn_init_var = np.var(var_hists, axis=0)
+            nn_init_var = np.var(var_hists, axis=0) / len(var_hists)
             variance_dict["nn_init"] = {
                 "name": "NN Init",
                 "color": "blue",
@@ -191,14 +191,24 @@ class UncertaintyPlotter(plotter.Plotter):
             }
 
             # Make and save plot
-            fig = self._build_uncert_plot(
-                plot,
-                bins,
-                source_hist,
-                target_hist,
-                variances=variance_dict,
-                color=color,
-            )
+            if type(bins) is tuple:
+                fig = self._build_2d_uncert_plots(
+                    plot,
+                    bins,
+                    source_hist,
+                    target_hist,
+                    variances=variance_dict,
+                    color=color,
+                )
+            else:
+                fig = self._build_uncert_plot(
+                    plot,
+                    bins,
+                    source_hist,
+                    target_hist,
+                    variances=variance_dict,
+                    color=color,
+                )
             extension = ".pdf" if self.use_pdf else ".png"
             store_name = self.store / (plot["key"] + extension)
             fig.savefig(store_name, dpi=300)
@@ -206,23 +216,6 @@ class UncertaintyPlotter(plotter.Plotter):
             return_dict[plot["key"]] = store_name
 
         return return_dict
-
-    def wasserstein_distance(self, of_weights, **kwargs):
-        """wasserstein_distance - Override of the base class method to calculate
-        the Wasserstein distance between the truth pseudodata and re-weighted
-        truth level MC.
-
-        Arguments:
-        of_weights (np.array or str) - The weights produced by the Omnifold algorithm.
-            Can be a numpy array, or a string which can contain wildcards. In case that
-            multiple sets of weights are provided, the weights will be ensembled.
-
-        Returns:
-            tuple (float, float): Tuple of wasserstein distances to target for
-                source_start and source_end distributions
-        """
-
-        return super().wasserstein_distance("weight", of_weights, "weight_mc")
 
     def _calculate_central(self, ensemble_weights):
         """_calculate_central - Calculate the central weight from the ensemble
@@ -378,3 +371,78 @@ class UncertaintyPlotter(plotter.Plotter):
         fig.subplots_adjust(hspace=0, top=0.95)
 
         return fig
+
+    def _build_2d_uncert_plots(
+        self,
+        plot,
+        bins,
+        source_hist,
+        target_hist,
+        variances=None,
+        color="blue",
+    ):
+        """_build_2d_uncert_plots - Produce a 2D uncertainty plot for a given
+        observable. This plot will compare the source histogram to the target
+        histogram, and additionally draw all of the uncertainties from the
+        variances contained in the optional variances argument detailed below.
+
+        Arguments:
+            plot (dict): Dictionary containing the plotting style information
+            bins (tuple): Tuple of two arrays of bin edges for the histogram.
+            source_hist (np.array): Array of source histogram values.
+            target_hist (np.array): Array of target histogram values.
+            variances (dict): Dictionary of dictionaries containined the 
+                following information for each uncertainty:
+                    - name (str): Name of the uncertainty.
+                    - color (str): Color for plotting the uncertainty.
+                    - values (np.array): Array of uncertainty values in each bin
+            color (str): Color to use for the histogram and ratio plots.
+
+        Returns:
+            fig (matplotlib.figure.Figure): Figure object for the plot.
+        """
+
+        # Normalize target histogram to the source, and take ratio
+        norm_factor = np.sum(source_hist) / np.sum(target_hist)
+        norm_target_hist = norm_factor * target_hist
+        ratio = source_hist / norm_target_hist
+
+        # Find method bias
+        mbias = (source_hist - norm_target_hist) ** 2
+        rel_mbias = np.sqrt(mbias) / norm_target_hist
+
+        # If we have uncertainties, calculate total variance and uncertainty
+        if variances is not None:
+            total_var = []
+            for var in variances.values():
+                total_var.append(var["values"])
+                # Convert from variances to relative uncertatinties here
+                var["values"] = np.sqrt(var["values"]) / source_hist
+            total_var = np.sum(total_var, axis=0)
+            total_uncert = np.sqrt(total_var)
+            ratio_uncert = total_uncert / norm_target_hist
+            rel_total_uncert = total_uncert / source_hist
+
+        # Drop the bottom row and zero the upper triangle
+        xbins, ybins = bins
+        ybins = ybins[1:]
+        ratio = ratio[:,1:]
+
+        # Plot
+        fig = plt.figure()
+        ax = plt.gca()
+        cax = ax.pcolormesh(
+            xbins,
+            ybins,
+            ratio.T,
+            cmap="coolwarm",
+            vmin=0.9,
+            vmax=1.1,
+            shading="auto",
+        )
+        fig.colorbar(cax, ax=ax)
+        ax.set_xlabel(plot["xlabel"])
+        ax.set_ylabel(plot["ylabel"])
+
+        return fig
+
