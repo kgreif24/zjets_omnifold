@@ -404,7 +404,7 @@ class OfEval:
 
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
-            self.d_module_test.get_source_all_weights(),
+            "weight",
             self.all_updated_weights_test,
             "weight_mc",
         )
