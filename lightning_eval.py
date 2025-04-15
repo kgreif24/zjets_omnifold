@@ -288,7 +288,7 @@ class OfEval:
                 use_truth=use_truth,
                 labels=("TruthMC", "TruthPD"),
                 verbosity=2,
-                max_events=int(1e7),
+                max_events=int(5e6),
             )
 
     def run_testing(self):
@@ -411,7 +411,7 @@ class OfEval:
         if self.config.wandb:
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
-                self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
+                self.wandb_logger.experiment.log({log_name: wandb.Image(str(histpath))})
 
     def run(self):
         """run - This function runs the evaluation routine for an omnifold classifier
