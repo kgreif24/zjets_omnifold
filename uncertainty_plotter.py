@@ -14,6 +14,7 @@ import pathlib
 import subprocess
 import tqdm
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import plotter
 
@@ -239,7 +240,7 @@ class UncertaintyPlotter(plotter.Plotter):
             bins (np.array): Array of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
             target_hist (np.array): Array of target histogram values.
-            variances (dict): Dictionary of dictionaries containined the 
+            variances (dict): Dictionary of dictionaries containined the
                 following information for each uncertainty:
                     - name (str): Name of the uncertainty.
                     - color (str): Color for plotting the uncertainty.
@@ -391,7 +392,7 @@ class UncertaintyPlotter(plotter.Plotter):
             bins (tuple): Tuple of two arrays of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
             target_hist (np.array): Array of target histogram values.
-            variances (dict): Dictionary of dictionaries containined the 
+            variances (dict): Dictionary of dictionaries containined the
                 following information for each uncertainty:
                     - name (str): Name of the uncertainty.
                     - color (str): Color for plotting the uncertainty.
@@ -407,10 +408,6 @@ class UncertaintyPlotter(plotter.Plotter):
         norm_target_hist = norm_factor * target_hist
         ratio = source_hist / norm_target_hist
 
-        # Find method bias
-        mbias = (source_hist - norm_target_hist) ** 2
-        rel_mbias = np.sqrt(mbias) / norm_target_hist
-
         # If we have uncertainties, calculate total variance and uncertainty
         if variances is not None:
             total_var = []
@@ -420,29 +417,49 @@ class UncertaintyPlotter(plotter.Plotter):
                 var["values"] = np.sqrt(var["values"]) / source_hist
             total_var = np.sum(total_var, axis=0)
             total_uncert = np.sqrt(total_var)
-            ratio_uncert = total_uncert / norm_target_hist
             rel_total_uncert = total_uncert / source_hist
 
-        # Drop the bottom row and zero the upper triangle
-        xbins, ybins = bins
-        ybins = ybins[1:]
-        ratio = ratio[:,1:]
+        # If the relative MC stat error is larger than 20%, mask the bin
+        bin_mask = np.zeros_like(source_hist, dtype=bool)
+        bin_mask[variances["mc_stat"]["values"] > 0.1] = True
+        ratio = np.ma.masked_where(bin_mask, ratio)
+        rel_total_uncert = np.ma.masked_where(bin_mask, rel_total_uncert)
+
+        # Define custom color map
+        ratio_cmap = matplotlib.cm.get_cmap("coolwarm").copy()
+        ratio_cmap.set_bad(color="white")
+        uncert_cmap = matplotlib.cm.get_cmap("summer").copy()
+        uncert_cmap.set_bad(color="white")
 
         # Plot
-        fig = plt.figure()
-        ax = plt.gca()
+        fig, (ax, uax) = plt.subplots(1, 2, figsize=(12, 6))
         cax = ax.pcolormesh(
-            xbins,
-            ybins,
+            bins[0],
+            bins[1],
             ratio.T,
-            cmap="coolwarm",
+            cmap=ratio_cmap,
             vmin=0.9,
             vmax=1.1,
             shading="auto",
         )
-        fig.colorbar(cax, ax=ax)
+        fig.colorbar(cax, ax=ax, label="Ratio to target")
         ax.set_xlabel(plot["xlabel"])
         ax.set_ylabel(plot["ylabel"])
+        ax.set_title(plot["title"])
+
+        cuax = uax.pcolormesh(
+            bins[0],
+            bins[1],
+            rel_total_uncert.T,
+            cmap=uncert_cmap,
+            vmin=0,
+            vmax=0.2,
+            shading="auto",
+        )
+        fig.colorbar(cuax, ax=uax, label="Total uncertainty")
+        uax.set_xlabel(plot["xlabel"])
+        uax.set_ylabel(plot["ylabel"])
+        uax.set_title(plot["title"])
+        fig.tight_layout()
 
         return fig
-

@@ -781,3 +781,36 @@ plots:
     w1_eval: false
     type: "fastjet"
     multifold: false
+
+  hLund_plane_R04:
+    <<: *default_plot
+    key: "hLund_plane_R04"
+    xlabel: '$\Delta R_{j1}$'
+    ylabel: '$z_{j1}$'
+    title: "Anti-kt R=0.4 Jets"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+
+  hLund_plane_R06:
+    <<: *default_plot
+    key: "hLund_plane_R06"
+    xlabel: '$\Delta R_{j1}$'
+    ylabel: '$z_{j1}$'
+    title: "Anti-kt R=0.6 Jets"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+
+  hLund_plane_R10:
+    <<: *default_plot
+    key: "hLund_plane_R10"
+    xlabel: '$\Delta R_{j1}$'
+    ylabel: '$z_{j1}$'
+    title: "Anti-kt R=1.0 Jets"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
