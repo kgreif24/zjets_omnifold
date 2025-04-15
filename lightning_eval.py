@@ -85,9 +85,6 @@ class OfEval:
         else:
             self.run_name = f"iteration_{self.iteration}_step_{self.step}"
 
-        # Hard code the number of truth pseudodata events to use in step 2 comparison
-        self.n_compare_events = 1000000
-
         # Hard code the number of tracks to use in building inclusive track plots
         self.max_tracks = 150
 
@@ -329,15 +326,17 @@ class OfEval:
         network_weights_test = np.exp(predictions_test)
 
         # Get source weights from the data modules, note this is before normalization
-        source_weights_train = self.d_module_train.get_source_all_weights()
-        source_weights_test = self.d_module_test.get_source_all_weights()
+        start_weights_train = self.d_module_train.get_source_all_weights()
+        start_weights_test = self.d_module_test.get_source_all_weights()
 
         # Get the filters
         pass190_train = self.d_module_train.get_source_pass190()
         pass190_test = self.d_module_test.get_source_pass190()
 
         # Calculate updated weights
+        source_weights_train = start_weights_train.copy()
         source_weights_train[pass190_train == 1] *= network_weights_train
+        source_weights_test = start_weights_test.copy()
         source_weights_test[pass190_test == 1] *= network_weights_test
         self.all_updated_weights_train = source_weights_train
         self.all_updated_weights_test = source_weights_test
@@ -373,14 +372,14 @@ class OfEval:
 
         # Make and log test plots
         test_plot_dict = self.test_plotter.plot(
-            self.d_module_test.get_source_all_weights(),
+            start_weights_test,
             self.all_updated_weights_test,
             self.d_module_test.get_target_all_weights(),
         )
         if self.config.wandb:
             for key, histpath in test_plot_dict.items():
                 log_name = f"test_{key}"
-                self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
+                self.wandb_logger.experiment.log({log_name: wandb.Image(str(histpath))})
 
         # Evaluate difference between reweighted truth MC and truth data
         # if this is step 2
@@ -393,15 +392,10 @@ class OfEval:
         No arguments or returns
         """
 
-        # Get end weights for MC and truncate if necessary
-        mc_end_weights = self.all_updated_weights_test
-        if len(self.all_updated_weights_test) > self.n_compare_events:
-            mc_end_weights = self.all_updated_weights_test[:self.n_compare_events]
-
         # Compute and log wasserstein metric with plotter class
         _, w1_end = self.comp_plotter.wasserstein_distance(
             "weight",
-            mc_end_weights,
+            self.all_updated_weights_test,
             "weight_mc",
         )
         print("Reweighted truth MC to truth PD Wasserstein metric:", w1_end)
@@ -411,8 +405,8 @@ class OfEval:
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
             self.d_module_test.get_source_all_weights(),
-            mc_end_weights,
-            self.d_module_test.get_target_all_weights(),
+            self.all_updated_weights_test,
+            "weight_mc",
         )
         if self.config.wandb:
             for key, histpath in plot_dict.items():
