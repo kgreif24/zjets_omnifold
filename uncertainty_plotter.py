@@ -419,7 +419,7 @@ class UncertaintyPlotter(plotter.Plotter):
             total_uncert = np.sqrt(total_var)
             rel_total_uncert = total_uncert / source_hist
 
-        # If the relative MC stat error is larger than 20%, mask the bin
+        # If the relative MC stat error is larger than 10%, mask the bin
         bin_mask = np.zeros_like(source_hist, dtype=bool)
         bin_mask[variances["mc_stat"]["values"] > 0.1] = True
         ratio = np.ma.masked_where(bin_mask, ratio)

@@ -278,6 +278,7 @@ class OfEval:
             use_truth=use_truth,
             labels=labels,
             verbosity=1,
+            max_events=self.config.max_events_target,
         )
 
         if step == 2:
@@ -288,7 +289,7 @@ class OfEval:
                 use_truth=use_truth,
                 labels=("TruthMC", "TruthPD"),
                 verbosity=2,
-                max_events=int(1e7),
+                max_events=self.config.max_events_target,
             )
 
     def run_testing(self):
