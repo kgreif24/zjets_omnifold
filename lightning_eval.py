@@ -412,7 +412,7 @@ class OfEval:
         if self.config.wandb:
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
-                self.wandb_logger.experiment.log({log_name: wandb.Image(histpath)})
+                self.wandb_logger.experiment.log({log_name: wandb.Image(str(histpath))})
 
     def run(self):
         """run - This function runs the evaluation routine for an omnifold classifier
