@@ -278,6 +278,7 @@ class OfEval:
             use_truth=use_truth,
             labels=labels,
             verbosity=1,
+            max_events=self.config.max_events_target,
         )
 
         if step == 2:
@@ -288,7 +289,7 @@ class OfEval:
                 use_truth=use_truth,
                 labels=("TruthMC", "TruthPD"),
                 verbosity=2,
-                max_events=int(5e6),
+                max_events=self.config.max_events_target,
             )
 
     def run_testing(self):
@@ -404,7 +405,7 @@ class OfEval:
 
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
-            self.d_module_test.get_source_all_weights(),
+            "weight",
             self.all_updated_weights_test,
             "weight_mc",
         )

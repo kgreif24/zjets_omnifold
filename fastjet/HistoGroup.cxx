@@ -25,7 +25,7 @@ HistoGroup::HistoGroup(string name) : name(name) {
     hEEC_R04 = make_shared<TH1D>(TH1D("", "", nbins, binEdges));
     hLund_z_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
     hLund_dR_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
-    hLund_plane_R04 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
+    hLund_plane_R04 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 11, 0.5, 6));
 
     hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
     hEEC_R06 = make_shared<TH1D>(TH1D("", "", nbins, binEdges));

@@ -44,5 +44,27 @@ def test_w1(tmp_path):
     assert np.isclose(end, 155.601, atol=0.1)
 
 
-if __name__ == "__main__":
-    test_w1()
+def test_apply_kinematic_cuts(tmp_path):
+
+    # Initialize the Plotter object
+    plotter = Plotter(
+        "./assets/evts_000_100.root",
+        "./assets/evts_100_200.root",
+        tmp_path,
+        labels=("Test1", "Test2"),
+        verbosity=2,
+    )
+
+    # Define kinematic cuts
+    cuts = {"pT_ll": lambda x: x > 200}
+
+    # Apply kinematic cuts
+    plotter.apply_kinematic_cuts(cuts)
+
+    # Get pT_ll data
+    source_pT_ll = plotter._get_data("pT_ll", is_target=False)
+    target_pT_ll = plotter._get_data("pT_ll", is_target=True)
+
+    # Check the cut worked
+    assert np.all(source_pT_ll > 200)
+    assert np.all(target_pT_ll > 200)

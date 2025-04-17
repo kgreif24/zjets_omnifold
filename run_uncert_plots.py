@@ -49,10 +49,6 @@ parser.add_argument(
     help="The color to use for the plots (default: blue)",
 )
 parser.add_argument(
-    "--calc_w1", action="store_true",
-    help="If true, will calculate the wasserstein distances",
-)
-parser.add_argument(
     "--recalculate", action="store_true",
     help=(
         "If true, recalculate all fastjet observables, regardless of whether root files"
@@ -78,11 +74,3 @@ plot_dict = plotter.plot(
     recalculate=args.recalculate,
 )
 print("Plotting complete")
-
-# # If requested calculate the wasserstein distances as well
-# if args.calc_w1:
-#     start_dist, end_dist = plotter.wasserstein_distance(
-#         args.weights,
-#     )
-#     print(f"Start Wasserstein distance: {start_dist}")
-#     print(f"End Wasserstein distance: {end_dist}")
