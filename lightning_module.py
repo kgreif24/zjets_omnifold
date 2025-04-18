@@ -11,7 +11,6 @@ import lightning as L
 import torchmetrics
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
-from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 from pytorch_optimizer import Lion
 
 from of_transformer.of_transformer import OfTransformer
@@ -35,12 +34,12 @@ class LOfTransformer(L.LightningModule):
         seed=420,
         run_id=None,
         step=1,
+        weight_decay=0.01,
         min_lr=1e-5,
         max_lr=1e-4,
-        weight_decay=0.01,
-        cycle_steps=30000,
-        warmup_steps=8000,
-        gamma=0.85,
+        warmup_steps=0,
+        cos_steps=2000,
+        linear_steps=8000,
         **kwargs
     ):
         """__init__ - This method initializes the LOfTransformer class.
@@ -59,12 +58,16 @@ class LOfTransformer(L.LightningModule):
                 logging. Leave as None if not using wandb.
             step {int} -- Whether this training is for OF step one or two, only effects
                 plot labeling
-            min_lr {float} -- The minimum learning rate
-            max_lr {float} -- The maximum learning rate
             weight_decay {float} -- The weight decay for the optimizer
-            cycle_steps {int} -- The number of steps in a cycle
-            warmup_steps {int} -- The number of steps in the warmup
-            gamma {float} -- The gamma parameter for the learning rate scheduler
+            min_lr {float} -- The minimum learning rate, ending point for cosine
+                schedule
+            max_lr {float} -- The maximum learning rate, starting point for cosine
+                schedule
+            warmup_steps {int} -- The number of steps in the linear warmup before
+                the cosine scheduler starts
+            cos_steps {int} -- The number of steps in the cosine learning rate scheduler
+            linear_steps {int} -- The number of steps in the cooldown linear learning
+                rate scheduler after the cosine schedule ends
             **kwargs {dict} -- A dictionary of keyword arguments to be passed
                 to the OfTransformer init function.
         """
@@ -74,12 +77,12 @@ class LOfTransformer(L.LightningModule):
         self.seed = seed
         self.run_id = run_id
         self.step = step
+        self.weight_decay = weight_decay
         self.min_lr = min_lr
         self.max_lr = max_lr
-        self.weight_decay = weight_decay
-        self.cycle_steps = cycle_steps
         self.warmup_steps = warmup_steps
-        self.gamma = gamma
+        self.cos_steps = cos_steps
+        self.linear_steps = linear_steps
 
         # Set plotting names based on step argument
         if step == 1:
@@ -89,6 +92,14 @@ class LOfTransformer(L.LightningModule):
 
         # Set 32 bit precision for all operations
         torch.set_float32_matmul_precision("medium")
+
+        # Catch possible unused kwargs
+        if "optimizer" in kwargs:
+            kwargs.pop("optimizer")
+        if "cycle_steps" in kwargs:
+            kwargs.pop("cycle_steps")
+        if "gamma" in kwargs:
+            kwargs.pop("gamma")
 
         # Initialize model and loss
         super().__init__()
@@ -264,14 +275,42 @@ class LOfTransformer(L.LightningModule):
         optimizer = Lion(
             self.model.parameters(), lr=self.max_lr, weight_decay=self.weight_decay
         )
-        scheduler = CosineAnnealingWarmupRestarts(
+        lin_start_lr_factor = self.min_lr / self.max_lr
+        lin_end_lr_factor = lin_start_lr_factor * 0.8
+        if self.warmup_steps > 0:
+            warmup_schedule = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=lin_start_lr_factor,
+                end_factor=1.0,
+                total_iters=self.warmup_steps,
+            )
+            wu_milestone = self.warmup_steps
+        else:
+            # In case of no warmup, we need to use a constant LR for
+            # a single batch due to annoying way in which lightning handles
+            # loading schedulers from checkpoints.
+            warmup_schedule = torch.optim.lr_scheduler.ConstantLR(
+                optimizer, factor=1.0, total_iters=1
+            )
+            wu_milestone = 1
+        cos_schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            first_cycle_steps=self.cycle_steps,
-            warmup_steps=self.warmup_steps,
-            max_lr=self.max_lr,
-            min_lr=self.min_lr,
-            gamma=self.gamma,
+            T_max=self.cos_steps,
+            eta_min=self.min_lr,
         )
+        linear_schedule = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=lin_start_lr_factor,
+            end_factor=lin_end_lr_factor,
+            total_iters=self.linear_steps,
+        )
+
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup_schedule, cos_schedule, linear_schedule],
+            milestones=[wu_milestone, self.cos_steps + wu_milestone],
+        )
+
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

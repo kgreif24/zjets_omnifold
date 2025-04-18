@@ -171,6 +171,14 @@ class OfConfig:
             help="Number of nodes to use for training",
         )
 
+        # Weight decay
+        self.parser.add_argument(
+            "--weight_decay",
+            type=float,
+            default=0.01,
+            help="Weight decay for the optimizer",
+        )
+
         # Learning rate schedule
         self.parser.add_argument(
             "--pt_min_lr",
@@ -185,16 +193,22 @@ class OfConfig:
             help="Maximum learning rate for pre-training",
         )
         self.parser.add_argument(
-            "--pt_cycle_steps",
-            type=int,
-            default=32000,
-            help="Number of steps in a cycle for pre-training",
-        )
-        self.parser.add_argument(
             "--pt_warmup_steps",
             type=int,
-            default=8000,
+            default=2000,
             help="Number of steps to warm up the learning rate for pre-training",
+        )
+        self.parser.add_argument(
+            "--pt_cos_steps",
+            type=int,
+            default=50000,
+            help="Number of steps in a cosine cycle for pre-training",
+        )
+        self.parser.add_argument(
+            "--pt_linear_steps",
+            type=int,
+            default=150000,
+            help="Number of steps in a linear cycle for pre-training",
         )
         self.parser.add_argument(
             "--s1_min_lr",
@@ -205,20 +219,32 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_max_lr",
             type=float,
-            default=0.00005,
+            default=0.0005,
             help="Maximum learning rate for step one training",
-        )
-        self.parser.add_argument(
-            "--s1_cycle_steps",
-            type=int,
-            default=5000,
-            help="Number of steps in a cycle for step one training",
         )
         self.parser.add_argument(
             "--s1_warmup_steps",
             type=int,
             default=0,
             help="Number of steps to warm up the learning rate for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_cos_steps",
+            type=int,
+            default=3000,
+            help="Number of steps in a cosine cycle for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_linear_steps",
+            type=int,
+            default=5000,
+            help="Number of steps in a linear cycle for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_lr_decay",
+            type=float,
+            default=1.0,
+            help="Decay with iteration for step one trainings maximum learning rate",
         )
         self.parser.add_argument(
             "--s2_min_lr",
@@ -233,40 +259,28 @@ class OfConfig:
             help="Maximum learning rate for step two training",
         )
         self.parser.add_argument(
-            "--s2_cycle_steps",
-            type=int,
-            default=12000,
-            help="Number of steps in a cycle for step two training",
-        )
-        self.parser.add_argument(
             "--s2_warmup_steps",
             type=int,
             default=0,
             help="Number of steps to warm up the learning rate for step two training",
         )
         self.parser.add_argument(
-            "--s1_lr_decay",
-            type=float,
-            default=1.0,
-            help="Decay with iteration for step one trainings maximum learning rate",
+            "--s2_cos_steps",
+            type=int,
+            default=15000,
+            help="Number of steps in a cosine cycle for step two training",
+        )
+        self.parser.add_argument(
+            "--s2_linear_steps",
+            type=int,
+            default=45000,
+            help="Number of steps in a linear cycle for step two training",
         )
         self.parser.add_argument(
             "--s2_lr_decay",
             type=float,
-            default=1.0,
+            default=0.7,
             help="Decay with iteration for step two trainings maximum learning rate",
-        )
-        self.parser.add_argument(
-            "--gamma",
-            type=float,
-            default=0.85,
-            help="Gamma for the learning rate scheduler",
-        )
-        self.parser.add_argument(
-            "--weight_decay",
-            type=float,
-            default=0.01,
-            help="Weight decay for the optimizer",
         )
 
         # Logging
