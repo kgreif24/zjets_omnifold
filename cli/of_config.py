@@ -179,7 +179,7 @@ class OfConfig:
             help="Weight decay for the optimizer",
         )
 
-        # Learning rate schedule
+        # Learning rate schedule and max steps
         self.parser.add_argument(
             "--pt_min_lr",
             type=float,
@@ -191,6 +191,12 @@ class OfConfig:
             type=float,
             default=0.0001,
             help="Maximum learning rate for pre-training",
+        )
+        self.parser.add_argument(
+            "--pt_max_steps",
+            type=int,
+            default=200000,
+            help="Maximum number of steps to run pre-training",
         )
         self.parser.add_argument(
             "--pt_warmup_steps",
@@ -221,6 +227,12 @@ class OfConfig:
             type=float,
             default=0.0005,
             help="Maximum learning rate for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_max_steps",
+            type=int,
+            default=2000,
+            help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
             "--s1_warmup_steps",
@@ -257,6 +269,12 @@ class OfConfig:
             type=float,
             default=0.0001,
             help="Maximum learning rate for step two training",
+        )
+        self.parser.add_argument(
+            "--s2_max_steps",
+            type=int,
+            default=10000,
+            help="Maximum number of steps to run step two training",
         )
         self.parser.add_argument(
             "--s2_warmup_steps",
