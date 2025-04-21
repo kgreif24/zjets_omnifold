@@ -143,13 +143,6 @@ class OfConfig:
             "--test_batch_size", type=int, default=512, help="Batch size for testing"
         )
         self.parser.add_argument(
-            "--max_epochs",
-            type=int,
-            default=70,
-            help="Maximum number of epochs to train for",
-        )
-
-        self.parser.add_argument(
             "--top_k_checkpoints",
             type=int,
             default=1,
@@ -171,7 +164,15 @@ class OfConfig:
             help="Number of nodes to use for training",
         )
 
-        # Learning rate schedule
+        # Weight decay
+        self.parser.add_argument(
+            "--weight_decay",
+            type=float,
+            default=0.01,
+            help="Weight decay for the optimizer",
+        )
+
+        # Learning rate schedule and max steps
         self.parser.add_argument(
             "--pt_min_lr",
             type=float,
@@ -185,16 +186,28 @@ class OfConfig:
             help="Maximum learning rate for pre-training",
         )
         self.parser.add_argument(
-            "--pt_cycle_steps",
+            "--pt_max_steps",
             type=int,
-            default=32000,
-            help="Number of steps in a cycle for pre-training",
+            default=200000,
+            help="Maximum number of steps to run pre-training",
         )
         self.parser.add_argument(
             "--pt_warmup_steps",
             type=int,
-            default=8000,
+            default=2000,
             help="Number of steps to warm up the learning rate for pre-training",
+        )
+        self.parser.add_argument(
+            "--pt_cos_steps",
+            type=int,
+            default=50000,
+            help="Number of steps in a cosine cycle for pre-training",
+        )
+        self.parser.add_argument(
+            "--pt_linear_steps",
+            type=int,
+            default=150000,
+            help="Number of steps in a linear cycle for pre-training",
         )
         self.parser.add_argument(
             "--s1_min_lr",
@@ -205,20 +218,38 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_max_lr",
             type=float,
-            default=0.00005,
+            default=0.0005,
             help="Maximum learning rate for step one training",
         )
         self.parser.add_argument(
-            "--s1_cycle_steps",
+            "--s1_max_steps",
             type=int,
-            default=5000,
-            help="Number of steps in a cycle for step one training",
+            default=4000,
+            help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
             "--s1_warmup_steps",
             type=int,
             default=0,
             help="Number of steps to warm up the learning rate for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_cos_steps",
+            type=int,
+            default=3000,
+            help="Number of steps in a cosine cycle for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_linear_steps",
+            type=int,
+            default=5000,
+            help="Number of steps in a linear cycle for step one training",
+        )
+        self.parser.add_argument(
+            "--s1_lr_decay",
+            type=float,
+            default=1.0,
+            help="Decay with iteration for step one trainings maximum learning rate",
         )
         self.parser.add_argument(
             "--s2_min_lr",
@@ -233,10 +264,10 @@ class OfConfig:
             help="Maximum learning rate for step two training",
         )
         self.parser.add_argument(
-            "--s2_cycle_steps",
+            "--s2_max_steps",
             type=int,
-            default=12000,
-            help="Number of steps in a cycle for step two training",
+            default=10000,
+            help="Maximum number of steps to run step two training",
         )
         self.parser.add_argument(
             "--s2_warmup_steps",
@@ -245,28 +276,22 @@ class OfConfig:
             help="Number of steps to warm up the learning rate for step two training",
         )
         self.parser.add_argument(
-            "--s1_lr_decay",
-            type=float,
-            default=1.0,
-            help="Decay with iteration for step one trainings maximum learning rate",
+            "--s2_cos_steps",
+            type=int,
+            default=15000,
+            help="Number of steps in a cosine cycle for step two training",
+        )
+        self.parser.add_argument(
+            "--s2_linear_steps",
+            type=int,
+            default=45000,
+            help="Number of steps in a linear cycle for step two training",
         )
         self.parser.add_argument(
             "--s2_lr_decay",
             type=float,
-            default=1.0,
+            default=0.7,
             help="Decay with iteration for step two trainings maximum learning rate",
-        )
-        self.parser.add_argument(
-            "--gamma",
-            type=float,
-            default=0.85,
-            help="Gamma for the learning rate scheduler",
-        )
-        self.parser.add_argument(
-            "--weight_decay",
-            type=float,
-            default=0.01,
-            help="Weight decay for the optimizer",
         )
 
         # Logging
@@ -336,13 +361,13 @@ class OfConfig:
         self.parser.add_argument(
             "--block_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Dropout rate to use in regular attention blocks",
         )
         self.parser.add_argument(
             "--block_attn_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Attention dropout rate to use in regular attention blocks",
         )
         self.parser.add_argument(
@@ -361,13 +386,13 @@ class OfConfig:
         self.parser.add_argument(
             "--cls_block_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Dropout rate to use in classification attention blocks",
         )
         self.parser.add_argument(
             "--cls_block_attn_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Attention dropout rate to use in classification attention blocks",
         )
         self.parser.add_argument(

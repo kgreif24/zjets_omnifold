@@ -1,5 +1,5 @@
 # This is a config file for the Omnifold algorithm
-# It was created on 2024-09-24 05:31:09.152919
+# It was created on 2025-04-18 11:12:50.765239
 
 
 # Path to the configuration file
@@ -32,7 +32,7 @@ truth_data_path: ./assets/truth_evts_000_100.root
 # Path to the file to use in pretraining
 pretrain_path: ./assets/evts_200_300.root
 
-# Seed for the train / validation split, set to -1 to produce random seed at train time
+# ('Seed for the train / validation split, set to -1 to produce randomseed at train time',)
 split_seed: -1
 
 # Maximum number of tracks to use in the data
@@ -42,13 +42,10 @@ max_tracks: 264
 max_events_target: 500000
 
 # Batch size for training
-batch_size: 256
+batch_size: 10
 
 # Batch size for testing
-test_batch_size: 256
-
-# Maximum number of epochs to train for
-max_epochs: 1
+test_batch_size: 100
 
 # Number of top checkpoints to save
 top_k_checkpoints: 1
@@ -62,29 +59,47 @@ num_gpus: 0
 # Number of nodes to use for training
 num_nodes: 1
 
+# Weight decay for the optimizer
+weight_decay: 0.010000000
+
 # Minimum learning rate for pre-training
 pt_min_lr: 0.000010000
 
 # Maximum learning rate for pre-training
 pt_max_lr: 0.000100000
 
-# Number of steps in a cycle for pre-training
-pt_cycle_steps: 32000
+# Maximum number of steps to run pre-training
+pt_max_steps: 1000
 
 # Number of steps to warm up the learning rate for pre-training
-pt_warmup_steps: 8000
+pt_warmup_steps: 2000
+
+# Number of steps in a cosine cycle for pre-training
+pt_cos_steps: 50000
+
+# Number of steps in a linear cycle for pre-training
+pt_linear_steps: 150000
 
 # Minimum learning rate for step one training
 s1_min_lr: 0.000008000
 
 # Maximum learning rate for step one training
-s1_max_lr: 0.000050000
+s1_max_lr: 0.000500000
 
-# Number of steps in a cycle for step one training
-s1_cycle_steps: 5000
+# Maximum number of steps to run step one training
+s1_max_steps: 3000
 
 # Number of steps to warm up the learning rate for step one training
 s1_warmup_steps: 0
+
+# Number of steps in a cosine cycle for step one training
+s1_cos_steps: 3000
+
+# Number of steps in a linear cycle for step one training
+s1_linear_steps: 5000
+
+# Decay with iteration for step one trainings maximum learning rate
+s1_lr_decay: 1.000000000
 
 # Minimum learning rate for step two training
 s2_min_lr: 0.000050000
@@ -92,23 +107,20 @@ s2_min_lr: 0.000050000
 # Maximum learning rate for step two training
 s2_max_lr: 0.000100000
 
-# Number of steps in a cycle for step two training
-s2_cycle_steps: 12000
+# Maximum number of steps to run step two training
+s2_max_steps: 2000
 
 # Number of steps to warm up the learning rate for step two training
 s2_warmup_steps: 0
 
-# Decay with iteration for step one trainings maximum learning rate
-s1_lr_decay: 1.000000000
+# Number of steps in a cosine cycle for step two training
+s2_cos_steps: 15000
+
+# Number of steps in a linear cycle for step two training
+s2_linear_steps: 45000
 
 # Decay with iteration for step two trainings maximum learning rate
-s2_lr_decay: 1.000000000
-
-# Gamma for the learning rate scheduler
-gamma: 0.850000000
-
-# Weight decay for the optimizer
-weight_decay: 0.01
+s2_lr_decay: 0.700000000
 
 # Use wandb for logging
 wandb: False
@@ -121,9 +133,6 @@ group_name: test-of-run
 
 # Directory in which save model checkpoints
 checkpoint_dir: ./checkpoints
-
-# Plot validation results
-plot_val: False
 
 # Input dimension for the model
 input_dim: 10
@@ -147,7 +156,7 @@ pair_embed_dims: [64, 64, 64]
 num_heads: 8
 
 # Number of layers for the model
-num_layers: 8
+num_layers: 6
 
 # Dropout rate to use in regular attention blocks
 block_dropout: 0.000000000
@@ -159,7 +168,7 @@ block_attn_dropout: 0.000000000
 block_activation_dropout: 0.000000000
 
 # Number of classification layers for the model
-num_cls_layers: 2
+num_cls_layers: 1
 
 # Dropout rate to use in classification attention blocks
 cls_block_dropout: 0.000000000

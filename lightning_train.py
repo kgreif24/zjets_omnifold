@@ -117,8 +117,10 @@ class OfTrain:
         if self.iteration == 0:
             min_lr = self.config.pt_min_lr
             max_lr = self.config.pt_max_lr
-            cycle_steps = self.config.pt_cycle_steps
+            max_steps = self.config.pt_max_steps
             warmup_steps = self.config.pt_warmup_steps
+            cos_steps = self.config.pt_cos_steps
+            linear_steps = self.config.pt_linear_steps
         elif self.step == 1:
             min_lr = self.config.s1_min_lr * (
                 self.config.s1_lr_decay ** (self.iteration - 1)
@@ -126,8 +128,10 @@ class OfTrain:
             max_lr = self.config.s1_max_lr * (
                 self.config.s1_lr_decay ** (self.iteration - 1)
             )
-            cycle_steps = self.config.s1_cycle_steps
+            max_steps = self.config.s1_max_steps
             warmup_steps = self.config.s1_warmup_steps
+            cos_steps = self.config.s1_cos_steps
+            linear_steps = self.config.s1_linear_steps
         else:
             min_lr = self.config.s2_min_lr * (
                 self.config.s2_lr_decay ** (self.iteration - 1)
@@ -135,8 +139,10 @@ class OfTrain:
             max_lr = self.config.s2_max_lr * (
                 self.config.s2_lr_decay ** (self.iteration - 1)
             )
-            cycle_steps = self.config.s2_cycle_steps
+            max_steps = self.config.s2_max_steps
             warmup_steps = self.config.s2_warmup_steps
+            cos_steps = self.config.s2_cos_steps
+            linear_steps = self.config.s2_linear_steps
 
         # Build lightning module from scratch if we are not given a warm start parth
         # or a restart path
@@ -180,12 +186,12 @@ class OfTrain:
                 run_id=run_id,
                 # Include the OF step for plots
                 step=self.step,
+                weight_decay=self.config.weight_decay,
                 min_lr=min_lr,
                 max_lr=max_lr,
-                weight_decay=self.config.weight_decay,
-                cycle_steps=cycle_steps,
                 warmup_steps=warmup_steps,
-                gamma=self.config.gamma,
+                cos_steps=cos_steps,
+                linear_steps=linear_steps,
                 # Everything below here are parameters for the network
                 num_classes=1,
                 trim=self.config.run_trimmer,
@@ -212,12 +218,12 @@ class OfTrain:
                 use_path,
                 debug=self.config.debug,
                 step=self.step,
+                weight_decay=self.config.weight_decay,
                 min_lr=min_lr,
                 max_lr=max_lr,
-                weight_decay=self.config.weight_decay,
-                cycle_steps=cycle_steps,
                 warmup_steps=warmup_steps,
-                gamma=self.config.gamma,
+                cos_steps=cos_steps,
+                linear_steps=linear_steps,
             )
 
             # Get the seed from the checkpoint if this is a restart, else use seed
@@ -277,7 +283,7 @@ class OfTrain:
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             plugins=[SLURMEnvironment(auto_requeue=False)],
             default_root_dir=self.checkpoint_dir,
-            max_epochs=self.config.max_epochs,
+            max_steps=max_steps,
             enable_progress_bar=self.config.interactive,
             use_distributed_sampler=False,
         )

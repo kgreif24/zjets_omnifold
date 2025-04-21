@@ -204,7 +204,7 @@ class Omnifolder:
                 "--cpu-bind=none",
                 "--mem-per-cpu=1790M",
                 "--gpus-per-task",
-                "1",
+                "0" if self.cfg.debug else "1",
                 "--gpu-bind=none",
                 "--overlap",
             ]
