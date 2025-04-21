@@ -144,7 +144,6 @@ def test_restart(tmp_path):
     # it so we only run one iteration
     config.mod_config("checkpoint_dir", tmp_path)
     config.mod_config("num_iterations", 1)
-    config.mod_config("max_epochs", 3)
 
     # Write the config to a file
     config.create_template(template_path=f"{tmp_path}/test_of.yml")
@@ -180,6 +179,6 @@ def test_restart(tmp_path):
     # Run omnifold
     of.run_of()
 
-    # Look for final pre-train checkpoint
+    # Look for final checkpoint
     check_glob = glob.glob(f"{check_dir}/*.ckpt")
     assert len(check_glob) == 3

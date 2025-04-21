@@ -117,6 +117,7 @@ class OfTrain:
         if self.iteration == 0:
             min_lr = self.config.pt_min_lr
             max_lr = self.config.pt_max_lr
+            max_steps = self.config.pt_max_steps
             warmup_steps = self.config.pt_warmup_steps
             cos_steps = self.config.pt_cos_steps
             linear_steps = self.config.pt_linear_steps
@@ -127,6 +128,7 @@ class OfTrain:
             max_lr = self.config.s1_max_lr * (
                 self.config.s1_lr_decay ** (self.iteration - 1)
             )
+            max_steps = self.config.s1_max_steps
             warmup_steps = self.config.s1_warmup_steps
             cos_steps = self.config.s1_cos_steps
             linear_steps = self.config.s1_linear_steps
@@ -137,6 +139,7 @@ class OfTrain:
             max_lr = self.config.s2_max_lr * (
                 self.config.s2_lr_decay ** (self.iteration - 1)
             )
+            max_steps = self.config.s2_max_steps
             warmup_steps = self.config.s2_warmup_steps
             cos_steps = self.config.s2_cos_steps
             linear_steps = self.config.s2_linear_steps
@@ -280,7 +283,7 @@ class OfTrain:
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             plugins=[SLURMEnvironment(auto_requeue=False)],
             default_root_dir=self.checkpoint_dir,
-            max_epochs=self.config.max_epochs,
+            max_steps=max_steps,
             enable_progress_bar=self.config.interactive,
             use_distributed_sampler=False,
         )

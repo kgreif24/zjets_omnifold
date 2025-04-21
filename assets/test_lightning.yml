@@ -42,13 +42,10 @@ max_tracks: 264
 max_events_target: 500000
 
 # Batch size for training
-batch_size: 256
+batch_size: 10
 
 # Batch size for testing
-test_batch_size: 256
-
-# Maximum number of epochs to train for
-max_epochs: 1
+test_batch_size: 100
 
 # Number of top checkpoints to save
 top_k_checkpoints: 1
@@ -71,6 +68,9 @@ pt_min_lr: 0.000010000
 # Maximum learning rate for pre-training
 pt_max_lr: 0.000100000
 
+# Maximum number of steps to run pre-training
+pt_max_steps: 1000
+
 # Number of steps to warm up the learning rate for pre-training
 pt_warmup_steps: 2000
 
@@ -85,6 +85,9 @@ s1_min_lr: 0.000008000
 
 # Maximum learning rate for step one training
 s1_max_lr: 0.000500000
+
+# Maximum number of steps to run step one training
+s1_max_steps: 1000
 
 # Number of steps to warm up the learning rate for step one training
 s1_warmup_steps: 0
@@ -103,6 +106,9 @@ s2_min_lr: 0.000050000
 
 # Maximum learning rate for step two training
 s2_max_lr: 0.000100000
+
+# Maximum number of steps to run step two training
+s2_max_steps: 2000
 
 # Number of steps to warm up the learning rate for step two training
 s2_warmup_steps: 0

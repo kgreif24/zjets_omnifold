@@ -143,13 +143,6 @@ class OfConfig:
             "--test_batch_size", type=int, default=512, help="Batch size for testing"
         )
         self.parser.add_argument(
-            "--max_epochs",
-            type=int,
-            default=70,
-            help="Maximum number of epochs to train for",
-        )
-
-        self.parser.add_argument(
             "--top_k_checkpoints",
             type=int,
             default=1,
@@ -231,7 +224,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_max_steps",
             type=int,
-            default=2000,
+            default=4000,
             help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
@@ -368,13 +361,13 @@ class OfConfig:
         self.parser.add_argument(
             "--block_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Dropout rate to use in regular attention blocks",
         )
         self.parser.add_argument(
             "--block_attn_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Attention dropout rate to use in regular attention blocks",
         )
         self.parser.add_argument(
@@ -393,13 +386,13 @@ class OfConfig:
         self.parser.add_argument(
             "--cls_block_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Dropout rate to use in classification attention blocks",
         )
         self.parser.add_argument(
             "--cls_block_attn_dropout",
             type=float,
-            default=0.0,
+            default=0.02,
             help="Attention dropout rate to use in classification attention blocks",
         )
         self.parser.add_argument(
