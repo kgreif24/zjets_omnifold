@@ -301,8 +301,8 @@ class OfTrain:
             # If this is pre-training (iteration 0), use the MC train file
             # and Sherpa file
             if self.iteration == 0:
-                source_file = self.config.mc_train_path
-                target_file = self.config.pretrain_path
+                source_file = self.config.pretrain_source_path
+                target_file = self.config.pretrain_target_path
                 source_weight_file = "root"
                 target_weight_file = "root"
             # If this is the first iteration, use the weights from the root file
@@ -327,8 +327,8 @@ class OfTrain:
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
-                source_file = self.config.mc_train_path
-                target_file = self.config.pretrain_path
+                source_file = self.config.pretrain_source_path
+                target_file = self.config.pretrain_target_path
                 source_weight_file = "root"
                 target_weight_file = "root"
             # If this is the first iteration, use the weights from step one for target,
