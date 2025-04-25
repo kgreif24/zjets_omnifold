@@ -77,16 +77,16 @@ class Block(nn.Module):
             residual = x_cls
             u = torch.cat((x_cls, x), dim=0)  # (seq_len+1, batch, embed_dim)
             u = self.pre_attn_norm(u)
-            x = self.attn(x_cls, u, u, key_padding_mask=padding_mask)[
-                0
-            ]  # (1, batch, embed_dim)
+            x = self.attn(
+                x_cls, u, u, key_padding_mask=padding_mask, need_weights=False
+            )[0]
+            # ^ (1, batch, embed_dim)
 
         else:
             residual = x
             x = self.pre_attn_norm(x)
-            x = self.attn(x, x, x, attn_mask=attn_mask)[
-                0
-            ]  # (seq_len, batch, embed_dim)
+            x = self.attn(x, x, x, attn_mask=attn_mask, need_weights=False)[0]
+            # ^ (seq_len, batch, embed_dim)
 
         if self.c_attn is not None:
             tgt_len = x.size(0)
