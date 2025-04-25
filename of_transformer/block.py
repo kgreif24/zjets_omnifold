@@ -59,7 +59,7 @@ class Block(nn.Module):
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
             x_cls (Tensor, optional): class token input to the layer
                 with shape `(1, batch, embed_dim)`
-            padding_mask (ByteTensor, optional): binary
+            attn_mask (ByteTensor, optional): binary
                 ByteTensor of shape `(batch, seq_len)` where padding
                 elements are indicated by ``1``.
 
@@ -84,7 +84,7 @@ class Block(nn.Module):
         else:
             residual = x
             x = self.pre_attn_norm(x)
-            x = self.attn(x, x, x, key_padding_mask=padding_mask, attn_mask=attn_mask)[
+            x = self.attn(x, x, x, attn_mask=attn_mask)[
                 0
             ]  # (seq_len, batch, embed_dim)
 

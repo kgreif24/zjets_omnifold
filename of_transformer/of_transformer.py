@@ -14,7 +14,6 @@ import copy
 # Import network pieces
 from . import embed
 from . import pair_embed
-from . import sequence_trimmer
 from . import block
 
 # Import utilities
@@ -27,8 +26,6 @@ class OfTransformer(nn.Module):
         self,
         input_dim,
         num_classes=1,
-        no_w1=None,  # This is only for backwards compatibility
-        test_plots=None,  # This is only for backwards compatibility
         # network configurations
         pair_input_dim=3,
         pair_extra_dim=0,
@@ -45,16 +42,14 @@ class OfTransformer(nn.Module):
         fc_dropout=0.0,
         activation="gelu",
         # misc
-        trim=True,
         for_inference=False,
         use_amp=False,
         **kwargs
     ) -> None:
         super(OfTransformer, self).__init__(**kwargs)
 
-        self.trimmer = sequence_trimmer.SequenceTrimmer(
-            enabled=trim and not for_inference
-        )
+        # Set instance variables
+        self.num_heads = num_heads
         self.for_inference = for_inference
         self.use_amp = use_amp
 
@@ -152,12 +147,9 @@ class OfTransformer(nn.Module):
         # for pytorch: uu (N, C', num_pairs), uu_idx (N, 2, num_pairs)
         # for onnx: uu (N, C', P, P), uu_idx=None
 
+        # Get padding mask for use in attention blocks
+        # Note padding is denoted by a 1 in pytorch MHA
         with torch.no_grad():
-            if not self.for_inference:
-                if uu_idx is not None:
-                    uu = net_utils.build_sparse_tensor(uu, uu_idx, x.size(-1))
-            x, v, mask, uu = self.trimmer(x, v, mask, uu)
-            # Removing dimension from mask and taking not, for use in attention blocks
             padding_mask = ~mask.squeeze(1)  # (N, P)
 
         with torch.cuda.amp.autocast(enabled=self.use_amp):
@@ -168,22 +160,23 @@ class OfTransformer(nn.Module):
             # after input embedding, reshape to (seq_len, batch, embed_dim)
             # for attention layers
             x = x.permute(2, 0, 1)  # (seq_len, batch, embed_dim)
-            mask = mask.permute(2, 0, 1)  # (seq_len, batch, 1)
+            mask = mask.permute(0, 2, 1)  # (seq_len, batch, 1)
 
-            attn_mask = None
-            if (v is not None or uu is not None) and self.pair_embed is not None:
-                attn_mask = self.pair_embed(v, uu).view(
-                    -1, v.size(-1), v.size(-1)
-                )  # (N*num_heads, P, P)
+            pair_mask = mask.float() @ mask.float().transpose(-1, -2)  
+            # ^ (batch, seq_len, seq_len)
+            pair_mask = ~(pair_mask.bool()).repeat_interleave(self.num_heads, dim=0)
+            # ^ (batch*num_heads, seq_len, seq_len)
+            attn_mask = self.pair_embed(v, uu).view(-1, v.size(-1), v.size(-1))
+            # ^ (batch*num_heads, seq_len, seq_len)
+            attn_mask = attn_mask + (-1e9*pair_mask.float())
 
             # transform
             for blk in self.blocks:
-                x = blk(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
+                x = blk(x, x_cls=None, attn_mask=attn_mask)
 
             # extract class token
-            cls_tokens = self.cls_token.expand(
-                1, x.size(1), -1
-            )  # (1, batch, embed_dim)
+            cls_tokens = self.cls_token.expand(1, x.size(1), -1)  
+            # ^ (1, batch, embed_dim)
             for blk in self.cls_blocks:
                 cls_tokens = blk(x, x_cls=cls_tokens, padding_mask=padding_mask)
 
