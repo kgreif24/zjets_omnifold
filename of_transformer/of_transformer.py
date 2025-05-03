@@ -41,16 +41,12 @@ class OfTransformer(nn.Module):
         fc_dropout=0.0,
         activation="gelu",
         # misc
-        for_inference=False,
-        use_amp=False,
         **kwargs
     ) -> None:
         super(OfTransformer, self).__init__(**kwargs)
 
         # Set instance variables
         self.num_heads = num_heads
-        self.for_inference = for_inference
-        self.use_amp = use_amp
 
         embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
         default_cfg = dict(
@@ -68,7 +64,6 @@ class OfTransformer(nn.Module):
             scale_resids=True,
         )
 
-        # Confused why we need a copy? Maybe just for using this logger thing?
         cfg_block = copy.deepcopy(default_cfg)
         if block_params is not None:
             cfg_block.update(block_params)
@@ -94,7 +89,6 @@ class OfTransformer(nn.Module):
                 pair_embed_dims + [cfg_block["num_heads"]],
                 remove_self_pair=remove_self_pair,
                 normalize_input=False,
-                for_onnx=for_inference,
         )
 
         # Transformer layers
@@ -142,7 +136,8 @@ class OfTransformer(nn.Module):
         with torch.no_grad():
             padding_mask = ~mask.squeeze(1)  # (N, P)
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        # Run forward pass in mixed precision if using cuda
+        with torch.autocast(device_type=x.device.type):
 
             # input embedding
             x = self.embed(x)

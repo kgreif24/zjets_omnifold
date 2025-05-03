@@ -61,7 +61,7 @@ class PairEmbed(nn.Module):
         # Define blocks of embedding network
         input_dim = pairwise_lv_dim
         self.input_norm = nn.BatchNorm1d(pairwise_lv_dim) if normalize_input else None
-        self.embed_blocks = []
+        self.embed_blocks = nn.ModuleList()
         for i, dim in enumerate(dims):
             use_act = i < len(dims) - 1
             self.embed_blocks.append(Conv1dBlock(input_dim, dim, activation=use_act))
