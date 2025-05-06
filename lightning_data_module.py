@@ -166,12 +166,12 @@ class LOfData(L.LightningDataModule):
         # Calculate number of good events
         rank_zero_info(
             f"We have a fraction {np.sum(self.source_use190) / self.num_source}"
-            "of good events in the source dataset"
+            " of good events in the source dataset"
         )
         if self.target_file is not None:
             rank_zero_info(
                 f"We have a fraction {np.sum(self.target_use190) / self.num_target}"
-                "of good events in the target dataset"
+                " of good events in the target dataset"
             )
 
         # Determine start / stop indeces for each data piece, note we don't
@@ -608,7 +608,7 @@ class LOfData(L.LightningDataModule):
     def get_source_all_weights(self):
         return self.source_all_weights
 
-    def get_target_all_weights(self):   
+    def get_target_all_weights(self):
         return self.target_all_weights
 
     # Methods for getting pass 190 flags

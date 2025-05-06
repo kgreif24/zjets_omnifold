@@ -7,7 +7,7 @@ from . import net_utils
 
 class Conv1dBlock(nn.Module):
     """ Conv1dBlock - This class defines a block in the network
-    which perform the embedding of pairwise features into a space 
+    which perform the embedding of pairwise features into a space
     which is added to the attention weights inside of the attention blocks.
 
     Refactored from the original ParT code to allow masking of padded inputs

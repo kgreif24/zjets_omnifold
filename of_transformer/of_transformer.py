@@ -136,45 +136,42 @@ class OfTransformer(nn.Module):
         with torch.no_grad():
             padding_mask = ~mask.squeeze(1)  # (N, P)
 
-        # Run forward pass in mixed precision if using cuda
-        with torch.autocast(device_type=x.device.type):
+        # input embedding
+        x = self.embed(x)
+        x = x.masked_fill(~mask, 0)  # (batch, embed_dim, seq_len)
 
-            # input embedding
-            x = self.embed(x)
-            x = x.masked_fill(~mask, 0)  # (batch, embed_dim, seq_len)
+        # pairwise embedding
+        pairwise_embedding = self.pair_embed(
+            v, mask=mask
+        ).view(-1, v.size(-1), v.size(-1))
+        # ^ (batch*num_heads, seq_len, seq_len))
 
-            # pairwise embedding
-            pairwise_embedding = self.pair_embed(
-                v, mask=mask
-            ).view(-1, v.size(-1), v.size(-1))
-            # ^ (batch*num_heads, seq_len, seq_len))
+        # after embeddings, reshape to (seq_len, batch, embed_dim)
+        # for attention layers
+        x = x.permute(2, 0, 1)  # (seq_len, batch, embed_dim)
+        mask = mask.permute(0, 2, 1)  # (batch, seq_len, 1)
 
-            # after embeddings, reshape to (seq_len, batch, embed_dim)
-            # for attention layers
-            x = x.permute(2, 0, 1)  # (seq_len, batch, embed_dim)
-            mask = mask.permute(0, 2, 1)  # (batch, seq_len, 1)
+        # Build mask for pairwise features
+        pair_mask = mask.float() @ mask.float().transpose(-1, -2)
+        # ^ (batch, seq_len, seq_len)
+        pair_mask = ~(pair_mask.bool()).repeat_interleave(self.num_heads, dim=0)
+        # ^ (batch*num_heads, seq_len, seq_len)
+        attn_mask = pairwise_embedding + (-1e9 * pair_mask.float())
 
-            # Build mask for pairwise features
-            pair_mask = mask.float() @ mask.float().transpose(-1, -2)
-            # ^ (batch, seq_len, seq_len)
-            pair_mask = ~(pair_mask.bool()).repeat_interleave(self.num_heads, dim=0)
-            # ^ (batch*num_heads, seq_len, seq_len)
-            attn_mask = pairwise_embedding + (-1e9 * pair_mask.float())
+        # transform
+        for blk in self.blocks:
+            x = blk(x, x_cls=None, attn_mask=attn_mask)
 
-            # transform
-            for blk in self.blocks:
-                x = blk(x, x_cls=None, attn_mask=attn_mask)
+        # extract class token
+        cls_tokens = self.cls_token.expand(1, x.size(1), -1)
+        # ^ (1, batch, embed_dim)
+        for blk in self.cls_blocks:
+            cls_tokens = blk(x, x_cls=cls_tokens, padding_mask=padding_mask)
 
-            # extract class token
-            cls_tokens = self.cls_token.expand(1, x.size(1), -1)
-            # ^ (1, batch, embed_dim)
-            for blk in self.cls_blocks:
-                cls_tokens = blk(x, x_cls=cls_tokens, padding_mask=padding_mask)
+        x_cls = self.norm(cls_tokens).squeeze(0)
 
-            x_cls = self.norm(cls_tokens).squeeze(0)
-
-            # fc
-            if self.fc is None:
-                return x_cls
-            output = self.fc(x_cls)
-            return output
+        # fc
+        if self.fc is None:
+            return x_cls
+        output = self.fc(x_cls)
+        return output
