@@ -75,7 +75,7 @@ def test_lightning_eval(tmp_path):
         # Initialize the class, being sure to configure it to run a fast development run
         evaluator = OfEval(
             config_name,
-            0,
+            1,
             1,
             check_path="./assets/full_checkpoint.ckpt",
             store=tmp_path,

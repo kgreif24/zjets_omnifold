@@ -17,6 +17,12 @@ num_iterations: 1
 # Path to checkpoint which will be used as the starting pointfor all iterations
 pretrain_checkpoint: ./assets/full_checkpoint.ckpt
 
+# Path to the source file to use in pretraining
+pretrain_source_path: ./assets/evts_200_300.root
+
+# Path to the target file to use in pretraining
+pretrain_target_path: ./assets/evts_000_100.root
+
 # Path for the MC training data
 mc_train_path: ./assets/evts_000_100.root
 
@@ -28,9 +34,6 @@ data_path: ./assets/evts_200_300.root
 
 # Path to the truth pseudodata
 truth_data_path: ./assets/truth_evts_000_100.root
-
-# Path to the file to use in pretraining
-pretrain_path: ./assets/evts_200_300.root
 
 # ('Seed for the train / validation split, set to -1 to produce randomseed at train time',)
 split_seed: -1

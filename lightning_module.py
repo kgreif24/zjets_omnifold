@@ -100,6 +100,12 @@ class LOfTransformer(L.LightningModule):
             kwargs.pop("cycle_steps")
         if "gamma" in kwargs:
             kwargs.pop("gamma")
+        if "trim" in kwargs:
+            kwargs.pop("trim")
+        if "no_w1" in kwargs:
+            kwargs.pop("no_w1")
+        if "test_plots" in kwargs:
+            kwargs.pop("test_plots")
 
         # Initialize model and loss
         super().__init__()

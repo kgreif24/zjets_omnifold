@@ -118,7 +118,6 @@ class OfEval:
         # Load model checkpoint
         self.model = LOfTransformer.load_from_checkpoint(
             check_path,
-            test_plots=self.test_dir if self.config.wandb else None,
             debug=self.config.debug,
             step=self.step,
         )
@@ -162,10 +161,10 @@ class OfEval:
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
-                train_source_file = self.config.mc_train_path
-                test_source_file = self.config.mc_test_path
+                train_source_file = None
+                test_source_file = self.config.pretrain_source_path
                 train_target_file = None
-                test_target_file = self.config.pretrain_path
+                test_target_file = self.config.pretrain_target_path
                 source_weight_file = "root"
                 target_weight_file = "root"
             # If this is the first iteration, use the weights from the root file
@@ -243,7 +242,6 @@ class OfEval:
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
             dataloader_workers=30,
-            load_all=True,
             testing=False,
             use_truth=use_truth,
         )
@@ -260,7 +258,6 @@ class OfEval:
             split_seed=self.config.split_seed,
             dataloader_workers=30,
             persistent_workers=True,
-            load_all=True,
             testing=True,
             use_truth=use_truth,
         )

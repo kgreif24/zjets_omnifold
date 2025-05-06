@@ -5,27 +5,50 @@ from functools import partial
 from . import net_utils
 
 
+class Conv1dBlock(nn.Module):
+    """ Conv1dBlock - This class defines a block in the network
+    which perform the embedding of pairwise features into a space
+    which is added to the attention weights inside of the attention blocks.
+
+    Refactored from the original ParT code to allow masking of padded inputs
+    in between each convolutional block. Prevents the padded features from
+    affecting the statistics of the batch normalization layers.
+    """
+
+    def __init__(self, input_dim, output_dim, activation=True):
+        super().__init__()
+        module_list = []
+        module_list.extend(
+            [
+                nn.Conv1d(input_dim, output_dim, 1),
+                nn.BatchNorm1d(output_dim),
+            ]
+        )
+        if activation:
+            module_list.append(nn.GELU())
+        self.block = nn.Sequential(*module_list)
+
+    def forward(self, x):
+        out = self.block(x)
+        return out
+
+
 class PairEmbed(nn.Module):
     def __init__(
         self,
         pairwise_lv_dim,
-        pairwise_input_dim,
         dims,
         remove_self_pair=False,
-        use_pre_activation_pair=True,
-        mode="sum",
         normalize_input=True,
-        activation="gelu",
         eps=1e-8,
         for_onnx=False,
     ):
         super().__init__()
 
         self.pairwise_lv_dim = pairwise_lv_dim
-        self.pairwise_input_dim = pairwise_input_dim
-        self.is_symmetric = (pairwise_lv_dim <= 5) and (pairwise_input_dim == 0)
+        self.is_symmetric = (pairwise_lv_dim <= 5)
         self.remove_self_pair = remove_self_pair
-        self.mode = mode
+        self.normalize_input = normalize_input
         self.for_onnx = for_onnx
         self.pairwise_lv_fts = partial(
             net_utils.pairwise_lv_fts,
@@ -35,111 +58,55 @@ class PairEmbed(nn.Module):
         )
         self.out_dim = dims[-1]
 
-        if self.mode == "concat":
-            input_dim = pairwise_lv_dim + pairwise_input_dim
-            module_list = [nn.BatchNorm1d(input_dim)] if normalize_input else []
-            for dim in dims:
-                module_list.extend(
-                    [
-                        nn.Conv1d(input_dim, dim, 1),
-                        nn.BatchNorm1d(dim),
-                        nn.GELU() if activation == "gelu" else nn.ReLU(),
-                    ]
-                )
-                input_dim = dim
-            if use_pre_activation_pair:
-                module_list = module_list[:-1]
-            self.embed = nn.Sequential(*module_list)
-        elif self.mode == "sum":
-            if pairwise_lv_dim > 0:
-                input_dim = pairwise_lv_dim
-                module_list = [nn.BatchNorm1d(input_dim)] if normalize_input else []
-                for dim in dims:
-                    module_list.extend(
-                        [
-                            nn.Conv1d(input_dim, dim, 1),
-                            nn.BatchNorm1d(dim),
-                            nn.GELU() if activation == "gelu" else nn.ReLU(),
-                        ]
-                    )
-                    input_dim = dim
-                if use_pre_activation_pair:
-                    module_list = module_list[:-1]
-                self.embed = nn.Sequential(*module_list)
+        # Define blocks of embedding network
+        input_dim = pairwise_lv_dim
+        self.input_norm = nn.BatchNorm1d(pairwise_lv_dim) if normalize_input else None
+        self.embed_blocks = nn.ModuleList()
+        for i, dim in enumerate(dims):
+            use_act = i < len(dims) - 1
+            self.embed_blocks.append(Conv1dBlock(input_dim, dim, activation=use_act))
+            input_dim = dim
 
-            if pairwise_input_dim > 0:
-                input_dim = pairwise_input_dim
-                module_list = [nn.BatchNorm1d(input_dim)] if normalize_input else []
-                for dim in dims:
-                    module_list.extend(
-                        [
-                            nn.Conv1d(input_dim, dim, 1),
-                            nn.BatchNorm1d(dim),
-                            nn.GELU() if activation == "gelu" else nn.ReLU(),
-                        ]
-                    )
-                    input_dim = dim
-                if use_pre_activation_pair:
-                    module_list = module_list[:-1]
-                self.fts_embed = nn.Sequential(*module_list)
-        else:
-            raise RuntimeError("`mode` can only be `sum` or `concat`")
+    def forward(self, x, mask=None):
 
-    def forward(self, x, uu=None):
-
-        # x: (batch, v_dim, seq_len)
-        # uu: (batch, v_dim, seq_len, seq_len)
-        assert x is not None or uu is not None
-
+        # Calculate pairwise features
         # Do not evaluate gradients here as there are no trainable weights
         # in the calculation of pairwise features.
         with torch.no_grad():
-            if x is not None:
-                batch_size, _, seq_len = x.size()
-            else:
-                batch_size, _, seq_len, _ = uu.size()
+            batch_size, _, seq_len = x.size()
             if self.is_symmetric and not self.for_onnx:
                 i, j = torch.tril_indices(
                     seq_len,
                     seq_len,
                     offset=-1 if self.remove_self_pair else 0,
-                    device=(x if x is not None else uu).device,
+                    device=x.device,
                 )
-                if x is not None:
-                    x = x.unsqueeze(-1).repeat(1, 1, 1, seq_len)
-                    xi = x[:, :, i, j]  # (batch, dim, seq_len*(seq_len+1)/2)
-                    xj = x[:, :, j, i]
-                    x = self.pairwise_lv_fts(xi, xj)
-                if uu is not None:
-                    # (batch, dim, seq_len*(seq_len+1)/2)
-                    uu = uu[:, :, i, j]
+                x = x.unsqueeze(-1).repeat(1, 1, 1, seq_len)
+                mask = mask.unsqueeze(-1).repeat(1, 1, 1, seq_len)
+                xi = x[:, :, i, j]  # (batch, dim, seq_len*(seq_len+1)/2)
+                xj = x[:, :, j, i]
+                maski = mask[:, :, i, j]  # (batch, seq_len*(seq_len+1)/2)
+                maskj = mask[:, :, j, i]
+                pair_mask = maski & maskj
+                x = self.pairwise_lv_fts(xi, xj)
+                x = x.masked_fill(~pair_mask, 0)
             else:
-                if x is not None:
-                    x = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
-                    if self.remove_self_pair:
-                        i = torch.arange(0, seq_len, device=x.device)
-                        x[:, :, i, i] = 0
-                    x = x.view(-1, self.pairwise_lv_dim, seq_len * seq_len)
-                if uu is not None:
-                    uu = uu.view(-1, self.pairwise_input_dim, seq_len * seq_len)
-            if self.mode == "concat":
-                if x is None:
-                    pair_fts = uu
-                elif uu is None:
-                    # Shape assumes we remove self pair
-                    pair_fts = x  # (batch, pairwise_lv_dim, seq_len*(seq_len-1)/2)
-                else:
-                    pair_fts = torch.cat((x, uu), dim=1)
+                raise NotImplementedError(
+                    "Pairwise features for asymmetric inputs are not implemented yet."
+                )
+                x = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
+                if self.remove_self_pair:
+                    i = torch.arange(0, seq_len, device=x.device)
+                    x[:, :, i, i] = 0
+                x = x.view(-1, self.pairwise_lv_dim, seq_len * seq_len)
 
-        if self.mode == "concat":
-            elements = self.embed(pair_fts)  # (batch, embed_dim, num_elements)
-        elif self.mode == "sum":
-            if x is None:
-                elements = self.fts_embed(uu)
-            elif uu is None:
-                elements = self.embed(x)
-            else:
-                elements = self.embed(x) + self.fts_embed(uu)
+        # Embed the pairwise features
+        elements = x
+        if self.input_norm is not None:
+            elements = self.input_norm(elements)
+        for block in self.embed_blocks:
+            elements = block(elements)
+            elements = elements.masked_fill(~pair_mask, 0)
 
         # If the features are symmetric, we don't want to waste time calculating
         # the same features twice, so we just calculate the lower triangular part
@@ -157,4 +124,5 @@ class PairEmbed(nn.Module):
             y[:, :, j, i] = elements
         else:
             y = elements.view(-1, self.out_dim, seq_len, seq_len)
+
         return y

@@ -70,6 +70,7 @@ class OfTrain:
         self.step = step
         self.restart_path = None
         self.split_seed = seed
+        self.unit_test = unit_test
 
         # Modify the group name if an index is provided
         if index != -1:
@@ -194,7 +195,6 @@ class OfTrain:
                 linear_steps=linear_steps,
                 # Everything below here are parameters for the network
                 num_classes=1,
-                trim=self.config.run_trimmer,
                 remove_self_pair=self.config.remove_self_pair,
                 embed_dims=self.config.embed_dims,
                 pair_input_dim=self.config.pair_input_dim,
@@ -259,12 +259,15 @@ class OfTrain:
         self.lr_monitor = L.pytorch.callbacks.LearningRateMonitor(
             logging_interval="step"
         )
+        save_filename = "{epoch:02d}-{step:06d}-{val_wasserstein:.1f}"
+        n_train_steps = 1501 if (self.iteration == 0 and not self.unit_test) else None
         self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
             monitor="val_wasserstein",
-            filename="{epoch}-{val_wasserstein:.4f}",
+            filename=save_filename,
             save_top_k=self.config.top_k_checkpoints,
             mode="min",
             dirpath=self.checkpoint_dir,
+            every_n_train_steps=n_train_steps,
         )
         self.early_stopping = L.pytorch.callbacks.EarlyStopping(
             monitor="val_wasserstein",
@@ -273,17 +276,20 @@ class OfTrain:
         )
 
         # Build trainer
+        val_check = 1500 if (self.iteration == 0 and not self.unit_test) else None
+        devices = (
+            "auto" if (self.config.debug or self.unit_test) else self.config.num_gpus
+        )
         self.trainer = L.Trainer(
-            accelerator="auto" if (self.config.debug or unit_test) else "gpu",
+            accelerator="auto" if (self.config.debug or self.unit_test) else "gpu",
             num_nodes=self.config.num_nodes,
-            devices=(
-                "auto" if (self.config.debug or unit_test) else self.config.num_gpus
-            ),
+            devices=devices,
             logger=self.wandb_logger,
             callbacks=[self.lr_monitor, self.checkpoints, self.early_stopping],
             plugins=[SLURMEnvironment(auto_requeue=False)],
             default_root_dir=self.checkpoint_dir,
             max_steps=max_steps,
+            val_check_interval=val_check,
             enable_progress_bar=self.config.interactive,
             use_distributed_sampler=False,
         )
@@ -301,8 +307,8 @@ class OfTrain:
             # If this is pre-training (iteration 0), use the MC train file
             # and Sherpa file
             if self.iteration == 0:
-                source_file = self.config.mc_train_path
-                target_file = self.config.pretrain_path
+                source_file = self.config.pretrain_source_path
+                target_file = self.config.pretrain_target_path
                 source_weight_file = "root"
                 target_weight_file = "root"
             # If this is the first iteration, use the weights from the root file
@@ -327,8 +333,8 @@ class OfTrain:
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
-                source_file = self.config.mc_train_path
-                target_file = self.config.pretrain_path
+                source_file = self.config.pretrain_source_path
+                target_file = self.config.pretrain_target_path
                 source_weight_file = "root"
                 target_weight_file = "root"
             # If this is the first iteration, use the weights from step one for target,
@@ -368,6 +374,7 @@ class OfTrain:
             dataloader_workers=0,
             testing=False,
             use_truth=use_truth,
+            max_events_target=self.config.max_events_target,
         )
 
     def run(self):
@@ -380,7 +387,7 @@ class OfTrain:
         self.trainer.fit(
             self.l_module,
             self.d_module,
-            ckpt_path=self.restart_path,
+            ckpt_path=self.restart_path if not self.unit_test else None,
         )
 
         # Make symlink to best model using rank 0 process

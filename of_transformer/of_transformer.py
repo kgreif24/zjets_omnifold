@@ -14,7 +14,6 @@ import copy
 # Import network pieces
 from . import embed
 from . import pair_embed
-from . import sequence_trimmer
 from . import block
 
 # Import utilities
@@ -27,13 +26,10 @@ class OfTransformer(nn.Module):
         self,
         input_dim,
         num_classes=1,
-        no_w1=None,  # This is only for backwards compatibility
-        test_plots=None,  # This is only for backwards compatibility
         # network configurations
         pair_input_dim=3,
         pair_extra_dim=0,
         remove_self_pair=False,
-        use_pre_activation_pair=True,
         embed_dims=[128, 512, 128],
         pair_embed_dims=[64, 64, 64],
         num_heads=8,
@@ -45,18 +41,12 @@ class OfTransformer(nn.Module):
         fc_dropout=0.0,
         activation="gelu",
         # misc
-        trim=True,
-        for_inference=False,
-        use_amp=False,
         **kwargs
     ) -> None:
         super(OfTransformer, self).__init__(**kwargs)
 
-        self.trimmer = sequence_trimmer.SequenceTrimmer(
-            enabled=trim and not for_inference
-        )
-        self.for_inference = for_inference
-        self.use_amp = use_amp
+        # Set instance variables
+        self.num_heads = num_heads
 
         embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
         default_cfg = dict(
@@ -74,7 +64,6 @@ class OfTransformer(nn.Module):
             scale_resids=True,
         )
 
-        # Confused why we need a copy? Maybe just for using this logger thing?
         cfg_block = copy.deepcopy(default_cfg)
         if block_params is not None:
             cfg_block.update(block_params)
@@ -85,7 +74,6 @@ class OfTransformer(nn.Module):
 
         # Embedding layers
         self.pair_extra_dim = pair_extra_dim
-        print("Batch normalization disabled in embeddings!")
         self.embed = (
             embed.Embed(
                 input_dim, embed_dims, activation=activation, normalize_input=False
@@ -94,20 +82,13 @@ class OfTransformer(nn.Module):
             else nn.Identity()
         )
 
-        self.pair_embed = (
-            pair_embed.PairEmbed(
+        self.pair_embed = pair_embed.PairEmbed(
                 # The number of heads is added to the pair_embed_dims since we add
                 # the pairwise features to the weights for **each** head.
                 pair_input_dim,
-                pair_extra_dim,
                 pair_embed_dims + [cfg_block["num_heads"]],
                 remove_self_pair=remove_self_pair,
-                use_pre_activation_pair=use_pre_activation_pair,
                 normalize_input=False,
-                for_onnx=for_inference,
-            )
-            if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0
-            else None
         )
 
         # Transformer layers
@@ -145,52 +126,52 @@ class OfTransformer(nn.Module):
             "cls_token",
         }
 
-    def forward(self, x, v=None, mask=None, uu=None, uu_idx=None):
+    def forward(self, x, v=None, mask=None):
         # x: (N, C, P)
         # v: (N, 3, P) [pT, eta, phi]
         # mask: (N, 1, P) -- real particle = 1, padded = 0
-        # for pytorch: uu (N, C', num_pairs), uu_idx (N, 2, num_pairs)
-        # for onnx: uu (N, C', P, P), uu_idx=None
 
+        # Get padding mask for use in attention blocks
+        # Note padding is denoted by a 1 in pytorch MHA
         with torch.no_grad():
-            if not self.for_inference:
-                if uu_idx is not None:
-                    uu = net_utils.build_sparse_tensor(uu, uu_idx, x.size(-1))
-            x, v, mask, uu = self.trimmer(x, v, mask, uu)
-            # Removing dimension from mask and taking not, for use in attention blocks
             padding_mask = ~mask.squeeze(1)  # (N, P)
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        # input embedding
+        x = self.embed(x)
+        x = x.masked_fill(~mask, 0)  # (batch, embed_dim, seq_len)
 
-            # input embedding
-            x = self.embed(x).masked_fill(~mask, 0)  # (batch, embed_dim, seq_len)
+        # pairwise embedding
+        pairwise_embedding = self.pair_embed(
+            v, mask=mask
+        ).view(-1, v.size(-1), v.size(-1))
+        # ^ (batch*num_heads, seq_len, seq_len))
 
-            # after input embedding, reshape to (seq_len, batch, embed_dim)
-            # for attention layers
-            x = x.permute(2, 0, 1)  # (seq_len, batch, embed_dim)
-            mask = mask.permute(2, 0, 1)  # (seq_len, batch, 1)
+        # after embeddings, reshape to (seq_len, batch, embed_dim)
+        # for attention layers
+        x = x.permute(2, 0, 1)  # (seq_len, batch, embed_dim)
+        mask = mask.permute(0, 2, 1)  # (batch, seq_len, 1)
 
-            attn_mask = None
-            if (v is not None or uu is not None) and self.pair_embed is not None:
-                attn_mask = self.pair_embed(v, uu).view(
-                    -1, v.size(-1), v.size(-1)
-                )  # (N*num_heads, P, P)
+        # Build mask for pairwise features
+        pair_mask = mask.float() @ mask.float().transpose(-1, -2)
+        # ^ (batch, seq_len, seq_len)
+        pair_mask = ~(pair_mask.bool()).repeat_interleave(self.num_heads, dim=0)
+        # ^ (batch*num_heads, seq_len, seq_len)
+        attn_mask = pairwise_embedding + (-1e9 * pair_mask.float())
 
-            # transform
-            for blk in self.blocks:
-                x = blk(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
+        # transform
+        for blk in self.blocks:
+            x = blk(x, x_cls=None, attn_mask=attn_mask)
 
-            # extract class token
-            cls_tokens = self.cls_token.expand(
-                1, x.size(1), -1
-            )  # (1, batch, embed_dim)
-            for blk in self.cls_blocks:
-                cls_tokens = blk(x, x_cls=cls_tokens, padding_mask=padding_mask)
+        # extract class token
+        cls_tokens = self.cls_token.expand(1, x.size(1), -1)
+        # ^ (1, batch, embed_dim)
+        for blk in self.cls_blocks:
+            cls_tokens = blk(x, x_cls=cls_tokens, padding_mask=padding_mask)
 
-            x_cls = self.norm(cls_tokens).squeeze(0)
+        x_cls = self.norm(cls_tokens).squeeze(0)
 
-            # fc
-            if self.fc is None:
-                return x_cls
-            output = self.fc(x_cls)
-            return output
+        # fc
+        if self.fc is None:
+            return x_cls
+        output = self.fc(x_cls)
+        return output

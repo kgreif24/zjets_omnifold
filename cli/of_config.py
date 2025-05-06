@@ -66,6 +66,26 @@ class OfConfig:
 
         # Data
         self.parser.add_argument(
+            "--pretrain_source_path",
+            type=str,
+            default=(
+                "/pscratch/sd/k/kgreif/data/"
+                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
+                "PreTrain_shuffled.root"
+            ),
+            help="Path to the source file to use in pretraining",
+        )
+        self.parser.add_argument(
+            "--pretrain_target_path",
+            type=str,
+            default=(
+                "/pscratch/sd/k/kgreif/data/"
+                "ZjetOmnifold_Mar10_Sherpa2211_WithTracks_slim_Systematics_"
+                "Pretrain_shuffled.root"
+            ),
+            help="Path to the target file to use in pretraining",
+        )
+        self.parser.add_argument(
             "--mc_train_path",
             type=str,
             default=(
@@ -102,16 +122,6 @@ class OfConfig:
                 "WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root"
             ),
             help="Path to the truth pseudodata",
-        )
-        self.parser.add_argument(
-            "--pretrain_path",
-            type=str,
-            default=(
-                "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_"
-                "Pretrain_all_shuffled.root"
-            ),
-            help="Path to the file to use in pretraining",
         )
         self.parser.add_argument(
             "--split_seed",
