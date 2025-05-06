@@ -91,6 +91,9 @@ class PairEmbed(nn.Module):
                 x = self.pairwise_lv_fts(xi, xj)
                 x = x.masked_fill(~pair_mask, 0)
             else:
+                raise NotImplementedError(
+                    "Pairwise features for asymmetric inputs are not implemented yet."
+                )
                 x = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
                 if self.remove_self_pair:
                     i = torch.arange(0, seq_len, device=x.device)
