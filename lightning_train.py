@@ -309,17 +309,17 @@ class OfTrain:
             if self.iteration == 0:
                 source_file = self.config.pretrain_source_path
                 target_file = self.config.pretrain_target_path
-                source_weight_file = "root"
-                target_weight_file = "root"
-            # If this is the first iteration, use the weights from the root file
-            # for source and no weights for the target
+                source_weight_file = None
+                target_weight_file = None
+            # If this is the first iteration, use the weights from the ROOT file
+            # for source and target
             elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
-                source_weight_file = "root"
+                source_weight_file = None
                 target_weight_file = None
             # Otherwise use the weights from the previous step two for the source,
-            # and no weights for the target
+            # and weights from the ROOT file for target
             else:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
@@ -335,14 +335,14 @@ class OfTrain:
             if self.iteration == 0:
                 source_file = self.config.pretrain_source_path
                 target_file = self.config.pretrain_target_path
-                source_weight_file = "root"
-                target_weight_file = "root"
+                source_weight_file = None
+                target_weight_file = None
             # If this is the first iteration, use the weights from step one for target,
             # and the weights from the root file as source.
             elif self.iteration == 1:
                 source_file = self.config.mc_train_path
                 target_file = self.config.mc_train_path
-                source_weight_file = "root"
+                source_weight_file = None
                 target_weight_file = (
                     f"{weight_dir}/iteration_{self.iteration}_step_1.npz"
                 )

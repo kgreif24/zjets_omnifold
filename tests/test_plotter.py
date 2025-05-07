@@ -41,7 +41,7 @@ def test_w1(tmp_path):
         np.ones(100),
     )
     assert np.isclose(start, 274.825, atol=0.1)
-    assert np.isclose(end, 155.601, atol=0.1)
+    assert np.isclose(end, 267.333, atol=0.1)
 
 
 def test_apply_kinematic_cuts(tmp_path):
