@@ -459,6 +459,11 @@ class Plotter:
         can also be a numpy array, in which case the function simply
         handles the truncation to the number of events used in plotting.
 
+        Note if the weights argument points to a .npz file, the weights
+        are multiplied by the correct weights in the ROOT tree. If
+        use_truth is True, this is the "weight_mc" branch, otherwise
+        it is the "weight" branch.
+
         Arguments:
             weights (str or np.array): Path to the weights file,
                 branch name, or numpy array
@@ -481,6 +486,17 @@ class Plotter:
         # Path to .npz case
         elif weights.endswith(".npz"):
 
+            # Load ROOT weights
+            key = "weight_mc" if self.use_truth else "weight"
+            if is_target:
+                root_weights = ak.to_numpy(
+                    self.target_tree[key].array(entry_stop=self.target_events)
+                )
+            else:
+                root_weights = ak.to_numpy(
+                    self.source_tree[key].array(entry_stop=self.source_events)
+                )
+
             # Load weights from file
             weights = np.load(weights)
             if use_train:
@@ -492,6 +508,9 @@ class Plotter:
             max_events = self.target_events if is_target else self.source_events
             if len(weights) > max_events:
                 weights = weights[:max_events]
+
+            # Multiply by ROOT weights
+            weights *= root_weights
 
         # Branch name case
         else:

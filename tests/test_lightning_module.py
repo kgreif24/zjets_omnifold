@@ -77,8 +77,8 @@ def test_lofdata(tmp_path):
     data_module = LOfData(
         source_file="./assets/evts_000_100.root",
         target_file="./assets/evts_000_100.root",
-        source_weight_path="root",
-        target_weight_path="root",
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=1,
         split_seed=1,
         load_all=False,
@@ -89,8 +89,8 @@ def test_lofdata(tmp_path):
     data_module_truth = LOfData(
         source_file="./assets/evts_000_100.root",
         target_file="./assets/evts_000_100.root",
-        source_weight_path="root",
-        target_weight_path="root",
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=1,
         split_seed=-1,
         load_all=True,
@@ -111,18 +111,15 @@ def test_lofdata(tmp_path):
     assert w1_obs.shape == (2 * np.sum(p190), 26)
     src_p190 = data_module.get_source_pass190()
     assert np.all(src_p190 == p190)
-    trg_p190 = data_module.get_target_pass190()
-    assert np.all(trg_p190 == p190)
     src_weights = data_module.get_source_all_weights()
     assert len(src_weights) == 100
 
     # Check load weights
-    root_wgts = data_module._load_weights(t, path="root")
+    net_wgts, root_wgts = data_module._load_weights(t, path=None)
     assert np.all(root_wgts == src_weights)
-    save_wgts = data_module._load_weights(t, path=f"{tmp_path}/weights.npz")
+    assert np.all(net_wgts == np.ones(100))
+    save_wgts, root_wgts = data_module._load_weights(t, path=f"{tmp_path}/weights.npz")
     assert np.all(save_wgts == random_weights)
-    one_wgts = data_module._load_weights(t, path=None)
-    assert np.all(one_wgts == np.ones(100))
 
 
 def test_data_pieces():
@@ -131,8 +128,8 @@ def test_data_pieces():
     data_module = LOfData(
         source_file="./assets/evts_000_100.root",
         target_file="./assets/evts_000_100.root",
-        source_weight_path="root",
-        target_weight_path="root",
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=1,
         split_seed=1,
         load_all=False,
@@ -162,8 +159,8 @@ def test_data_sharding():
     data_module1 = LOfData(
         source_file="./assets/evts_000_100.root",
         target_file="./assets/evts_000_100.root",
-        source_weight_path="root",
-        target_weight_path="root",
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=1,
         split_seed=1,
         load_all=False,
@@ -175,8 +172,8 @@ def test_data_sharding():
     data_module2 = LOfData(
         source_file="./assets/evts_000_100.root",
         target_file="./assets/evts_000_100.root",
-        source_weight_path="root",
-        target_weight_path="root",
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=1,
         split_seed=1,
         load_all=False,
@@ -188,8 +185,8 @@ def test_data_sharding():
     data_module3 = LOfData(
         source_file="./assets/evts_000_100.root",
         target_file="./assets/evts_000_100.root",
-        source_weight_path="root",
-        target_weight_path="root",
+        source_weight_path=None,
+        target_weight_path=None,
         batch_size=1,
         split_seed=1,
         load_all=False,

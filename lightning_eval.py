@@ -165,19 +165,19 @@ class OfEval:
                 test_source_file = self.config.pretrain_source_path
                 train_target_file = None
                 test_target_file = self.config.pretrain_target_path
-                source_weight_file = "root"
-                target_weight_file = "root"
+                source_weight_file = None
+                target_weight_file = None
             # If this is the first iteration, use the weights from the root file
-            # for source and no weights for the target
+            # for source and target
             elif self.iteration == 1:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.data_path
-                source_weight_file = "root"
+                source_weight_file = None
                 target_weight_file = None
             # Otherwise use the weights from the previous step two for the source,
-            # and no weights for the target
+            # and weights from ROOT file for the target
             else:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
@@ -197,16 +197,16 @@ class OfEval:
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.pretrain_path
-                source_weight_file = "root"
-                target_weight_file = "root"
+                source_weight_file = None
+                target_weight_file = None
             # If this is the first iteration, use the weights from step one for target,
-            # and the weights from the root file as source.
+            # and the weights from the ROOT file as source.
             elif self.iteration == 1:
                 train_source_file = self.config.mc_train_path
                 test_source_file = self.config.mc_test_path
                 train_target_file = None
                 test_target_file = self.config.mc_test_path
-                source_weight_file = "root"
+                source_weight_file = None
                 target_weight_file = (
                     f"{self.weight_dir}/iteration_{self.iteration}_step_1.npz"
                 )
@@ -323,31 +323,32 @@ class OfEval:
         network_weights_train = np.exp(predictions_train)
         network_weights_test = np.exp(predictions_test)
 
-        # Get source weights from the data modules, note this is before normalization
-        start_weights_train = self.d_module_train.get_source_all_weights()
-        start_weights_test = self.d_module_test.get_source_all_weights()
-
         # Get the filters
         pass190_train = self.d_module_train.get_source_pass190()
         pass190_test = self.d_module_test.get_source_pass190()
 
-        # Calculate updated weights
-        source_weights_train = start_weights_train.copy()
-        source_weights_train[pass190_train == 1] *= network_weights_train
-        source_weights_test = start_weights_test.copy()
-        source_weights_test[pass190_test == 1] *= network_weights_test
-        self.all_updated_weights_train = source_weights_train
-        self.all_updated_weights_test = source_weights_test
+        # Get start weights.
+        # For iteration 1, these are vectors of 1s
+        # For all subsequent iterations, use the source weights from the data
+        # modules
+        if self.iteration == 1:
+            start_weights_train = np.ones_like(pass190_train, dtype=np.float32)
+            start_weights_test = np.ones_like(pass190_test, dtype=np.float32)
+        else:
+            start_weights_train = self.d_module_train.get_source_network_weights()
+            start_weights_test = self.d_module_test.get_source_network_weights()
 
-        # Get all pass190s
+        # Calculate updated weights
+        self.updated_weights_train = start_weights_train.copy()
+        self.updated_weights_train[pass190_train == 1] *= network_weights_train
+        self.updated_weights_test = start_weights_test.copy()
+        self.updated_weights_test[pass190_test == 1] *= network_weights_test
+
+        # Get all pass190s for source
         source_pass190_train = self.d_module_train.get_source_reco_pass190()
         source_pass190_test = self.d_module_test.get_source_reco_pass190()
         source_truth_pass190_train = self.d_module_train.get_source_truth_pass190()
         source_truth_pass190_test = self.d_module_test.get_source_truth_pass190()
-        target_pass190_train = self.d_module_train.get_target_reco_pass190()
-        target_pass190_test = self.d_module_test.get_target_reco_pass190()
-        target_truth_pass190_train = self.d_module_train.get_target_truth_pass190()
-        target_truth_pass190_test = self.d_module_test.get_target_truth_pass190()
 
         # Save new weights for future use
         np.savez(
@@ -356,22 +357,19 @@ class OfEval:
             raw_test_output=predictions_test,
             network_train=network_weights_train,
             network_test=network_weights_test,
-            train=self.all_updated_weights_train,
-            test=self.all_updated_weights_test,
+            train=self.updated_weights_train,
+            test=self.updated_weights_test,
             source_pass190_train=source_pass190_train,
             source_pass190_test=source_pass190_test,
             source_truth_pass190_train=source_truth_pass190_train,
             source_truth_pass190_test=source_truth_pass190_test,
-            target_pass190_train=target_pass190_train,
-            target_pass190_test=target_pass190_test,
-            target_truth_pass190_train=target_truth_pass190_train,
-            target_truth_pass190_test=target_truth_pass190_test,
         )
 
         # Make and log test plots
+        root_weights_test = self.d_module_test.get_source_root_weights()
         test_plot_dict = self.test_plotter.plot(
-            start_weights_test,
-            self.all_updated_weights_test,
+            self.d_module_test.get_source_all_weights(),
+            self.updated_weights_test * root_weights_test,
             self.d_module_test.get_target_all_weights(),
         )
         if self.config.wandb:
@@ -391,9 +389,10 @@ class OfEval:
         """
 
         # Compute and log wasserstein metric with plotter class
+        root_weights_test = self.d_module_test.get_source_root_weights()
         _, w1_end = self.comp_plotter.wasserstein_distance(
             "weight",
-            self.all_updated_weights_test,
+            self.updated_weights_test * root_weights_test,
             "weight_mc",
         )
         print("Reweighted truth MC to truth PD Wasserstein metric:", w1_end)
@@ -403,7 +402,7 @@ class OfEval:
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
             "weight",
-            self.all_updated_weights_test,
+            self.updated_weights_test * root_weights_test,
             "weight_mc",
         )
         if self.config.wandb:

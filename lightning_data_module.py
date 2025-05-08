@@ -260,19 +260,25 @@ class LOfData(L.LightningDataModule):
         # -------------------- Load the data ----------------------------
 
         # Get the data from file
-        kinematics, indeces, weights, w1_obs = self._load_data_from_file(
+        kinematics, indeces, weights, weights_root, w1_obs = self._load_data_from_file(
             filename, use_weight_path, start=start, stop=stop
         )
 
         # -------------------- Process weights ----------------------------
 
-        # Store all weights for use in prediction, then truncate and apply filter
+        # Store all weights for use in evaluation, then truncate and apply filter
         if filename == "source":
+            self.source_network_weights = weights.copy()
+            self.source_root_weights = weights_root  # No need to copy here
+            weights *= weights_root
             self.source_all_weights = weights.copy()
             weights = weights[start:stop]
             piece190 = self.source_use190[start:stop]
             weights = weights[piece190 == 1]
         elif filename == "target":
+            self.target_network_weights = weights.copy()
+            self.target_root_weights = weights_root  # No need to copy here
+            weights *= weights_root
             self.target_all_weights = weights.copy()
             weights = weights[start:stop]
             piece190 = self.target_use190[start:stop]
@@ -366,7 +372,8 @@ class LOfData(L.LightningDataModule):
     ):
         """load_data_from_file - This function loads data from a file using uproot,
         and applies the relevant preprocessing. It returns the kinematics, mask,
-        observables for calculating W1 distances, weights, and pass190 filter
+        observables for calculating W1 distances, full and MC weights,
+        and pass190 filter.
 
         Arguments:
             which_file {str} -- The file to load data from. Can be 'source' or 'target'
@@ -383,6 +390,8 @@ class LOfData(L.LightningDataModule):
             np.ndarray -- The mask data
             np.ndarray -- The weight data, for all events, regardless of start/stop.
                 Does not apply the pass190 filter!!
+            np.ndarray -- The weights from the ROOT file, used for calculating
+                the network weights when writing the .npz file in evaluation.
             np.ndarray -- The W1 observable data
         """
 
@@ -404,7 +413,7 @@ class LOfData(L.LightningDataModule):
         )
 
         # Get weights, note this is for all events, without the pass190 filter
-        weights = self._load_weights(
+        weights, weights_root = self._load_weights(
             tree, which_file=which_file, path=weight_path, test=self.testing
         )
 
@@ -418,56 +427,58 @@ class LOfData(L.LightningDataModule):
             stop=stop,
         )
 
-        return kinematics, indeces, weights, w1_observables
+        return kinematics, indeces, weights, weights_root, w1_observables
 
     def _load_weights(self, tree, which_file="source", path=None, test=False):
         """_load_weights - This function implements the logic for loading weights
-        to be used both in data loading, and in providing access to the weights
+        to be used both in training, and in providing access to the weights
         for the purposes of calculating the next iteration of weights in the
-        evaluation routine. The logic is as follows:
+        evaluation routine. Two sets of weights are loaded and retured:
 
-        1. If the path is 'root', then we load the weights from the root file
-        2. If the path is not None, then we load the weights from the .npz file
-           at the given path
-        3. If the path is None, then we return a vector of ones
+        1. ROOT weight, or the original weight from the ROOT file
+        2. Network weight, or the weight loaded from a .npz file. If "path"
+            is set to None, this will be a vector of ones.
 
-        Note if we are loading weights from source, then we truncate the weights
-        by max_events_target
+        The ROOT weight is either the "weight" branch for reco level data,
+        or the "weight_mc" branch for truth level data.
+        The weights to use in training are the product of the MC weights
+        and the network weights.
+
+        Note if we are loading weights from target, then we truncate the weights
+        by max_events_target. This is useful in plotting, since we don't want to
+        load the data for an entire target file.
 
         Arguments:
             tree {uproot.tree.TTree} -- The uproot tree object
-            path {str} -- The path to the weights file. If set to 'root', then we
-                load the weights from the root file.
+            path {str} -- The path to the weights file. If left None, then we
+                load the weights from the root file and net_weights are a
+                vector of ones.
             test {bool} -- Set to true if we want to load the test weights.
                 Defaults to false.
 
         Returns:
-            np.ndarray -- A numpy array of weights
+            np.ndarray -- Network weight
+            np.ndarray -- ROOT weight
         """
 
         # Get weights from root tree
         max_read = self.max_events_target if which_file == "target" else None
-        root_weights = ak.to_numpy(tree["weight"].array(entry_stop=max_read))
-
-        # Load weights directly from root file
-        if path == "root":
-            all_weights = root_weights
+        root_key = "weight_mc" if self.use_truth else "weight"
+        root_weights = ak.to_numpy(tree[root_key].array(entry_stop=max_read))
+        net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load weights from the path
-        elif path is not None:
+        if path is not None:
             weight_file = np.load(path)
             if test:
-                all_weights = weight_file["test"]
+                net_weights = weight_file["test"]
             else:
-                all_weights = weight_file["train"]
+                net_weights = weight_file["train"]
                 if which_file == "target":
-                    all_weights = all_weights[: int(self.max_events_target)]
+                    root_weights = root_weights[: int(self.max_events_target)]
+                    net_weights = net_weights[: int(self.max_events_target)]
 
-        # Otherwise create a vector of ones
-        else:
-            all_weights = np.ones_like(root_weights, dtype=np.float32)
-
-        return all_weights
+        return net_weights, root_weights
 
     def _weight_norm(self):
         """_weight_norm - This function normalizes the source
@@ -605,30 +616,33 @@ class LOfData(L.LightningDataModule):
         return np.concatenate([self.source_w1_obs, self.target_w1_obs], axis=0)
 
     # Methods for getting source and target weights
+    def get_source_network_weights(self):
+        return self.source_network_weights
+
+    def get_target_network_weights(self):
+        return self.target_network_weights
+
     def get_source_all_weights(self):
         return self.source_all_weights
 
     def get_target_all_weights(self):
         return self.target_all_weights
 
+    def get_source_root_weights(self):
+        return self.source_root_weights
+
+    def get_target_root_weights(self):
+        return self.target_root_weights
+
     # Methods for getting pass 190 flags
     def get_source_pass190(self):
         return self.source_use190
 
-    def get_target_pass190(self):
-        return self.target_use190
-
     def get_source_reco_pass190(self):
         return self.source_pass190
 
-    def get_target_reco_pass190(self):
-        return self.target_pass190
-
     def get_source_truth_pass190(self):
         return self.source_truth_pass190
-
-    def get_target_truth_pass190(self):
-        return self.target_truth_pass190
 
     # Train dataloader
     def train_dataloader(self):
