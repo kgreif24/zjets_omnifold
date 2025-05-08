@@ -71,8 +71,8 @@ class WassersteinOne(torchmetrics.Metric):
             weights = np.concatenate(self.weights, axis=0).flatten()
             target = np.concatenate(self.target, axis=0).flatten()
 
-        # Mask any NaN values in the weights
-        mask = ~np.isnan(weights)
+        # Mask any NaN, inf, or negative values in the weights
+        mask = ~np.isnan(weights) & ~np.isinf(weights) & (weights >= 0)
         observables = observables[mask]
         weights = weights[mask]
         target = target[mask]
