@@ -198,7 +198,6 @@ class OfTrain:
                 remove_self_pair=self.config.remove_self_pair,
                 embed_dims=self.config.embed_dims,
                 pair_input_dim=self.config.pair_input_dim,
-                pair_extra_dim=0,
                 pair_embed_dims=self.config.pair_embed_dims,
                 fc_nodes=self.config.fc_nodes,
                 fc_dropout=self.config.fc_dropout,

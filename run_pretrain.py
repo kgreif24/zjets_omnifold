@@ -49,7 +49,6 @@ trainer = OfTrain(
     1,
     seed=args.split_seed,
     index=args.index,
-    unit_test=True,
 )
 
 # Run the pre-training

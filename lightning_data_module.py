@@ -126,9 +126,11 @@ class LOfData(L.LightningDataModule):
         # for the source dataset
         self.source_tree = uproot.open(self.source_file)["OmniTree"]
         self.num_source = self.source_tree.num_entries
-        self.source_pass190 = ak.to_numpy(self.source_tree["pass190"].array())
+        self.source_pass190 = ak.to_numpy(
+            self.source_tree["pass190"].array(entry_stop=self.num_source)
+        )
         self.source_truth_pass190 = ak.to_numpy(
-            self.source_tree["truth_pass190"].array()
+            self.source_tree["truth_pass190"].array(entry_stop=self.num_source)
         )
         if self.use_truth:
             self.source_use190 = self.source_truth_pass190
@@ -462,7 +464,7 @@ class LOfData(L.LightningDataModule):
         """
 
         # Get weights from root tree
-        max_read = self.max_events_target if which_file == "target" else None
+        max_read = self.num_target if which_file == "target" else self.num_source
         root_key = "weight_mc" if self.use_truth else "weight"
         root_weights = ak.to_numpy(tree[root_key].array(entry_stop=max_read))
         net_weights = np.ones_like(root_weights, dtype=np.float32)
