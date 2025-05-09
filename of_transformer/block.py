@@ -53,40 +53,60 @@ class Block(nn.Module):
             else None
         )
 
-    def forward(self, x, x_cls=None, padding_mask=None, attn_mask=None):
+    def forward(
+        self, x, x_cls=None, padding_mask=None, attn_mask=None, glb_features=None
+    ):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
             x_cls (Tensor, optional): class token input to the layer
                 with shape `(1, batch, embed_dim)`
-            attn_mask (ByteTensor, optional): binary
-                ByteTensor of shape `(batch, seq_len)` where padding
+            padding_mask (ByteTensor, optional): binary
+                ByteTensor of shape `(batch, seq_len+1)` where padding
                 elements are indicated by ``1``.
+            attn_mask (Tensor, optional): FloatTensor of shape
+                `(batch * num_heads, seq_len, seq_len)` where
+                attention weights are masked with ``-inf``. Pairwise features
+                can be added to attention weights with non-zero values.
+            glb_features (Tensor, optional): FloatTensor of shape
+                `(1, batch, embed_dim)` where global features are appended to
+                the sequence before attention.
 
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
 
-        if x_cls is not None:
-            with torch.no_grad():
-                # prepend one element for x_cls: -> (batch, 1+seq_len)
-                padding_mask = torch.cat(
-                    (torch.zeros_like(padding_mask[:, :1]), padding_mask), dim=1
-                )
-            # class attention: https://arxiv.org/pdf/2103.17239.pdf
-            residual = x_cls
-            u = torch.cat((x_cls, x), dim=0)  # (seq_len+1, batch, embed_dim)
-            u = self.pre_attn_norm(u)
-            x = self.attn(
-                x_cls, u, u, key_padding_mask=padding_mask, need_weights=False
-            )[0]
-            # ^ (1, batch, embed_dim)
+        # Default QKV settings for no class attention and no global features
+        residual = x
+        x = self.pre_attn_norm(x)
+        q = x
+        kv = x
 
-        else:
-            residual = x
-            x = self.pre_attn_norm(x)
-            x = self.attn(x, x, x, attn_mask=attn_mask, need_weights=False)[0]
-            # ^ (seq_len, batch, embed_dim)
+        # If we have global features, prepend them to KV but queries are still
+        # the original input
+        if glb_features is not None:
+            kv = torch.cat((glb_features, kv), dim=0)
+            # ^ (seq_len+1, batch, embed_dim)
+
+        # If we have class attention, prepend the class token to KV and
+        # the queries become the class token alone
+        if x_cls is not None:
+            # Note assumed padding mask already has pre-pended zeros
+            # for the class token
+            residual = x_cls
+            q = x_cls
+            kv = torch.cat((x_cls, kv), dim=0)
+            # ^ (seq_len+1, batch, embed_dim)
+
+        # Compute attention
+        x = self.attn(
+            q,
+            kv,
+            kv,
+            key_padding_mask=padding_mask,
+            attn_mask=attn_mask,
+            need_weights=False,
+        )[0]
 
         if self.c_attn is not None:
             tgt_len = x.size(0)

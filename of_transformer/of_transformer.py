@@ -1,4 +1,4 @@
-""" of_transformer.py - First implementation of a transformer for use in
+"""of_transformer.py - First implementation of a transformer for use in
 Omnifold. Modeled after the Particle Transformer (ParT).
 
 Author: Kevin Greif
@@ -9,6 +9,7 @@ python3
 # Standard imports
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import copy
 
 # Import network pieces
@@ -28,10 +29,11 @@ class OfTransformer(nn.Module):
         num_classes=1,
         # network configurations
         pair_input_dim=3,
-        pair_extra_dim=0,
+        global_input_dim=0,
         remove_self_pair=False,
         embed_dims=[128, 512, 128],
         pair_embed_dims=[64, 64, 64],
+        global_embed_dims=None,
         num_heads=8,
         num_layers=8,
         num_cls_layers=2,
@@ -73,7 +75,6 @@ class OfTransformer(nn.Module):
             cfg_cls_block.update(cls_block_params)
 
         # Embedding layers
-        self.pair_extra_dim = pair_extra_dim
         self.embed = (
             embed.Embed(
                 input_dim, embed_dims, activation=activation, normalize_input=False
@@ -83,13 +84,26 @@ class OfTransformer(nn.Module):
         )
 
         self.pair_embed = pair_embed.PairEmbed(
-                # The number of heads is added to the pair_embed_dims since we add
-                # the pairwise features to the weights for **each** head.
-                pair_input_dim,
-                pair_embed_dims + [cfg_block["num_heads"]],
-                remove_self_pair=remove_self_pair,
-                normalize_input=False,
+            # The number of heads is added to the pair_embed_dims since we add
+            # the pairwise features to the weights for **each** head.
+            pair_input_dim,
+            pair_embed_dims + [cfg_block["num_heads"]],
+            remove_self_pair=remove_self_pair,
+            normalize_input=False,
         )
+
+        if global_embed_dims is not None:
+            global_embed_dims.append(embed_dim)
+            global_embed = nn.ModuleList()
+            for dim in global_embed_dims:
+                global_embed.extend(
+                    [
+                        nn.Linear(global_input_dim, dim),
+                        nn.GELU(),
+                    ]
+                )
+                global_input_dim = dim
+            self.global_embed = nn.Sequential(*global_embed)
 
         # Transformer layers
         self.blocks = nn.ModuleList(
@@ -126,33 +140,57 @@ class OfTransformer(nn.Module):
             "cls_token",
         }
 
-    def forward(self, x, v=None, mask=None):
+    def forward(self, x, v=None, mask=None, glb_features=None):
         # x: (N, C, P)
         # v: (N, 3, P) [pT, eta, phi]
         # mask: (N, 1, P) -- real particle = 1, padded = 0
-
-        # Get padding mask for use in attention blocks
-        # Note padding is denoted by a 1 in pytorch MHA
-        with torch.no_grad():
-            padding_mask = ~mask.squeeze(1)  # (N, P)
+        # global: (N, G) -- global features
 
         # input embedding
         x = self.embed(x)
         x = x.masked_fill(~mask, 0)  # (batch, embed_dim, seq_len)
 
         # pairwise embedding
-        pairwise_embedding = self.pair_embed(
-            v, mask=mask
-        ).view(-1, v.size(-1), v.size(-1))
+        pairwise_embedding = self.pair_embed(v, mask=mask).view(
+            -1, v.size(-1), v.size(-1)
+        )
         # ^ (batch*num_heads, seq_len, seq_len))
 
-        # after embeddings, reshape to (seq_len, batch, embed_dim)
+        # global embedding
+        if glb_features is not None:
+            glb_features = self.global_embed(glb_features)
+            glb_features = glb_features.unsqueeze(-1)  # (batch, embed_dim, 1)
+            glb_features = glb_features.permute(2, 0, 1)  # (1, batch, embed_dim)
+
+        # After embeddings, need to alter masks and pairwise features
+        # if we have global features. Add 1's to the mask tensor
+        # so they participate in the attention blocks, and add 0's to the
+        # pairwise features since we don't want to shift attention weights for them
+        qmask, kmask = mask, mask
+        if glb_features is not None:
+            kmask = torch.cat((torch.ones_like(kmask[:, :, :1]), kmask), dim=2)
+            # ^ (N, 1, P+1)
+            pairwise_embedding = F.pad(pairwise_embedding, (1, 0))
+
+        # For class attention blocks, we need a padding mask
+        # Note padding is denoted by a 1 in pytorch MHA
+        with torch.no_grad():
+            padding_mask = kmask.squeeze(1)  # (N, P)
+            padding_mask = torch.cat(
+                (torch.ones_like(padding_mask[:, :1]), padding_mask), dim=1
+            )
+            # Padding is marked by a 1 in pytorch MHA
+            padding_mask = ~padding_mask
+            # ^ (N, P+1)
+
+        # Reshape inputs to (seq_len, batch, embed_dim)
         # for attention layers
         x = x.permute(2, 0, 1)  # (seq_len, batch, embed_dim)
-        mask = mask.permute(0, 2, 1)  # (batch, seq_len, 1)
+        qmask = qmask.permute(0, 2, 1)  # (batch, seq_len, 1)
+        kmask = kmask.permute(0, 2, 1)  # (batch, seq_len + 1, 1)
 
         # Build mask for pairwise features
-        pair_mask = mask.float() @ mask.float().transpose(-1, -2)
+        pair_mask = qmask.float() @ kmask.float().transpose(-1, -2)
         # ^ (batch, seq_len, seq_len)
         pair_mask = ~(pair_mask.bool()).repeat_interleave(self.num_heads, dim=0)
         # ^ (batch*num_heads, seq_len, seq_len)
@@ -160,13 +198,18 @@ class OfTransformer(nn.Module):
 
         # transform
         for blk in self.blocks:
-            x = blk(x, x_cls=None, attn_mask=attn_mask)
+            x = blk(x, x_cls=None, attn_mask=attn_mask, glb_features=glb_features)
 
         # extract class token
         cls_tokens = self.cls_token.expand(1, x.size(1), -1)
         # ^ (1, batch, embed_dim)
         for blk in self.cls_blocks:
-            cls_tokens = blk(x, x_cls=cls_tokens, padding_mask=padding_mask)
+            cls_tokens = blk(
+                x,
+                x_cls=cls_tokens,
+                padding_mask=padding_mask,
+                glb_features=glb_features,
+            )
 
         x_cls = self.norm(cls_tokens).squeeze(0)
 
