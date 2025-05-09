@@ -33,7 +33,7 @@ class OfTransformer(nn.Module):
         remove_self_pair=False,
         embed_dims=[128, 512, 128],
         pair_embed_dims=[64, 64, 64],
-        global_embed_dims=[],
+        global_embed_dims=None,
         num_heads=8,
         num_layers=8,
         num_cls_layers=2,
@@ -51,7 +51,6 @@ class OfTransformer(nn.Module):
         self.num_heads = num_heads
 
         embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
-        global_embed_dims.append(embed_dim)
         default_cfg = dict(
             embed_dim=embed_dim,
             num_heads=num_heads,
@@ -93,16 +92,18 @@ class OfTransformer(nn.Module):
             normalize_input=False,
         )
 
-        global_embed = nn.ModuleList()
-        for dim in global_embed_dims:
-            global_embed.extend(
-                [
-                    nn.Linear(global_input_dim, dim),
-                    nn.GELU(),
-                ]
-            )
-            global_input_dim = dim
-        self.global_embed = nn.Sequential(*global_embed)
+        if global_embed_dims is not None:
+            global_embed_dims.append(embed_dim)
+            global_embed = nn.ModuleList()
+            for dim in global_embed_dims:
+                global_embed.extend(
+                    [
+                        nn.Linear(global_input_dim, dim),
+                        nn.GELU(),
+                    ]
+                )
+                global_input_dim = dim
+            self.global_embed = nn.Sequential(*global_embed)
 
         # Transformer layers
         self.blocks = nn.ModuleList(

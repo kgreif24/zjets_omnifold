@@ -155,19 +155,19 @@ class LOfTransformer(L.LightningModule):
         self.save_hyperparameters({"run_id": run_id})
 
     # Forward pass
-    def forward(self, inputs, mask):
+    def forward(self, inputs, mask, glb_features=None):
         tracks = inputs[:, :3, :]
         if self.debug:
             return self.model(tracks)
         else:
-            return self.model(inputs, v=tracks, mask=mask)
+            return self.model(inputs, v=tracks, mask=mask, glb_features=glb_features)
 
     # Training step
     def training_step(self, batch, batch_idx):
 
         # Separate batch, make forward pass, calculate loss
-        inputs, target, mask, start_weights, _ = batch
-        output = self(inputs, mask)
+        inputs, target, mask, start_weights, glb_features = batch
+        output = self(inputs, mask, glb_features=glb_features)
         loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
 
@@ -181,7 +181,7 @@ class LOfTransformer(L.LightningModule):
 
         # Forward pass
         inputs, target, mask, start_weights, plotting = batch
-        output = self(inputs, mask)
+        output = self(inputs, mask, glb_features=plotting)
 
         # Calculate new weights
         network_weights = torch.exp(output)
@@ -231,7 +231,7 @@ class LOfTransformer(L.LightningModule):
 
         # Forward pass
         inputs, target, mask, start_weights, plotting = batch
-        output = self(inputs, mask)
+        output = self(inputs, mask, glb_features=plotting)
 
         # Calculate new weights
         network_weights = torch.exp(output)
@@ -271,8 +271,8 @@ class LOfTransformer(L.LightningModule):
 
     # Prediction step
     def predict_step(self, batch, batch_idx):
-        inputs, _, mask, _, _ = batch
-        return self(inputs, mask)
+        inputs, _, mask, _, glb_features = batch
+        return self(inputs, mask, glb_features=glb_features)
 
     # Configure optimizer
     def configure_optimizers(self):
