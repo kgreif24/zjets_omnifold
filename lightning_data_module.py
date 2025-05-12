@@ -52,6 +52,7 @@ class LOfData(L.LightningDataModule):
         target_weight_path=None,
         max_events_target=99999999,
         data_divisor=1,
+        piece=0,
         total_rank=1,
         rank=0,
         n_jets=5,
@@ -82,6 +83,9 @@ class LOfData(L.LightningDataModule):
                 Default to 1, in which case the whole dataset is used. If >1, then
                 the dataloaders will be configured to load only one piece of the
                 data for each epoch.
+            piece {int} -- The piece of the data to load. Defaults to 0, in which
+                case the first piece is loaded. This is used in conjunction with
+                the data_divisor argument.
             total_rank {int} -- The total number of GPUs in use for distributed
                 training. Defaults to 1.
             rank {int} -- The rank of the current GPU in use for distributed
@@ -147,10 +151,10 @@ class LOfData(L.LightningDataModule):
             self.target_pass190 = ak.to_numpy(
                 self.target_tree["pass190"].array(entry_stop=self.num_target)
             )
-            self.target_truth_pass190 = ak.to_numpy(
-                self.target_tree["truth_pass190"].array(entry_stop=self.num_target)
-            )
             if self.use_truth:
+                self.target_truth_pass190 = ak.to_numpy(
+                    self.target_tree["truth_pass190"].array(entry_stop=self.num_target)
+                )
                 self.target_use190 = self.target_truth_pass190
             else:
                 self.target_use190 = self.target_pass190
@@ -189,7 +193,7 @@ class LOfData(L.LightningDataModule):
 
         # By default, load the first piece. In the case where we are not
         # using a data divisor, this will be the one and only load operation
-        self.current_piece = 0
+        self.current_piece = piece
         self._rebuild_dataset("source", piece=self.current_piece)
         if self.target_file is not None:
             self._rebuild_dataset("target", piece=self.current_piece)
