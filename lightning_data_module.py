@@ -739,17 +739,12 @@ class LOfData(L.LightningDataModule):
         predictions. Only need to run predictions for the source data in general,
         so can just use the source dataset.
 
-        Note the data modules used for prediction should never divide the data since
-        we always want to predict for every event. Will include assertion that the
-        data divisor is 1.
-
         No arguments
 
         Returns:
             torch.utils.data.DataLoader -- A pytorch dataloader.
         """
 
-        assert self.data_divisor == 1
         return torch.utils.data.DataLoader(
             self.source_dataset,
             batch_size=self.batch_size,

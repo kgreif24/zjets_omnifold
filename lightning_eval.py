@@ -13,6 +13,7 @@ import os
 import time
 import argparse
 import signal
+import re
 
 import numpy as np
 import torch
@@ -26,6 +27,7 @@ from lightning_data_module import LOfData
 from plotter import Plotter
 from cli.of_config import OfConfig
 from wasserstein_metric import WassersteinOne
+import utils.subprocess_utils as su
 
 
 class OfEval:
@@ -42,7 +44,6 @@ class OfEval:
         world_size=1,
         rank=0,
         check_path=None,
-        verify=False,
         store=None,
         index=-1,
         unit_test=False,
@@ -60,8 +61,6 @@ class OfEval:
             environment.
         check_path - Defaults None, the path to the checkpoint to evaluate
             If left none, use the best model symlink
-        verify - Defaults False, if set to true forget about testing and just run
-            prediction.
         store - Defaults None, if set, store weights here instead of in the default
             location
         index - Defaults -1, the index of the ensemble to run. Add this number to the
@@ -80,7 +79,6 @@ class OfEval:
         self.step = step
         self.world_size = world_size
         self.rank = rank
-        self.verify = verify
         self.unit_test = unit_test
 
         # Modify the group name of an index is provided
@@ -132,7 +130,7 @@ class OfEval:
         )
 
         # Initialise the wandb logger
-        if self.config.wandb:
+        if self.config.wandb and self.rank == 0:
             self.wandb_logger = WandbLogger(
                 project=self.config.project_name,
                 group=self.config.group_name,
@@ -152,7 +150,7 @@ class OfEval:
             devices=1,
             logger=self.wandb_logger,
             plugins=[SLURMEnvironment(auto_requeue=False)],
-            enable_progress_bar=self.config.interactive,
+            enable_progress_bar=self.config.interactive if self.rank == 0 else False,
             fast_dev_run=unit_test,
             use_distributed_sampler=False,
         )
@@ -272,7 +270,24 @@ class OfEval:
         No arguments or returns
         """
 
-        self.trainer.test(self.model, self.d_module_test)
+        # Build data module, note we do not split the data into pieces
+        # and use distibuted evaluation for testing
+        d_module_test = LOfData(
+            source_file=self.test_source_file,
+            target_file=self.test_target_file,
+            source_weight_path=self.source_weight_file,
+            target_weight_path=self.target_weight_file,
+            max_events_target=self.config.max_events_target,
+            max_tracks=self.config.max_tracks,
+            muon_only=self.config.debug,
+            batch_size=self.config.test_batch_size,
+            split_seed=self.config.split_seed,
+            dataloader_workers=30,
+            testing=True,
+            use_truth=self.use_truth,
+        )
+
+        self.trainer.test(self.model, d_module_test)
 
     def run_prediction(self):
         """run_prediction - Run predictions over every data point in the
@@ -282,15 +297,6 @@ class OfEval:
 
         No arguments or returns
         """
-
-        # Initialize distributed processes if we are using multiple GPUs
-        if self.world_size > 1:
-            torch.distributed.init_process_group(
-                backend="nccl",
-                init_method="env://",
-                world_size=self.world_size,
-                rank=self.rank,
-            )
 
         # Build data modules
         d_module_train = LOfData(
@@ -305,7 +311,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=20,
+            dataloader_workers=30 if self.world_size > 2 else 20,
             testing=False,
             use_truth=self.use_truth,
         )
@@ -321,39 +327,44 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=20,
-            testing=False,
+            dataloader_workers=30 if self.world_size > 2 else 20,
+            testing=True,
             use_truth=self.use_truth,
         )
 
         # Run predictions, note this only produces predictions for the source events
-        predictions_train = self.trainer.predict(self.model, d_module_train)
-        predictions_train = torch.distributed.all_gather(
-            torch.cat([pred.cpu() for pred in predictions_train])
+        rank_predictions_train = self.trainer.predict(self.model, d_module_train)
+        rank_predictions_train = torch.cat(
+            [pred.cpu().flatten() for pred in rank_predictions_train]
         )
-        predictions_test = self.trainer.predict(self.model, d_module_test)
-        predictions_test = torch.distributed.all_gather(
-            torch.cat([pred.cpu() for pred in predictions_test])
+        rank_predictions_test = self.trainer.predict(self.model, d_module_test)
+        rank_predictions_test = torch.cat(
+            [pred.cpu().flatten() for pred in rank_predictions_test]
         )
+        if self.world_size > 1:
+            torch.distributed.barrier()
+            predictions_train = su.all_gather(rank_predictions_train, self.world_size)
+            predictions_train = torch.cat(predictions_train)
+            predictions_test = su.all_gather(rank_predictions_test, self.world_size)
+            predictions_test = torch.cat(predictions_test)
+        else:
+            predictions_train = rank_predictions_train
+            predictions_test = rank_predictions_test
 
         # The rest of the code is run on rank 0
         if self.rank == 0:
 
-            # Send predictions to CPU, convert to numpy, and concatenate
-            predictions_train = np.concatenate(
-                [pred.cpu().numpy().flatten() for pred in predictions_train]
-            )
-            predictions_test = np.concatenate(
-                [pred.cpu().numpy().flatten() for pred in predictions_test]
-            )
+            # Send predictions to numpy
+            predictions_train = predictions_train.numpy()
+            predictions_test = predictions_test.numpy()
 
             # Calculate network weights, can just take the exponential
             network_weights_train = np.exp(predictions_train)
             network_weights_test = np.exp(predictions_test)
 
             # Get the filters
-            pass190_train = self.d_module_train.get_source_pass190()
-            pass190_test = self.d_module_test.get_source_pass190()
+            pass190_train = d_module_train.get_source_pass190()
+            pass190_test = d_module_test.get_source_pass190()
 
             # Get start weights.
             # For iteration 1, these are vectors of 1s
@@ -363,8 +374,8 @@ class OfEval:
                 start_weights_train = np.ones_like(pass190_train, dtype=np.float32)
                 start_weights_test = np.ones_like(pass190_test, dtype=np.float32)
             else:
-                start_weights_train = self.d_module_train.get_source_network_weights()
-                start_weights_test = self.d_module_test.get_source_network_weights()
+                start_weights_train = d_module_train.get_source_network_weights()
+                start_weights_test = d_module_test.get_source_network_weights()
 
             # Calculate updated weights
             self.updated_weights_train = start_weights_train.copy()
@@ -373,10 +384,10 @@ class OfEval:
             self.updated_weights_test[pass190_test == 1] *= network_weights_test
 
             # Get all pass190s for source
-            source_pass190_train = self.d_module_train.get_source_reco_pass190()
-            source_pass190_test = self.d_module_test.get_source_reco_pass190()
-            source_truth_pass190_train = self.d_module_train.get_source_truth_pass190()
-            source_truth_pass190_test = self.d_module_test.get_source_truth_pass190()
+            source_pass190_train = d_module_train.get_source_reco_pass190()
+            source_pass190_test = d_module_test.get_source_reco_pass190()
+            source_truth_pass190_train = d_module_train.get_source_truth_pass190()
+            source_truth_pass190_test = d_module_test.get_source_truth_pass190()
 
             # Save new weights for future use
             np.savez(
@@ -394,11 +405,12 @@ class OfEval:
             )
 
             # Make and log test plots
-            root_weights_test = self.d_module_test.get_source_root_weights()
+            root_weights_test = d_module_test.get_source_root_weights()
+            plot_weights_test = self.updated_weights_test * root_weights_test
             test_plot_dict = self.test_plotter.plot(
-                self.d_module_test.get_source_all_weights(),
-                self.updated_weights_test * root_weights_test,
-                self.d_module_test.get_target_all_weights(),
+                d_module_test.get_source_all_weights(),
+                plot_weights_test,
+                d_module_test.get_target_all_weights(),
             )
             if self.config.wandb:
                 for key, histpath in test_plot_dict.items():
@@ -410,19 +422,27 @@ class OfEval:
             # Evaluate difference between reweighted truth MC and truth data
             # if this is step 2
             if self.step == 2:
-                self.compare()
+                self.compare(plot_weights_test)
 
-    def compare(self):
+        # Wait for rank 0 process to finish saving weights and plotting
+        if self.world_size > 1:
+            torch.distributed.barrier()
+
+    def compare(self, plot_weights):
         """compare - Compare the reweighted truth MC to the truth pseudodata.
 
-        No arguments or returns
+        Arguments:
+        plot_weights (np.ndarray) - Weights to apply to the truth level testing
+            MC that should produce the truth level data distribution.
+
+        Returns:
+        None
         """
 
         # Compute and log wasserstein metric with plotter class
-        root_weights_test = self.d_module_test.get_source_root_weights()
         _, w1_end = self.comp_plotter.wasserstein_distance(
             "weight",
-            self.updated_weights_test * root_weights_test,
+            plot_weights,
             "weight_mc",
         )
         print("Reweighted truth MC to truth PD Wasserstein metric:", w1_end)
@@ -432,35 +452,13 @@ class OfEval:
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
             "weight",
-            self.updated_weights_test * root_weights_test,
+            plot_weights,
             "weight_mc",
         )
         if self.config.wandb:
             for key, histpath in plot_dict.items():
                 log_name = f"comp_{key}"
                 self.wandb_logger.experiment.log({log_name: wandb.Image(str(histpath))})
-
-    def run(self):
-        """run - This function runs the evaluation routine for an omnifold classifier
-
-        No Arguments or Returns
-        """
-
-        # Run testing
-        if not self.verify:
-            print("Run testing")
-            self.run_testing()
-            if self.unit_test:
-                return
-
-        # Run prediction, unless this is pretraining
-        if self.iteration > 0:
-            print("Run predictions")
-            self.run_prediction()
-
-        # Call wandb finish to set run status to finished
-        if self.config.wandb:
-            wandb.finish()
 
 
 # ------------------------- MAIN FUNCTION -------------------------
@@ -489,9 +487,9 @@ if __name__ == "__main__":
         "--step", type=int, default=None, help="The step number for this training run"
     )
     parser.add_argument(
-        "--verify",
+        "--run_test",
         action="store_true",
-        help="If set, do not run testing, just run prediction.",
+        help="If set, run testing instead of prediction",
     )
     parser.add_argument(
         "--store",
@@ -518,14 +516,27 @@ if __name__ == "__main__":
 
     # Infer whether we are using multiple GPUs, and if so the world size and rank
     # from SLURM environment variables
-    if "SLURM_JOB_ID" in os.environ:
+    if "SLURM_JOB_ID" in os.environ and "SLURM_NTASKS" in os.environ:
         world_size = int(os.environ["SLURM_NTASKS"])
         rank = int(os.environ["SLURM_PROCID"])
     else:
         world_size = 1
         rank = 0
 
-    print(f"Running with world size {world_size} and rank {rank}")
+    # Set distributed environment variables
+    if world_size > 1:
+        nodelist = re.split(r"[\[\],]", os.environ.get("SLURM_JOB_NODELIST", "localhost"))
+        os.environ["MASTER_ADDR"] = nodelist[0] + nodelist[1]
+        os.environ["MASTER_PORT"] = "29500"
+
+    # Initialize distributed processes if we are using multiple GPUs
+    if world_size > 1:
+        torch.distributed.init_process_group(
+            backend="gloo",
+            init_method="env://",
+            world_size=world_size,
+            rank=rank,
+        )
 
     # Run the evaluation
     evaluator = OfEval(
@@ -535,8 +546,15 @@ if __name__ == "__main__":
         world_size=world_size,
         rank=rank,
         check_path=args.check_path,
-        verify=args.verify,
         store=args.store,
         index=args.index,
     )
-    evaluator.run()
+    if args.run_test:
+        evaluator.run_testing()
+    else:
+        evaluator.run_prediction()
+
+    # Clean up distributed processes
+    if world_size > 1:
+        torch.distributed.barrier()
+        torch.distributed.destroy_process_group()

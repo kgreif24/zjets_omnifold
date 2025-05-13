@@ -179,8 +179,8 @@ class Omnifolder:
         # Run evaluation
         print(f"\n## Step {step} Evaluating ##\n")
 
-        # Run evaluation as a subprocess, no need to keep output
-        eval_args = [
+        # Run testing and predictions as two separate subprocesses
+        common_args = [
             "python",
             "lightning_eval.py",
             "--config_path",
@@ -192,28 +192,35 @@ class Omnifolder:
             "--index",
             str(self.index),
         ]
-        if self.use_slurm:
-            slurm_args = [
-                "srun",
-                "--nodes",
-                "1",
-                "--ntasks-per-node",
-                "1",
-                "--cpus-per-task",
-                "128",
-                "--cpu-bind=none",
-                "--mem-per-cpu=1790M",
-                "--gpus-per-task",
-                "0" if self.cfg.debug else "1",
-                "--gpu-bind=none",
-                "--overlap",
-            ]
-            eval_args = slurm_args + eval_args
-        print(eval_args)
-        process = subprocess.run(eval_args)
-        if process.returncode != 0:
-            print(f"Error running evaluation subprocess! Code {process.returncode}")
-            sys.exit(process.returncode)
+        common_slurm_args = [
+            "srun",
+            "--ntasks-per-node",
+            "1",
+            "--cpus-per-task",
+            "128",
+            "--cpu-bind=none",
+            "--mem-per-cpu=1790M",
+            "--gpus-per-task",
+            "0" if self.cfg.debug else "1",
+            "--gpu-bind=none",
+            "--overlap",
+        ]
+        for i in range(2):
+            eval_args = common_args.copy()
+            if i == 0:
+                eval_args.append("--run_test")
+            if self.use_slurm:
+                eval_slurm_args = common_slurm_args.copy()
+                if i == 1:
+                    eval_slurm_args += ["--nodes", str(self.cfg.num_nodes)]
+                else:
+                    eval_slurm_args += ["--nodes", "1"]
+                eval_args = eval_slurm_args + eval_args
+            print(eval_args)
+            process = subprocess.run(eval_args)
+            if process.returncode != 0:
+                print(f"Error running evaluation subprocess! Code {process.returncode}")
+                sys.exit(process.returncode)
 
         # Set training flag to True
         self.training = True

@@ -81,7 +81,7 @@ def test_lightning_eval(tmp_path):
             store=tmp_path,
             unit_test=True,
         )
-        evaluator.run()
+        evaluator.run_testing()
 
     except Exception:
         assert False
