@@ -98,7 +98,7 @@ def all_gather(q, ws):
     local_size = torch.tensor(q.size(), device=q.device)
     all_sizes = [torch.zeros_like(local_size) for _ in range(ws)]
     dist.all_gather(all_sizes, local_size)
-    max_size = max(all_sizes)
+    max_size = torch.max(torch.stack(all_sizes))
 
     size_diff = max_size.item() - local_size.item()
     if size_diff:
