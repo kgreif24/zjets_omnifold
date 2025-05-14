@@ -50,6 +50,7 @@ class LOfData(L.LightningDataModule):
         target_file=None,
         source_weight_path=None,
         target_weight_path=None,
+        max_events_source=99999999,
         max_events_target=99999999,
         data_divisor=1,
         piece=0,
@@ -76,6 +77,9 @@ class LOfData(L.LightningDataModule):
                 for the source data
             target_weight_path {string} -- Path to a .npz file containing weights
                 for the target data
+            max_events_source {int} -- The maximum number of events to consider
+                in the source data. Defaults to np.inf which means all events are
+                considered.
             max_events_target {int} -- The maximum number of events to consider
                 in the target data. Defaults to np.inf which means all events are
                 considered.
@@ -113,6 +117,7 @@ class LOfData(L.LightningDataModule):
         self.target_file = target_file
         self.source_weight_path = source_weight_path
         self.target_weight_path = target_weight_path
+        self.max_events_source = max_events_source
         self.max_events_target = max_events_target
         self.data_divisor = data_divisor
         self.total_rank = total_rank
@@ -130,6 +135,8 @@ class LOfData(L.LightningDataModule):
         # for the source dataset
         self.source_tree = uproot.open(self.source_file)["OmniTree"]
         self.num_source = self.source_tree.num_entries
+        if self.num_source > self.max_events_source:
+            self.num_source = self.max_events_source
         self.source_pass190 = ak.to_numpy(
             self.source_tree["pass190"].array(entry_stop=self.num_source)
         )
@@ -480,9 +487,12 @@ class LOfData(L.LightningDataModule):
                 net_weights = weight_file["test"]
             else:
                 net_weights = weight_file["train"]
-                if which_file == "target":
-                    root_weights = root_weights[: int(self.max_events_target)]
-                    net_weights = net_weights[: int(self.max_events_target)]
+            if which_file == "source" and len(net_weights) > self.max_events_source:
+                net_weights = net_weights[: int(self.max_events_source)]
+                root_weights = root_weights[: int(self.max_events_source)]
+            elif which_file == "target" and len(net_weights) > self.max_events_target:
+                root_weights = root_weights[: int(self.max_events_target)]
+                net_weights = net_weights[: int(self.max_events_target)]
 
         return net_weights, root_weights
 

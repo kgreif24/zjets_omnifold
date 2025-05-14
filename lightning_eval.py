@@ -257,7 +257,7 @@ class OfEval:
                     self.config.mc_test_path,
                     self.config.truth_data_path,
                     self.comp_dir,
-                    use_truth=self.use_truth,
+                    use_truth=True,
                     labels=("TruthMC", "TruthPD"),
                     verbosity=2,
                     max_events=self.config.max_events_target,
@@ -277,7 +277,9 @@ class OfEval:
             target_file=self.test_target_file,
             source_weight_path=self.source_weight_file,
             target_weight_path=self.target_weight_file,
-            max_events_target=self.config.max_events_target,
+            # Limit the number of events for calculating AUC and Wasserstein
+            max_events_source=500000,
+            max_events_target=500000,
             max_tracks=self.config.max_tracks,
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
@@ -441,7 +443,7 @@ class OfEval:
 
         # Compute and log wasserstein metric with plotter class
         _, w1_end = self.comp_plotter.wasserstein_distance(
-            "weight",
+            "weight_mc",
             plot_weights,
             "weight_mc",
         )
@@ -451,7 +453,7 @@ class OfEval:
 
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
-            "weight",
+            "weight_mc",
             plot_weights,
             "weight_mc",
         )
@@ -526,7 +528,7 @@ if __name__ == "__main__":
     # Set distributed environment variables
     if world_size > 1:
         nodelist = re.split(
-            r"[\[\],]", os.environ.get("SLURM_JOB_NODELIST", "localhost")
+            r"[\[\],-]", os.environ.get("SLURM_JOB_NODELIST", "localhost")
         )
         os.environ["MASTER_ADDR"] = nodelist[0] + nodelist[1]
         os.environ["MASTER_PORT"] = "29500"

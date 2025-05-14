@@ -346,7 +346,7 @@ class Plotter:
         end_weights = np.concatenate((source_end, target), axis=0)
 
         # Calculate distances
-        w1 = wasserstein_metric.WassersteinOne()
+        w1 = wasserstein_metric.WassersteinOne(sync_on_compute=False)
         w1.update(w1_data, start_weights, labels)
         w1_start_value = w1.compute(from_torch=False)
         w1.reset()
