@@ -525,7 +525,9 @@ if __name__ == "__main__":
 
     # Set distributed environment variables
     if world_size > 1:
-        nodelist = re.split(r"[\[\],]", os.environ.get("SLURM_JOB_NODELIST", "localhost"))
+        nodelist = re.split(
+            r"[\[\],]", os.environ.get("SLURM_JOB_NODELIST", "localhost")
+        )
         os.environ["MASTER_ADDR"] = nodelist[0] + nodelist[1]
         os.environ["MASTER_PORT"] = "29500"
 
