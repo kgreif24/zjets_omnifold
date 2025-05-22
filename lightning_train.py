@@ -1,4 +1,4 @@
-""" lightning_train.py - This file defines the "OfTrain" class, which handles the setup
+"""lightning_train.py - This file defines the "OfTrain" class, which handles the setup
 and training for an omnifolder classifier using pytorch lightning. It also defines the
 "main" function, which will be called from the Omnifolder class as a subprocess for
 easy parallelism.
@@ -8,6 +8,7 @@ Last updated 02/21/2025
 python3
 """
 
+import re
 import os
 import time
 import argparse
@@ -390,16 +391,72 @@ class OfTrain:
         )
 
         # Make symlink to best model using rank 0 process
-        best_model_path = self.checkpoints.best_model_path
-        best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
+        # Note this includes a very hacky method of preventing the best model
+        # checkpoint from being an early checkpoint that lucked into a low wasserstein
+        # distance early in training. The code requires that the best model have at
+        # least 2000 steps of training.
         if self.trainer.global_rank == 0:
-            if os.path.exists(best_model_link):
+
+            # Set the minimum steps
+            if self.iteration > 0 and not (self.config.debug or self.unit_test):
+                min_steps = self.config.min_checkpoint_steps
+            else:
+                min_steps = 0
+
+            # Find the best model path
+            best_model_path = self.checkpoints.best_model_path
+            best_model_step = self._extract_step_from_checkpoint(best_model_path)
+            # If the best model step is less than the minimum steps, just take
+            # the oldest checkpoint above the minimum steps
+            if best_model_step < min_steps:
+                checkpoint_list = glob.glob(f"{self.checkpoint_dir}/epoch*.ckpt")
+                checkpoint_list = [
+                    c
+                    for c in checkpoint_list
+                    if self._extract_step_from_checkpoint(c) >= min_steps
+                ]
+                if len(checkpoint_list) == 0:
+                    raise ValueError(
+                        f"Could not find a checkpoint with at least {min_steps} steps!"
+                    )
+                checkpoint_list = sorted(
+                    checkpoint_list, key=os.path.getmtime, reverse=False
+                )
+                best_model_path = os.path.basename(checkpoint_list[0])
+
+            # Make the symlink
+            best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
+            if os.path.lexists(best_model_link):
                 os.remove(best_model_link)
+            rank_zero_info(f"Best model path: {best_model_path}")
             os.symlink(best_model_path, best_model_link)
 
         # Close W&B
         if self.config.wandb:
             wandb.finish()
+
+    def _extract_step_from_checkpoint(self, checkpoint_path):
+        """_extract_step_from_checkpoint - This function extracts the step from a
+        checkpoint path. This is used to determine which checkpoint to set
+        as the best model.
+
+        Arguments:
+        checkpoint_path - The path to the checkpoint file
+
+        Returns:
+        step - The step number for this checkpoint
+        """
+
+        # Get the step from the checkpoint path
+        # Assumes Pytorch Lightning's format like '...step=1234...' in the filename
+        match = re.search(r"step=(\d+)", os.path.basename(checkpoint_path))
+        if match:
+            step = int(match.group(1))
+        else:
+            raise ValueError(
+                f"Could not extract step from checkpoint path: {checkpoint_path}"
+            )
+        return step
 
 
 # ------------------ MAIN FUNCTION ------------------

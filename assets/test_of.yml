@@ -125,6 +125,9 @@ s2_linear_steps: 45000
 # Decay with iteration for step two trainings maximum learning rate
 s2_lr_decay: 0.700000000
 
+# The minimum number of steps for selecting a checkpoint in the Omnifold iterations
+min_checkpoint_steps: 2000
+
 # Use wandb for logging
 wandb: False
 

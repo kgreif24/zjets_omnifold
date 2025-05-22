@@ -1,4 +1,4 @@
-""" of_config.py - This class implements a CLI for the Omnifold algorithm.
+"""of_config.py - This class implements a CLI for the Omnifold algorithm.
 All of the needed hyper-parameters for the algorithm can be controlled with this class.
 
 Author: Kevin Greif
@@ -302,6 +302,15 @@ class OfConfig:
             type=float,
             default=0.7,
             help="Decay with iteration for step two trainings maximum learning rate",
+        )
+        self.parser.add_argument(
+            "--min_checkpoint_steps",
+            type=int,
+            default=2000,
+            help=(
+                "The minimum number of steps for selecting a checkpoint "
+                "in the Omnifold iterations"
+            ),
         )
 
         # Logging
