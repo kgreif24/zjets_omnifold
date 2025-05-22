@@ -179,41 +179,14 @@ class Omnifolder:
         # Run evaluation
         print(f"\n## Step {step} Evaluating ##\n")
 
-        # Run evaluation as a subprocess, no need to keep output
-        eval_args = [
-            "python",
-            "lightning_eval.py",
-            "--config_path",
-            self.config_path,
-            "--iteration",
-            str(self.current_iteration),
-            "--step",
-            str(step),
-            "--index",
-            str(self.index),
-        ]
-        if self.use_slurm:
-            slurm_args = [
-                "srun",
-                "--nodes",
-                "1",
-                "--ntasks-per-node",
-                "1",
-                "--cpus-per-task",
-                "128",
-                "--cpu-bind=none",
-                "--mem-per-cpu=1790M",
-                "--gpus-per-task",
-                "0" if self.cfg.debug else "1",
-                "--gpu-bind=none",
-                "--overlap",
-            ]
-            eval_args = slurm_args + eval_args
-        print(eval_args)
-        process = subprocess.run(eval_args)
-        if process.returncode != 0:
-            print(f"Error running evaluation subprocess! Code {process.returncode}")
-            sys.exit(process.returncode)
+        # Run testing and predictions as two separate subprocesses
+        for i in range(2):
+            eval_args = self._create_eval_args(is_test=i == 0)
+            print(eval_args)
+            process = subprocess.run(eval_args)
+            if process.returncode != 0:
+                print(f"Error running evaluation subprocess! Code {process.returncode}")
+                sys.exit(process.returncode)
 
         # Set training flag to True
         self.training = True
@@ -222,6 +195,55 @@ class Omnifolder:
         self.current_step = (self.current_step % 2) + 1
 
         print(f"Finished step {step}!!")
+
+    def _create_eval_args(self, is_test):
+        """_create_eval_args - This function creates the arguments for testing and
+        prediction subprocesses. It is used to avoid code duplication.
+        Arguments:
+            is_test - True if we are running the test, False if we are running
+                the prediction
+        Returns:  
+            {list} - List of arguments for the subprocess
+        """
+
+        # Create common arguments
+        eval_args = [
+            "python",
+            "lightning_eval.py",
+            "--config_path",
+            self.config_path,
+            "--iteration",
+            str(self.current_iteration),
+            "--step",
+            str(self.current_step),
+            "--index",
+            str(self.index),
+        ]
+        slurm_args = [
+            "srun",
+            "--ntasks-per-node",
+            "1",
+            "--cpus-per-task",
+            "128",
+            "--cpu-bind=none",
+            "--mem-per-cpu=1790M",
+            "--gpus-per-task",
+            "0" if self.cfg.debug else "1",
+            "--gpu-bind=none",
+            "--overlap",
+        ]
+
+        # Add test argument
+        if is_test:
+            eval_args.append("--run_test")
+        if self.use_slurm:
+            if not is_test:
+                slurm_args += ["--nodes", str(self.cfg.num_nodes)]
+            else:
+                slurm_args += ["--nodes", "1"]
+            eval_args = slurm_args + eval_args
+
+        return eval_args
 
     def _infer_next_step(self):
         """_infer_next_step - This function will examine the directory structure for

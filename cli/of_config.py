@@ -1,4 +1,4 @@
-""" of_config.py - This class implements a CLI for the Omnifold algorithm.
+"""of_config.py - This class implements a CLI for the Omnifold algorithm.
 All of the needed hyper-parameters for the algorithm can be controlled with this class.
 
 Author: Kevin Greif
@@ -71,7 +71,7 @@ class OfConfig:
             default=(
                 "/pscratch/sd/k/kgreif/data/"
                 "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "PreTrain_shuffled.root"
+                "Pretrain_shuffled.root"
             ),
             help="Path to the source file to use in pretraining",
         )
@@ -90,8 +90,8 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_"
-                "train_Mar1023_shuffled.root"
+                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
+                "Train_shuffled.root"
             ),
             help="Path for the MC training data",
         )
@@ -100,8 +100,8 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_"
-                "test_Mar0723_shuffled.root"
+                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
+                "Test_shuffled.root"
             ),
             help="Path for the MC testing data",
         )
@@ -110,7 +110,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All_shuffled.root"
+                "Pseudodata_WithSherapaNoReweighting_12May2025_shuffled.root"
             ),
             help="Path for the data",
         )
@@ -119,7 +119,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root"
+                "Sum_Sherpa2211DY_Dibo_EW_Top_PosWeights_WithTracks_All_shuffled.root"
             ),
             help="Path to the truth pseudodata",
         )
@@ -234,7 +234,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_max_steps",
             type=int,
-            default=4000,
+            default=8000,
             help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
@@ -264,7 +264,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s2_min_lr",
             type=float,
-            default=0.00005,
+            default=0.00001,
             help="Minimum learning rate for step two training",
         )
         self.parser.add_argument(
@@ -302,6 +302,15 @@ class OfConfig:
             type=float,
             default=0.7,
             help="Decay with iteration for step two trainings maximum learning rate",
+        )
+        self.parser.add_argument(
+            "--min_checkpoint_steps",
+            type=int,
+            default=2000,
+            help=(
+                "The minimum number of steps for selecting a checkpoint "
+                "in the Omnifold iterations"
+            ),
         )
 
         # Logging
