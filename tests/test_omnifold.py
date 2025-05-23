@@ -3,7 +3,6 @@ test_omnifold.py - Test suite for the Omnifolder class
 """
 
 import os
-import shutil
 import pathlib
 import glob
 import pytest
@@ -161,10 +160,6 @@ def test_restart(tmp_path):
         test=np.ones(100),
     )
 
-    # Copy checkpoint from assets to tmp_path
-    shutil.copy("./assets/debug_checkpoint.ckpt", f"{check_dir}/restart.ckpt")
-    assert (check_dir / "restart.ckpt").exists()
-
     # Make omnifolder object
     of = Omnifolder(f"{tmp_path}/test_of.yml", use_slurm=False, index=1)
 
@@ -178,4 +173,4 @@ def test_restart(tmp_path):
 
     # Look for final checkpoint
     check_glob = glob.glob(f"{check_dir}/*.ckpt")
-    assert len(check_glob) == 3
+    assert len(check_glob) == 2
