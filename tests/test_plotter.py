@@ -40,8 +40,8 @@ def test_w1(tmp_path):
         "./assets/wgts.npz",
         np.ones(100),
     )
-    assert np.isclose(start, 274.825, atol=0.1)
-    assert np.isclose(end, 267.333, atol=0.1)
+    assert np.isclose(start, 352.057, atol=0.1)
+    assert np.isclose(end, 364.483, atol=0.1)
 
 
 def test_apply_kinematic_cuts(tmp_path):

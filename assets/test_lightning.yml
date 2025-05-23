@@ -44,6 +44,9 @@ max_tracks: 264
 # Maximum number of events to use in the target data
 max_events_target: 500000
 
+# Keyword of the systematic variation to apply to MC. If this is None, then no systematic variation is used
+syst_kw: null
+
 # Batch size for training
 batch_size: 10
 

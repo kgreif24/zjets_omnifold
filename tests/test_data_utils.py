@@ -98,6 +98,33 @@ def test_get_kinematics():
     assert np.all(np.count_nonzero(ind1[:, 0, :] == -1, axis=1) == 2)
 
 
+def test_get_kinematics_syst():
+
+    # Hardcode the location of the event sample
+    sample = "./assets/evts_000_100.root"
+    f = uproot.open(sample)
+    t = f["OmniTree"]
+    p190 = ak.to_numpy(t["pass190"].array())
+
+    # Get nominal kinematics
+    nominal_kinematics, nominal_indices = du.get_kinematics(t)
+    assert len(nominal_kinematics) == np.sum(p190)
+
+    # Get systematic kinematics
+    trackeff_kinematics, trackeff_indices = du.get_kinematics(t, syst_kw="track_eff")
+    assert len(trackeff_kinematics) == np.sum(p190)
+
+    # Count tracks and assert track efficiency varied data has fewer
+    nominal_count = ak.to_numpy(ak.count(nominal_kinematics[:, 0, :], axis=1))
+    trackeff_count = ak.to_numpy(ak.count(trackeff_kinematics[:, 0, :], axis=1))
+    assert np.all(nominal_count >= trackeff_count)
+
+    # Calculate HT and assert that nominal is greater than track efficiency
+    nominal_ht = ak.to_numpy(np.sum(np.exp(trackeff_kinematics[:, 0, :]), axis=1))
+    trackeff_ht = ak.to_numpy(np.sum(np.exp(trackeff_kinematics[:, 0, :]), axis=1))
+    assert np.all(nominal_ht >= trackeff_ht)
+
+
 def test_get_observables():
 
     # Hardcode the location of the event sample
@@ -109,6 +136,39 @@ def test_get_observables():
     # Assert we have 100 events and 2 vars
     plotting = du.get_observables(t, ["Ntracks", "pT_ll"])
     assert plotting.shape == (np.sum(p190), 2)
+
+
+def test_get_observables_syst():
+
+    # Hardcode the location of the event sample
+    sample = "./assets/evts_000_100.root"
+    f = uproot.open(sample)
+    t = f["OmniTree"]
+    p190 = ak.to_numpy(t["pass190"].array())
+
+    # Get obserable keys
+    nominal_keys = du.get_w1_obs()
+    trackeff_keys = du.get_w1_obs(syst_kw="track_eff")
+    assert len(nominal_keys) == len(trackeff_keys)
+
+    # Filter out 3 keys
+    nominal_3keys = ["Ntracks", "HT_tracks", "pT_ll"]
+    trackeff_3keys = ["syst_TrackFilter_Ntracks", "syst_TrackFilter_HT_tracks", "pT_ll"]
+    assert all(
+        [key in nominal_keys for key in nominal_3keys]
+    )
+    assert all(
+        [key in trackeff_keys for key in trackeff_3keys]
+    )
+
+    # Get nominal and syst varied observables
+    nominal_obs = du.get_observables(t, nominal_3keys)
+    trackeff_obs = du.get_observables(t, trackeff_3keys)
+    assert nominal_obs.shape == trackeff_obs.shape == (np.sum(p190), 3)
+
+    assert np.all(nominal_obs[:, 0] >= trackeff_obs[:, 0])
+    assert np.all(nominal_obs[:, 1] + 1e-4 >= trackeff_obs[:, 1])
+    assert np.all(np.isclose(nominal_obs[:, 2], trackeff_obs[:, 2], rtol=1e-4))
 
 
 def test_stack():

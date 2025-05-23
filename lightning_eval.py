@@ -165,6 +165,7 @@ class OfEval:
         # For step one:
         if self.step == 1:
             self.use_truth = False
+            self.use_syst_kw = self.config.syst_kw
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
@@ -197,6 +198,7 @@ class OfEval:
         # For step two:
         if self.step == 2:
             self.use_truth = True
+            self.use_syst_kw = None
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
@@ -287,6 +289,7 @@ class OfEval:
             dataloader_workers=30,
             testing=True,
             use_truth=self.use_truth,
+            syst_kw=self.use_syst_kw,
         )
 
         self.trainer.test(self.model, d_module_test)
@@ -316,6 +319,7 @@ class OfEval:
             dataloader_workers=30 if self.world_size > 2 else 20,
             testing=False,
             use_truth=self.use_truth,
+            syst_kw=self.use_syst_kw,
         )
         d_module_test = LOfData(
             source_file=self.test_source_file,
@@ -332,6 +336,7 @@ class OfEval:
             dataloader_workers=30 if self.world_size > 2 else 20,
             testing=True,
             use_truth=self.use_truth,
+            syst_kw=self.use_syst_kw,
         )
 
         # Run predictions, note this only produces predictions for the source events

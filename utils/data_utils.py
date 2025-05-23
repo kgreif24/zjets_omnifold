@@ -340,14 +340,14 @@ def run_systematics(
     return indices, track_kinematics
 
 
-def get_w1_obs(use_truth=False, syst_kw=None):
+def get_w1_obs(get_truth=False, syst_kw=None):
     """ get_w1_obs - This function implements the logic for determining which
     keys to use for pulling observables for the wasserstein distance calculation.
     The list will depend on the "plots_config.yml" file, as well as whether we want
     truth or reco level data, and whether a systematic is applied.
 
     Arguments:
-    use_truth - If true, get the truth level data instead of reco
+    get_truth - If true, get the truth level data instead of reco
     syst_kw - keyword argument for the systematic to apply. options:
         None: nominal
         "track_eff": apply track efficiency systematic
@@ -368,11 +368,11 @@ def get_w1_obs(use_truth=False, syst_kw=None):
     }
 
     # Set prekey
-    if use_truth:
+    if get_truth:
         assert syst_kw is None, "Cannot run systematics on truth level data"
         prekey = "truth_"
     elif syst_kw is not None:
-        assert not use_truth, "Cannot run systematics on truth level data"
+        assert not get_truth, "Cannot run systematics on truth level data"
         prekey = syst_map[syst_kw]
     else:
         prekey = ""
