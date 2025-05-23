@@ -431,7 +431,7 @@ class LOfData(L.LightningDataModule):
         )
 
         # Get observables for calculating W1 metrics
-        w1_keys = du.get_w1_obs()
+        w1_keys = du.get_w1_obs(get_truth=self.use_truth)
         w1_observables = du.get_observables(
             tree,
             w1_keys,

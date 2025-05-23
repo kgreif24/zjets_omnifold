@@ -20,6 +20,7 @@ defaults: &default_plot
   verbosity_level: 1
   type: "precomputed"
   multifold: true
+  modified: []
 
 # The following sections define the configurations for different histograms.
 # Each section can override the default settings as needed.
@@ -226,6 +227,7 @@ plots:
       - 300.0
       - 1000.0
     verbosity_level: 1
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   pT_trackj2:
     <<: *default_plot
@@ -240,6 +242,7 @@ plots:
       - 100.0
       - 500.0
     verbosity_level: 1
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   y_trackj1:
     <<: *default_plot
@@ -268,6 +271,7 @@ plots:
       - 2.0
       - 2.5
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   y_trackj2:
     <<: *default_plot
@@ -296,6 +300,7 @@ plots:
       - 2.0
       - 2.5
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   phi_trackj1:
     <<: *default_plot
@@ -329,6 +334,7 @@ plots:
       - 2.8
       - 3.1516
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   phi_trackj2:
     <<: *default_plot
@@ -362,6 +368,7 @@ plots:
       - 2.8
       - 3.1516
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   m_trackj1:
     <<: *default_plot
@@ -378,6 +385,7 @@ plots:
       - 42.0
       - 70.0
     verbosity_level: 1
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   m_trackj2:
     <<: *default_plot
@@ -392,6 +400,7 @@ plots:
       - 20.0
       - 40.0
     verbosity_level: 1
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   tau1_trackj1:
     <<: *default_plot
@@ -409,6 +418,7 @@ plots:
       - 0.4
       - 0.9
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   tau1_trackj2:
     <<: *default_plot
@@ -424,6 +434,7 @@ plots:
       - 0.5
       - 0.9
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   tau2_trackj1:
     <<: *default_plot
@@ -441,6 +452,7 @@ plots:
       - 0.2
       - 0.5
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   tau2_trackj2:
     <<: *default_plot
@@ -456,6 +468,7 @@ plots:
       - 0.25
       - 0.5
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   tau3_trackj1:
     <<: *default_plot
@@ -470,6 +483,7 @@ plots:
       - 0.1
       - 0.3
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
   
   tau3_trackj2:
     <<: *default_plot
@@ -484,6 +498,7 @@ plots:
       - 0.14
       - 0.3
     verbosity_level: 2
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   Ntracks_trackj1:
     <<: *default_plot
@@ -501,6 +516,7 @@ plots:
       - 25.5
       - 39.5
     verbosity_level: 1
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   Ntracks_trackj2:
     <<: *default_plot
@@ -517,6 +533,7 @@ plots:
       - 15.5
       - 34.5
     verbosity_level: 1
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   Ntracks:
     <<: *default_plot
@@ -536,10 +553,11 @@ plots:
       - 200.0
     verbosity_level: 0
     multifold: false
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   sum_pT_tracks:
     <<: *default_plot
-    key: "sum_pT_tracks"
+    key: "HT_tracks"
     xlabel: "$H_{T,tracks}$ [GeV]"
     binlow: 0
     binhigh: 2000
@@ -556,6 +574,7 @@ plots:
       - 1800.0
     verbosity_level: 0
     multifold: false
+    modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   pT_tracks:
     <<: *default_plot
