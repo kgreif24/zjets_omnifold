@@ -104,18 +104,6 @@ class OfTrain:
         else:
             ws_path = None
 
-        # If the checkpoint directory contains existing checkpoints,
-        # remove them and start training again from scratch
-        # This is an unfortunate requirement given how lightning's early 
-        # stopping callback is implemented
-        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/*.ckpt")
-        if len(checkpoint_glob) > 0:
-            rank_zero_info(
-                f"Found existing checkpoints in {self.checkpoint_dir}, removing them."
-            )
-            for checkpoint in checkpoint_glob:
-                os.remove(checkpoint)
-
         # ---------------- Lightning setup ----------------
 
         # Get min/max learning rates and cycle rates depending on step
@@ -285,6 +273,18 @@ class OfTrain:
             enable_progress_bar=self.config.interactive,
             use_distributed_sampler=False,
         )
+
+        # If the checkpoint directory contains existing checkpoints,
+        # remove them and start training again from scratch
+        # This is an unfortunate requirement given how lightning's early
+        # stopping callback is implemented
+        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/*.ckpt")
+        if self.trainer.global_rank == 0 and len(checkpoint_glob) > 0:
+            rank_zero_info(
+                f"Found existing checkpoints in {self.checkpoint_dir}, removing them."
+            )
+            for checkpoint in checkpoint_glob:
+                os.remove(checkpoint)
 
         # ---------------- Data setup ----------------
 
