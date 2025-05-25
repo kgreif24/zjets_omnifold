@@ -69,7 +69,6 @@ class OfTrain:
         self.config = OfConfig(config_name=config_path)
         self.iteration = iteration
         self.step = step
-        self.restart_path = None
         self.split_seed = seed
         self.unit_test = unit_test
 
@@ -105,14 +104,6 @@ class OfTrain:
         else:
             ws_path = None
 
-        # If the checkpoint directory contains a checkpoint,
-        # we will restart training from the most recent checkpoint file
-        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/*.ckpt")
-        if len(checkpoint_glob) > 0:
-            self.restart_path = sorted(
-                checkpoint_glob, key=os.path.getmtime, reverse=True
-            )[0]
-
         # ---------------- Lightning setup ----------------
 
         # Get min/max learning rates and cycle rates depending on step
@@ -146,9 +137,8 @@ class OfTrain:
             cos_steps = self.config.s2_cos_steps
             linear_steps = self.config.s2_linear_steps
 
-        # Build lightning module from scratch if we are not given a warm start parth
-        # or a restart path
-        if (ws_path is None) and (self.restart_path is None):
+        # Build lightning module from scratch if we are not given a warm start path
+        if ws_path is None:
 
             # If using wandb, make a logger and get a new run ID
             if self.config.wandb:
@@ -208,14 +198,13 @@ class OfTrain:
                 num_layers=self.config.num_layers,
             )
 
-        # Else load the model from the restart or warm start path
+        # Else load the model from the warm start path
         else:
 
             # Note we give preference to the restart path if it exists
-            use_path = self.restart_path if self.restart_path is not None else ws_path
-            rank_zero_info(f"Loading model from path {use_path}")
+            rank_zero_info(f"Loading model from path {ws_path}")
             self.l_module = LOfTransformer.load_from_checkpoint(
-                use_path,
+                ws_path,
                 debug=self.config.debug,
                 step=self.step,
                 weight_decay=self.config.weight_decay,
@@ -226,31 +215,22 @@ class OfTrain:
                 linear_steps=linear_steps,
             )
 
-            # Get the seed from the checkpoint if this is a restart, else use seed
-            # passed into training job. Note this needs to be explicitly reset
-            # in wandb
-            if self.restart_path is not None:
-                seed = self.l_module.seed
-            else:
-                self.l_module.reset_seed(seed)
+            # Reset seed to the one provided to the training job
+            self.l_module.reset_seed(seed)
 
-            # Build wandb logger, note that we get a new run ID for a warm start
-            # but use the ID stored in the checkpoint for a restart.
+            # Build wandb logger
             # In case of warm start, need to reset the run ID in the module
             # to the ID assigned for this run by wandb
             if self.config.wandb:
-                run_id = self.l_module.run_id if self.restart_path is not None else None
                 self.wandb_logger = WandbLogger(
                     project=self.config.project_name,
                     group=self.config.group_name,
                     name=run_name,
                     save_dir=self.checkpoint_dir,
-                    id=run_id,
-                    resume="must" if self.restart_path is not None else "never",
+                    resume="never",
                 )
-                if run_id is None:
-                    run_id = self.wandb_logger.experiment.id
-                    self.l_module.reset_run_id(run_id)
+                run_id = self.wandb_logger.experiment.id
+                self.l_module.reset_run_id(run_id)
             else:
                 self.wandb_logger = None
                 run_id = "test_run"
@@ -293,6 +273,18 @@ class OfTrain:
             enable_progress_bar=self.config.interactive,
             use_distributed_sampler=False,
         )
+
+        # If the checkpoint directory contains existing checkpoints,
+        # remove them and start training again from scratch
+        # This is an unfortunate requirement given how lightning's early
+        # stopping callback is implemented
+        checkpoint_glob = glob.glob(f"{self.checkpoint_dir}/*.ckpt")
+        if self.trainer.global_rank == 0 and len(checkpoint_glob) > 0:
+            rank_zero_info(
+                f"Found existing checkpoints in {self.checkpoint_dir}, removing them."
+            )
+            for checkpoint in checkpoint_glob:
+                os.remove(checkpoint)
 
         # ---------------- Data setup ----------------
 
@@ -387,7 +379,6 @@ class OfTrain:
         self.trainer.fit(
             self.l_module,
             self.d_module,
-            ckpt_path=self.restart_path if not self.unit_test else None,
         )
 
         # Make symlink to best model using rank 0 process
