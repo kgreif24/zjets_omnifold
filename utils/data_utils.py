@@ -326,6 +326,8 @@ def run_systematics(
         key = "syst_passTrackTruthFilter_tracks"
     elif syst_kw == "jet_track_eff":
         key = "syst_passJetTrackFilter_tracks"
+    else:
+        raise ValueError(f"Systematic {syst_kw} not recognized!")
     track_filter = tree[key].array(entry_start=start, entry_stop=stop)
 
     # Broadcast the filter to the shape of the track kinematics
@@ -352,6 +354,8 @@ def get_w1_obs(get_truth=False, syst_kw=None):
         None: nominal
         "track_eff": apply track efficiency systematic
         "jet_track_eff": apply jet track efficiency systematic
+        "track_fake": apply track fake systematic
+        "track_scale": apply track scale systematic
 
     Returns:
     w1_keys - list of keys to use for pulling observables for the wasserstein
@@ -363,8 +367,8 @@ def get_w1_obs(get_truth=False, syst_kw=None):
         None: "",
         "track_eff": "syst_TrackFilter_",
         "jet_track_eff": "syst_JetTrackFilter_",
-        "track_fake": "Fake",
-        "track_scale": "pTScale",
+        "track_fake": "syst_Fake_",
+        "track_scale": "syst_pTScale_",
     }
 
     # Set prekey

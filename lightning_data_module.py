@@ -663,6 +663,9 @@ class LOfData(L.LightningDataModule):
     def get_source_pass190(self):
         return self.source_use190
 
+    def get_target_pass190(self):
+        return self.target_use190
+
     def get_source_reco_pass190(self):
         return self.source_pass190
 

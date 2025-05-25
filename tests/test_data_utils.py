@@ -120,7 +120,7 @@ def test_get_kinematics_syst():
     assert np.all(nominal_count >= trackeff_count)
 
     # Calculate HT and assert that nominal is greater than track efficiency
-    nominal_ht = ak.to_numpy(np.sum(np.exp(trackeff_kinematics[:, 0, :]), axis=1))
+    nominal_ht = ak.to_numpy(np.sum(np.exp(nominal_kinematics[:, 0, :]), axis=1))
     trackeff_ht = ak.to_numpy(np.sum(np.exp(trackeff_kinematics[:, 0, :]), axis=1))
     assert np.all(nominal_ht >= trackeff_ht)
 
