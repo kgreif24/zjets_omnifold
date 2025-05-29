@@ -4,7 +4,7 @@ and training for an omnifolder classifier using pytorch lightning. It also defin
 easy parallelism.
 
 Author: Kevin Greif
-Last updated 02/21/2025
+Last updated 05/29/2025
 python3
 """
 
@@ -20,7 +20,7 @@ import lightning as L
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 import wandb
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities.rank_zero import rank_zero_info
+from pytorch_lightning.utilities.rank_zero import rank_zero_info, rank_zero_only
 
 from cli.of_config import OfConfig
 from lightning_module import LOfTransformer
@@ -103,6 +103,15 @@ class OfTrain:
                 raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
         else:
             ws_path = None
+
+        # Set minimum and finish steps for checkpointing
+        # Set the minimum steps
+        if self.iteration > 0 and not (self.config.debug or self.unit_test):
+            self.min_steps = self.config.min_checkpoint_steps
+            self.finish_steps = self.config.checkpoint_finish_steps
+        else:
+            self.min_steps = 0
+            self.finish_steps = 99999999
 
         # ---------------- Lightning setup ----------------
 
@@ -384,73 +393,129 @@ class OfTrain:
             self.d_module,
         )
 
-        # Make symlink to best model using rank 0 process
-        # Note this includes a very hacky method of preventing the best model
-        # checkpoint from being an early checkpoint that lucked into a low wasserstein
-        # distance early in training. The code requires that the best model have at
-        # least 2000 steps of training.
-        if self.trainer.global_rank == 0:
-
-            # Set the minimum steps
-            if self.iteration > 0 and not (self.config.debug or self.unit_test):
-                min_steps = self.config.min_checkpoint_steps
-            else:
-                min_steps = 0
-
-            # Find the best model path
-            best_model_path = self.checkpoints.best_model_path
-            best_model_step = self._extract_step_from_checkpoint(best_model_path)
-            # If the best model step is less than the minimum steps, just take
-            # the oldest checkpoint above the minimum steps
-            if best_model_step < min_steps:
-                checkpoint_list = glob.glob(f"{self.checkpoint_dir}/epoch*.ckpt")
-                checkpoint_list = [
-                    c
-                    for c in checkpoint_list
-                    if self._extract_step_from_checkpoint(c) >= min_steps
-                ]
-                if len(checkpoint_list) == 0:
-                    raise ValueError(
-                        f"Could not find a checkpoint with at least {min_steps} steps!"
-                    )
-                checkpoint_list = sorted(
-                    checkpoint_list, key=os.path.getmtime, reverse=False
-                )
-                best_model_path = os.path.basename(checkpoint_list[0])
-
-            # Make the symlink
-            best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
-            if os.path.lexists(best_model_link):
-                os.remove(best_model_link)
-            rank_zero_info(f"Best model path: {best_model_path}")
-            os.symlink(best_model_path, best_model_link)
+        # On natural exit, make a symlink to the best model
+        self.cleanup_on_exit(natural_exit=True)
 
         # Close W&B
         if self.config.wandb:
             wandb.finish()
 
-    def _extract_step_from_checkpoint(self, checkpoint_path):
-        """_extract_step_from_checkpoint - This function extracts the step from a
-        checkpoint path. This is used to determine which checkpoint to set
-        as the best model.
+    @rank_zero_only
+    def cleanup_on_exit(self, natural_exit=False):
+        """ cleanup_on_exit - This function is called in two cases:
+            1. When training has finished, to make `best_model.ckpt` symlink
+            2. When the training process is going to be timed out or preempted,
+               to make a symlink if we are past the 'finish_steps' threshold.
+               Else do nothing and let checkpoints be cleared by the restarted
+               process.
+
+        Arguments:
+        natural_exit - If true, this is a normal exit after training has finished.
+            If false, this is an exit due to timeout or preemption.
+
+        No returns
+        """
+
+        # Name for the best model symlink
+        best_model_link = f"{self.checkpoint_dir}/best_model.ckpt"
+
+        # If this is a natural exit, just make a symlink to the best model
+        if natural_exit:
+            best_checkpoint = self._find_best_checkpoint()
+            if not best_checkpoint:
+                raise RuntimeError(
+                    "No checkpoints found on natural exit, cannot make symlink."
+                )
+            if os.path.lexists(best_model_link):
+                os.remove(best_model_link)
+            os.symlink(best_checkpoint, best_model_link)
+
+        # If this is a timeout or preemption, check if we are past the finish steps
+        elif self.trainer.global_steps >= self.finish_steps:
+            # Find the best checkpoint
+            best_checkpoint = self._find_best_checkpoint()
+            if not best_checkpoint:
+                raise RuntimeError(
+                    "No checkpoints found on timeout, cannot make symlink."
+                )
+            if os.path.lexists(best_model_link):
+                os.remove(best_model_link)
+            os.symlink(best_checkpoint, best_model_link)
+
+        # Else run timed out before reaching finish steps, do nothing
+        else:
+            rank_zero_info(
+                f"Run did not reach finish steps ({self.finish_steps}), "
+                "not making symlink to best model."
+            )
+
+    def _find_best_checkpoint(self):
+        """_find_best_checkpoint - This function finds the best checkpoint
+        in the checkpoint directory. It assumes that the checkpoints are named
+        in the format 'epoch=XX-step=YYYY-val_wasserstein=ZZZ.ckpt'.
+
+        Returns:
+        best_checkpoint - The path to the best checkpoint file
+        """
+
+        # Get all checkpoint files in the directory
+        checkpoint_files = glob.glob(f"{self.checkpoint_dir}/*.ckpt")
+        if not checkpoint_files:
+            raise ValueError("No checkpoint files found in the directory.")
+
+        # Drop checkpoints that are not above the minimum steps
+        checkpoint_files = [
+            f
+            for f in checkpoint_files
+            if self._extract_info_from_checkpoint(f)[0] >= self.min_steps
+        ]
+        if not checkpoint_files:
+            rank_zero_info(
+                f"No checkpoint files found with steps >= {self.min_steps}."
+            )
+            return
+
+        # Sort checkpoints above min_steps by their wasserstein distance
+        sorted_checkpoints = sorted(
+            checkpoint_files,
+            key=lambda x: self._extract_info_from_checkpoint(x)[1],
+        )
+
+        # Return the best (lowest wasserstein) checkpoint
+        return sorted_checkpoints[0]
+
+    def _extract_info_from_checkpoint(self, checkpoint_path):
+        """_extract_info_from_checkpoint - This function extracts the step
+        and validation wasserstein distance from the checkpoint path.
+        It assume the checkpoint path is in the format hardcoded into
+        the ModelCheckpoint callback above.
 
         Arguments:
         checkpoint_path - The path to the checkpoint file
 
-        Returns:
+        Returns
         step - The step number for this checkpoint
+        wasserstein - The validation wasserstein distance for this checkpoint
         """
 
-        # Get the step from the checkpoint path
-        # Assumes Pytorch Lightning's format like '...step=1234...' in the filename
-        match = re.search(r"step=(\d+)", os.path.basename(checkpoint_path))
-        if match:
-            step = int(match.group(1))
+        # Assumes format like '...val_wasserstein=12.3...step=1234...' in the filename
+        step_match = re.search(r"step=(\d+)", os.path.basename(checkpoint_path))
+        wasserstein_match = re.search(
+            r"val_wasserstein=(\d+(?:\.\d+)?)", os.path.basename(checkpoint_path)
+        )
+        if step_match:
+            step = int(step_match.group(1))
         else:
             raise ValueError(
                 f"Could not extract step from checkpoint path: {checkpoint_path}"
             )
-        return step
+        if wasserstein_match:
+            wasserstein = float(wasserstein_match.group(1))
+        else:
+            raise ValueError(
+                f"Could not extract wasserstein from checkpoint path: {checkpoint_path}"
+            )
+        return step, wasserstein
 
 
 # ------------------ MAIN FUNCTION ------------------
@@ -499,10 +564,10 @@ if __name__ == "__main__":
     # Override SIGUSR1 and SIGTERM signals to requeue
     def handle_signal(signum, frame):
         """Signal handler for the program."""
-        print(f"Received signal {signum}, requeue!.")
-        time.sleep(10)
+        print(f"Received signal {signum}, running exit routine.")
+        trainer.cleanup_on_exit(natural_exit=False)
         os.system("sync")
-        time.sleep(10)
+        time.sleep(20)
         # Requeue on timeout, not needed on preemption since it is done automatically
         if trainer.trainer.is_global_zero and signum == signal.SIGUSR1:
             print("Requeue job!")
