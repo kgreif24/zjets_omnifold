@@ -1,4 +1,4 @@
-""" data_utils.py - This file contains functions for preprocessing and handling
+"""data_utils.py - This file contains functions for preprocessing and handling
 data for the training of Omnifold discriminators.
 
 Author: Kevin Greif
@@ -83,7 +83,13 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
 
 
 def get_kinematics(
-    tree, muon_only=False, get_truth=False, start=None, stop=None, passBoth=False
+    tree,
+    muon_only=False,
+    get_truth=False,
+    start=None,
+    stop=None,
+    passBoth=False,
+    **kwargs,
 ):
     """get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenated as a single awkward array.
@@ -102,6 +108,7 @@ def get_kinematics(
     start - starting event index, optional
     stop - stopping event index, optional
     passBoth - If true, require events pass both reco and truth selection
+    **kwargs - keyword arguments for systematics to apply to track kinematics
 
     Returns:
     (ak.Array) - awkward array of the concatenated muon and track kinematics
@@ -180,12 +187,15 @@ def get_kinematics(
             axis=0,
         )
         track_kinematics = ak.concatenate([track_pt, track_eta, track_phi], axis=1)
-        indeces = ak.unflatten(
-            tree[prekey + "trackJetIndex_tracks"].array(
-                entry_start=start, entry_stop=stop
-            ),
-            1,
-            axis=0,
+
+        # Run possible systematics on track kinematics, and get indices
+        indeces, track_kinematics = run_systematics(
+            tree,
+            track_kinematics,
+            start=start,
+            stop=stop,
+            get_truth=get_truth,
+            **kwargs,
         )
 
         # Apply filter then truncate if necessary
@@ -208,7 +218,6 @@ def get_observables(
     start=None,
     stop=None,
     passBoth=False,
-    **kwargs
 ):
     """get_observables - This function will accept an uproot TTree object, and
     return the requested branches as numpy arrays.
@@ -229,7 +238,7 @@ def get_observables(
     # Initialize empty list to hold requested branches
     observables = []
 
-    # Get filter
+    # Get filter, need to know whether we want truth or reco level data
     prekey = ""
     if get_truth:
         prekey = "truth_"
@@ -245,9 +254,9 @@ def get_observables(
 
     # Loop over requested branches
     for key in key_list:
-        if get_truth:
-            key = "truth_" + key
-        this_var = ak.to_numpy(tree[key].array(entry_start=start, entry_stop=stop))
+        this_var = ak.to_numpy(
+            tree[key].array(entry_start=start, entry_stop=stop)
+        )
         observables.append(this_var)
 
     # Stack requested branches
@@ -259,14 +268,141 @@ def get_observables(
     return observables
 
 
-def get_w1_obs():
+def run_systematics(
+    tree, track_kinematics, start=None, stop=None, get_truth=False, syst_kw=None
+):
+    """run_systematics - This function will run the systematics on the track
+    kinematics. The systematics are passed in as keyword arguments, and are
+    applied to the track kinematics.
+
+    Arguments:
+    tree - uproot TTree object
+    track_kinematics - awkward array of track kinematics with shape
+        (n_events, 3, n_tracks), where the 3 is (log(pT), eta, phi)
+    start - starting event index, optional
+    stop - stopping event index, optional
+    get_truth - If true, get the truth level data instead of reco
+    syst_kw - keyword argument for the systematic to apply. options:
+        None: nominal
+        "track_eff": apply track efficiency systematic
+        "jet_track_eff": apply jet track efficiency systematic
+
+    Returns:
+    indices - numpy array of indices for the track jets
+    track_kinematics - numpy array of track kinematics with systematics applied
+    """
+
+    # Set prekey
+    prekey = ""
+    if get_truth:
+        assert syst_kw is None, "Cannot run systematics on truth level data"
+        prekey = "truth_"
+
+    # If syst_kw is None, just load the track jet indices and return
+    if syst_kw is None:
+        indices = tree[prekey + "trackJetIndex_tracks"].array(
+            entry_start=start,
+            entry_stop=stop,
+        )
+        indices = ak.unflatten(indices, 1, axis=0)
+        return indices, track_kinematics
+    # Else load the correct track jet indices
+    elif syst_kw == "track_eff":
+        indices = tree["syst_TrackFilter_trackJetIndex"].array(
+            entry_start=start, entry_stop=stop
+        )
+    elif syst_kw == "jet_track_eff":
+        indices = tree["syst_JetTrackFilter_trackJetIndex"].array(
+            entry_start=start, entry_stop=stop
+        )
+    else:
+        raise ValueError(f"Systematic {syst_kw} not recognized!")
+    indices = ak.unflatten(indices, 1, axis=0)
+
+    # Else we are running some systematic.
+    # To start we will only implement track efficiency
+    # Load track filter for efficiency systematics
+    if syst_kw == "track_eff":
+        key = "syst_passTrackTruthFilter_tracks"
+    elif syst_kw == "jet_track_eff":
+        key = "syst_passJetTrackFilter_tracks"
+    else:
+        raise ValueError(f"Systematic {syst_kw} not recognized!")
+    track_filter = tree[key].array(entry_start=start, entry_stop=stop)
+
+    # Broadcast the filter to the shape of the track kinematics
+    track_filter = ak.unflatten(track_filter, 1, axis=0)
+    bc_track_filter, _ = ak.broadcast_arrays(track_filter, track_kinematics)
+
+    # Drop tracks and indices that fail the filter
+    track_kinematics = track_kinematics[bc_track_filter == 1]
+    indices = indices[track_filter == 1]
+
+    # Return the indices and track kinematics
+    return indices, track_kinematics
+
+
+def get_w1_obs(get_truth=False, syst_kw=None):
+    """ get_w1_obs - This function implements the logic for determining which
+    keys to use for pulling observables for the wasserstein distance calculation.
+    The list will depend on the "plots_config.yml" file, as well as whether we want
+    truth or reco level data, and whether a systematic is applied.
+
+    Arguments:
+    get_truth - If true, get the truth level data instead of reco
+    syst_kw - keyword argument for the systematic to apply. options:
+        None: nominal
+        "track_eff": apply track efficiency systematic
+        "jet_track_eff": apply jet track efficiency systematic
+        "track_fake": apply track fake systematic
+        "track_scale": apply track scale systematic
+
+    Returns:
+    w1_keys - list of keys to use for pulling observables for the wasserstein
+        distance calculation
+    """
+
+    # Mapping dictionary for syst_kw to prekey in trees
+    syst_map = {
+        None: "",
+        "track_eff": "syst_TrackFilter_",
+        "jet_track_eff": "syst_JetTrackFilter_",
+        "track_fake": "syst_Fake_",
+        "track_scale": "syst_pTScale_",
+    }
+
+    # Set prekey
+    if get_truth:
+        assert syst_kw is None, "Cannot run systematics on truth level data"
+        prekey = "truth_"
+    elif syst_kw is not None:
+        assert not get_truth, "Cannot run systematics on truth level data"
+        prekey = syst_map[syst_kw]
+    else:
+        prekey = ""
+
+    # Loop through plotting config and get keys
     with open("./utils/plots_config.yml", "r") as stream:
         plots_config = yaml.safe_load(stream)
-    w1_keys = [
-        plots_config["plots"][plot]["key"]
-        for plot in plots_config["plots"]
-        if plots_config["plots"][plot]["w1_eval"]
-    ]
+    w1_keys = []
+    for plot in plots_config["plots"]:
+        # Skip the observables not used for w1 calculation
+        if not plots_config["plots"][plot]["w1_eval"]:
+            continue
+        # Check if systematic is active
+        if syst_kw is not None:
+            # Add prekey if systematic effects this observabel
+            if syst_kw in plots_config["plots"][plot]["modified"]:
+                key = prekey + plots_config["plots"][plot]["key"]
+            # Else use the key as is
+            else:
+                key = plots_config["plots"][plot]["key"]
+        # If systematic is not active, always use the prekey
+        else:
+            # Else awlays use
+            key = prekey + plots_config["plots"][plot]["key"]
+        w1_keys.append(key)
+
     return w1_keys
 
 

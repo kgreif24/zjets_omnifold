@@ -2,7 +2,6 @@
 test_lightning_module.py - Test suite for the LOfTransformer and LOfData classes
 """
 
-
 import pytest
 import numpy as np
 import uproot
@@ -27,6 +26,10 @@ def test_overfit(tmp_path):
         muon_only=True,
     )
 
+    # Get the number of source and target events
+    source_events = np.sum(data_module.get_source_pass190())
+    target_events = np.sum(data_module.get_target_pass190())
+
     # Get data loader
     dl_train = data_module.test_dataloader()
     dl_pred = data_module.test_dataloader()
@@ -38,7 +41,7 @@ def test_overfit(tmp_path):
 
     # Initialize trainer
     trainer = L.Trainer(
-        max_epochs=1000, enable_progress_bar=False, default_root_dir=tmp_path
+        max_epochs=1500, enable_progress_bar=False, default_root_dir=tmp_path
     )
 
     # Overfit
@@ -54,8 +57,12 @@ def test_overfit(tmp_path):
 
     # Pass predictions through sigmoid and check they are reasonable
     probs = 1 / (1 + np.exp(-predictions))
-    right_answers_low = np.concatenate([np.zeros(78), np.ones(100) - 0.5])
-    right_answers_high = np.concatenate([np.zeros(78) + 0.5, np.ones(100)])
+    right_answers_low = np.concatenate(
+        [np.zeros(source_events), np.ones(target_events) - 0.5]
+    )
+    right_answers_high = np.concatenate(
+        [np.zeros(source_events) + 0.5, np.ones(target_events)]
+    )
     test = np.logical_and(probs >= right_answers_low, probs <= right_answers_high)
     assert np.all(test)
 

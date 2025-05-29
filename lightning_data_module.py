@@ -64,6 +64,7 @@ class LOfData(L.LightningDataModule):
         split_seed=2,
         testing=False,
         use_truth=False,
+        syst_kw=None,
         **kwargs,
     ):
         """__init__ - This method initializes the LOfData class. It takes
@@ -108,6 +109,8 @@ class LOfData(L.LightningDataModule):
                 (not training)
             use_truth {bool} - Set to true if we want to use truth level information
                 for the data module. Defaults to false.
+            syst_kw {dict} - Keyword of the systematic variation that should be
+                activated for this data module.
             **kwargs - Passed to the OfDataset classes
         """
 
@@ -130,6 +133,7 @@ class LOfData(L.LightningDataModule):
         self.split_seed = split_seed
         self.testing = testing
         self.use_truth = use_truth
+        self.syst_kw = syst_kw
 
         # Find total number of events in source and target, and get the pass190 filters
         # for the source dataset
@@ -417,12 +421,14 @@ class LOfData(L.LightningDataModule):
             raise ValueError("Invalid file argument")
 
         # Get kinematics
+        # Note systematics are only ever applied to the source data
         kinematics, indeces = du.get_kinematics(
             tree,
             muon_only=self.muon_only,
             get_truth=self.use_truth,
             start=start,
             stop=stop,
+            syst_kw=self.syst_kw if which_file == "source" else None,
         )
 
         # Get weights, note this is for all events, without the pass190 filter
@@ -431,7 +437,10 @@ class LOfData(L.LightningDataModule):
         )
 
         # Get observables for calculating W1 metrics
-        w1_keys = du.get_w1_obs()
+        w1_keys = du.get_w1_obs(
+            get_truth=self.use_truth,
+            syst_kw=self.syst_kw if which_file == "source" else None,
+        )
         w1_observables = du.get_observables(
             tree,
             w1_keys,
@@ -653,6 +662,9 @@ class LOfData(L.LightningDataModule):
     # Methods for getting pass 190 flags
     def get_source_pass190(self):
         return self.source_use190
+
+    def get_target_pass190(self):
+        return self.target_use190
 
     def get_source_reco_pass190(self):
         return self.source_pass190

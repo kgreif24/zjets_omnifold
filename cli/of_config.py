@@ -144,6 +144,15 @@ class OfConfig:
             default=500000,
             help="Maximum number of events to use in the target data",
         )
+        self.parser.add_argument(
+            "--syst_kw",
+            type=str,
+            default=None,
+            help=(
+                "Keyword of the systematic variation to apply to MC. "
+                "If this is None, then no systematic variation is used"
+            ),
+        )
 
         # Training
         self.parser.add_argument(
