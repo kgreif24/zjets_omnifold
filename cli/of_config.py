@@ -321,6 +321,15 @@ class OfConfig:
                 "in the Omnifold iterations"
             ),
         )
+        self.parser.add_argument(
+            "--checkpoint_finish_steps",
+            type=int,
+            default=6000,
+            help=(
+                "After a given training has run this many steps, will be considered"
+                " as finished in the case of a timeout or pre-emption"
+            ),
+        )
 
         # Logging
         self.parser.add_argument(

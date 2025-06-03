@@ -131,6 +131,9 @@ s2_lr_decay: 0.700000000
 # The minimum number of steps for selecting a checkpoint in the Omnifold iterations
 min_checkpoint_steps: 2000
 
+# After a given training has run this many steps, will be considered as finished in the case of a timeout or pre-emption
+checkpoint_finish_steps: 6000
+
 # Use wandb for logging
 wandb: False
 
