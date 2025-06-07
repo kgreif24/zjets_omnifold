@@ -6,7 +6,7 @@ Class also has a method that calculates the W1 distance between the source
 and target distributions, using the WassersteinMetric class.
 
 Author: Kevin Greif
-Last updated 04/04/2025
+Last updated 06/04/2025
 python3
 """
 
@@ -50,6 +50,7 @@ class Plotter:
         max_events=1e6,
         root_files=None,
         ibu_bins=False,
+        kinematic_region=0,
     ):
         """Initializes the Plotter class with the source and target paths
         for the root files. The verbosity level controls how many plots are
@@ -74,6 +75,12 @@ class Plotter:
                 Defaults to None, in which case there should be no fastjet observables
                 in the config.
             ibu_bins (bool): If true use coarse IBU bins instead of fine bins
+            kinematic_region (int): If set to one of the following values,
+                restricts plotting to the following kinematic regions:
+                0: No cuts, all events are used.
+                1. High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
+                2. Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
+                3. Diboson enhanced: pT_j1 > 32 GeV
         """
 
         # Store instance variables
@@ -91,6 +98,7 @@ class Plotter:
         self.max_events = max_events
         self.root_files = root_files
         self.ibu_bins = ibu_bins
+        self.kinematic_region = kinematic_region
 
         # Find number of events to use in plotting
         self.source_events = self.source_tree.num_entries
@@ -108,6 +116,12 @@ class Plotter:
         self.target_pass190 = ak.to_numpy(
             self.target_tree[pull_key].array(entry_stop=self.target_events)
         )
+
+        # Apply kinematic cuts
+        if kinematic_region != 0:
+            print("Applying kinematic cuts for region:", kinematic_region)
+            assert self.verbosity < 3, "Cannot apply kinematic cuts for verbosity >= 3"
+            self.apply_kinematic_cuts(kinematic_region)
 
         # Get config from yaml
         with open("./utils/plots_config.yml", "r") as stream:
@@ -426,6 +440,11 @@ class Plotter:
             # Make histogram
             if self.ibu_bins:
                 bins = np.array(plot_dict["ibubins"])
+                if self.kinematic_region != 0 and "region_bins" in plot_dict:
+                    if str(self.kinematic_region) in plot_dict["region_bins"]:
+                        bins = np.array(
+                            plot_dict["region_bins"][str(self.kinematic_region)]
+                        )
             else:
                 bins = np.linspace(
                     plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
@@ -661,34 +680,85 @@ class Plotter:
             print(f"Error running fastjet computation: {e.stderr}")
             print(f"Return code: {e.returncode}")
 
-    def apply_kinematic_cuts(self, cuts):
-        """Applies kinematic cuts to the source_pass190 and target_pass190 vectors.
+    def apply_kinematic_cuts(self, region):
+        """apply_kinematic_cuts - Applies kinematic cuts to the source_pass190 and
+        target_pass190 vectors. Can use this to restrict the plotting to a
+        specific phase space.
 
         Args:
-            cuts (dict): A dictionary where keys are branch names and values are
-                         lambda functions defining the cut. For example:
-                         {"pT_ll": lambda x: x > 200}
+            region (int): The kinematic region to apply cuts for.
+                0: No cuts, all events are used.
+                1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
+                2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
+                3: Diboson enhanced: pT_j1 > 32 GeV
 
         Returns:
             None
         """
 
-        for branch, condition in cuts.items():
+        # Get kinematic region masks
+        source_mask = self.get_kinematic_region(region, is_source=True)
+        target_mask = self.get_kinematic_region(region, is_source=False)
 
-            # Use the truth branch if needed
-            if self.use_truth:
-                branch = "truth_" + branch
+        # Apply masks to pass190 flags
+        self.source_pass190 = np.logical_and(
+            self.source_pass190, source_mask
+        )
+        self.target_pass190 = np.logical_and(
+            self.target_pass190, target_mask
+        )
 
-            # Apply cuts to the source tree
-            source_data = ak.to_numpy(
-                self.source_tree[branch].array(entry_stop=self.source_events)
+    def get_kinematic_region(self, region, is_source=True):
+        """get_kinematic_region - This function returns a boolean mask for the
+        source or target tree that selects events in the given kinematic region.
+
+        Arguments:
+            region (int): The kinematic region to apply cuts for.
+                0: No cuts, all events are used.
+                1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
+                2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
+                3: Diboson enhanced: pT_j1 > 32 GeV
+            is_source (bool): If True, return the mask for the source tree,
+                otherwise for the target tree.
+
+        Returns:
+            np.array: Boolean mask for the events in the given kinematic region.
+        """
+
+        evts = self.source_events if is_source else self.target_events
+        get_tree = self.source_tree if is_source else self.target_tree
+        prekey = "truth_" if self.use_truth else ""
+
+        if region == 0:
+            # No cuts, all events are used
+            return np.ones(
+                self.source_events if is_source else self.target_events, dtype=bool
             )
-            source_cut = condition(source_data)
-            self.source_pass190 = np.logical_and(self.source_pass190, source_cut)
-
-            # Apply cuts to the target tree
-            target_data = ak.to_numpy(
-                self.target_tree[branch].array(entry_stop=self.target_events)
+        elif region == 1:
+            pT_j2 = ak.to_numpy(
+                get_tree[prekey + "pT_trackj2"].array(
+                    entry_stop=self.source_events if is_source else self.target_events
+                )
             )
-            target_cut = condition(target_data)
-            self.target_pass190 = np.logical_and(self.target_pass190, target_cut)
+            pT_ll = ak.to_numpy(
+                get_tree[prekey + "pT_ll"].array(
+                    entry_stop=self.source_events if is_source else self.target_events
+                )
+            )
+            return np.logical_and(pT_j2 > 50, pT_ll > 350)
+        elif region == 2:
+            m_jj, dy_jj = du.get_jj_info(
+                get_tree, use_truth=self.use_truth, stop=evts
+            )
+            return np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
+        elif region == 3:
+            m_j1 = ak.to_numpy(
+                get_tree[prekey + "pT_trackj1"].array(
+                    entry_stop=self.source_events if is_source else self.target_events
+                )
+            )
+            return m_j1 > 32
+        else:
+            raise ValueError(
+                f"Invalid kinematic region {region}. Must be one of 0, 1, 2, or 3."
+            )

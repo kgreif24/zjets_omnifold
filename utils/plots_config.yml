@@ -41,6 +41,14 @@ plots:
       - 400.0
       - 600.0
       - 800.0
+    region_bins:
+      "1":
+        - 125.0
+        - 200.0
+        - 300.0
+        - 400.0
+        - 500.0
+        - 800.0
     verbosity_level: 1
 
   pT_l2:
@@ -186,6 +194,13 @@ plots:
       - 450.0
       - 600.0
       - 1000.0
+    region_bins:
+      "1":
+        - 350.0
+        - 400.0
+        - 450.0
+        - 600.0
+        - 1000.0
     verbosity_level: 1
 
   y_ll:
@@ -226,6 +241,20 @@ plots:
       - 200.0
       - 300.0
       - 1000.0
+    region_bins:
+      "1":
+        - 50.0
+        - 100.0
+        - 150.0
+        - 200.0
+        - 300.0
+        - 1000.0
+      "3":
+        - 100.0
+        - 150.0
+        - 200.0
+        - 300.0
+        - 1000.0
     verbosity_level: 1
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
@@ -241,6 +270,13 @@ plots:
       - 50.0
       - 100.0
       - 500.0
+    region_bins:
+      "1":
+        - 50.0
+        - 75.0
+        - 100.0
+        - 150.0
+        - 500.0
     verbosity_level: 1
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
@@ -384,6 +420,20 @@ plots:
       - 32.0
       - 42.0
       - 70.0
+    region_bins:
+      "2":
+        - 0.0
+        - 7.5
+        - 10.5
+        - 13.5
+        - 17.5
+        - 25.0
+        - 70.0
+      "3":
+        - 32.0
+        - 36.0
+        - 42.0
+        - 70.0
     verbosity_level: 1
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
@@ -399,6 +449,14 @@ plots:
       - 10.0
       - 20.0
       - 40.0
+    region_bins:
+      "2":
+        - 0.0
+        - 3.5
+        - 5.0
+        - 6.5
+        - 8.5
+        - 40.0
     verbosity_level: 1
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
@@ -515,6 +573,14 @@ plots:
       - 19.5
       - 25.5
       - 39.5
+    region_bins:
+      "3":
+        - 0.5
+        - 10.5
+        - 14.5
+        - 19.5
+        - 25.5
+        - 39.5
     verbosity_level: 1
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 

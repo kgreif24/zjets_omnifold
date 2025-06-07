@@ -249,7 +249,7 @@ class OfTrain:
             logging_interval="step"
         )
         save_filename = "{epoch:02d}-{step:06d}-{val_wasserstein:.1f}"
-        n_train_steps = 1501 if (self.iteration == 0 and not self.unit_test) else None
+        n_train_steps = 800 if (self.iteration == 0 and not self.unit_test) else None
         self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
             monitor="val_wasserstein",
             filename=save_filename,
@@ -265,7 +265,7 @@ class OfTrain:
         )
 
         # Build trainer
-        val_check = 1500 if (self.iteration == 0 and not self.unit_test) else None
+        val_check = 800 if (self.iteration == 0 and not self.unit_test) else None
         devices = (
             "auto" if (self.config.debug or self.unit_test) else self.config.num_gpus
         )
@@ -431,7 +431,7 @@ class OfTrain:
             os.symlink(best_checkpoint, best_model_link)
 
         # If this is a timeout or preemption, check if we are past the finish steps
-        elif self.trainer.global_steps >= self.finish_steps:
+        elif self.trainer.global_step >= self.finish_steps:
             # Find the best checkpoint
             best_checkpoint = self._find_best_checkpoint()
             if not best_checkpoint:
@@ -482,7 +482,7 @@ class OfTrain:
         )
 
         # Return the best (lowest wasserstein) checkpoint
-        return sorted_checkpoints[0]
+        return os.path.basename(sorted_checkpoints[0])
 
     def _extract_info_from_checkpoint(self, checkpoint_path):
         """_extract_info_from_checkpoint - This function extracts the step

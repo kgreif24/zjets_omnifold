@@ -53,18 +53,17 @@ def test_apply_kinematic_cuts(tmp_path):
         tmp_path,
         labels=("Test1", "Test2"),
         verbosity=2,
+        kinematic_region=1,
     )
-
-    # Define kinematic cuts
-    cuts = {"pT_ll": lambda x: x > 200}
-
-    # Apply kinematic cuts
-    plotter.apply_kinematic_cuts(cuts)
 
     # Get pT_ll data
     source_pT_ll = plotter._get_data("pT_ll", is_target=False)
+    source_pT_trackj2 = plotter._get_data("pT_trackj2", is_target=False)
     target_pT_ll = plotter._get_data("pT_ll", is_target=True)
+    target_pT_trackj2 = plotter._get_data("pT_trackj2", is_target=True)
 
     # Check the cut worked
-    assert np.all(source_pT_ll > 200)
-    assert np.all(target_pT_ll > 200)
+    assert np.all(source_pT_ll > 350)
+    assert np.all(source_pT_trackj2 > 50)
+    assert np.all(target_pT_ll > 350)
+    assert np.all(target_pT_trackj2 > 50)
