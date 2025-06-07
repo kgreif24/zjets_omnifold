@@ -69,12 +69,12 @@ class UncertaintyPlotter(plotter.Plotter):
                 each plot produced
         """
 
-        # Form glob from pattern for weights
+        # Form glob from pattern for omnifold weights
         weights_list = sorted(glob.glob(of_weights))
         if not weights_list:
             raise ValueError(f"No files found for the pattern: {of_weights}")
 
-        # Load, truncate, and filter weights
+        # Load, truncate, and filter omnifold weights
         raw_ensemble_weights = [np.load(f)["test"] for f in weights_list]
         t_ensemble_weights = [
             ens[: self.max_events] for ens in raw_ensemble_weights
@@ -83,10 +83,15 @@ class UncertaintyPlotter(plotter.Plotter):
             ens[self.source_pass190 == 1] for ens in t_ensemble_weights
         ]
 
-        # Calculate central weights from ensemble, then truncate and filter
+        # Calculate central omnifold weights from ensemble, then truncate and filter
         raw_central_weights = self._calculate_central(raw_ensemble_weights)
         t_central_weights = raw_central_weights[: self.max_events]
         central_weights = t_central_weights[self.source_pass190 == 1]
+
+        # Calculate final weights from omnifold and source weights
+        source = self._get_weights("weight_mc", is_target=False)
+        source = source[self.source_pass190 == 1]
+        central_weights *= source
 
         # Get target weights
         target = self._get_weights("weight_mc", is_target=True)
@@ -113,7 +118,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 print("Error compiling fastjet package. Please check your setup.")
                 print(make_process.stderr)
 
-            # Save raw central weights to .npz file for input to fastjet
+            # Save final weights to .npz file for input to fastjet
             central_weights_file = pathlib.Path(self.store) / "central_weights.npz"
             np.savez(central_weights_file, test=raw_central_weights)
 

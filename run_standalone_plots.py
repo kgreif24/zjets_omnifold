@@ -82,7 +82,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--cut_region", type=int, default=0,
-    choices=[0, 1],
+    choices=[0, 1, 2, 3],
     help="Select a kinematic region to restrict to",
 )
 args = parser.parse_args()
@@ -98,15 +98,9 @@ plotter = plotter.Plotter(
     use_pdf=args.pdf,
     max_events=args.max_events,
     root_files=args.root_files,
+    kinematic_region=args.cut_region,
+    ibu_bins=True,
 )
-
-# If requested apply kinematic cuts
-if args.cut_region == 1:
-    plotter.apply_kinematic_cuts(
-        {
-            "pT_ll": lambda x: x > 200,
-        }
-    )
 
 # Make plots
 plot_dict = plotter.plot(

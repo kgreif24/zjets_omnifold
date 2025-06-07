@@ -2,7 +2,7 @@
 to generate uncertainty plots for the final result of Omnifold.
 
 Author: Kevin Greif
-Last updated 04/01/2025
+Last updated 06/06/2025
 python3
 """
 
@@ -55,6 +55,13 @@ parser.add_argument(
         "already exist."
     ),
 )
+parser.add_argument(
+    "--cut_region",
+    type=int,
+    default=0,
+    choices=[0, 1, 2, 3],
+    help="Select a kinematic region to restrict to",
+)
 args = parser.parse_args()
 
 # Build the plotter and run
@@ -67,6 +74,7 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     max_events=args.max_events,
     root_files=args.root_files,
     ibu_bins=True,
+    kinematic_region=args.cut_region,
 )
 plot_dict = plotter.plot(
     args.weights,

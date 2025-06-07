@@ -418,3 +418,50 @@ def null_collate(batch):
     batch - the same batch of data
     """
     return batch
+
+
+def get_jj_info(tree, use_truth=False, start=None, stop=None):
+    """ get_jj_info - This function will return information about the system
+    of the two leading track jets in the event. Specifically it calculates
+    the invariant mass, and the rapidity difference. Information is
+    returned as a tuple of numpy arrays.
+
+    Arguments:
+    tree - uproot TTree object
+    use_truth - If true, get the truth level data instead of reco
+    start - starting event index, optional
+    stop - stopping event index, optional
+
+    Returns:
+    m_jj - numpy array of the invariant mass of the two leading track jets
+    dy_jj - numpy array of the rapidity difference of the two leading track jets
+    """
+
+    prekey = "truth_" if use_truth else ""
+
+    jkeys = ["pT_trackj", "y_trackj", "phi_trackj", "m_trackj"]
+    j1keys = [prekey + key + "1" for key in jkeys]
+    j2keys = [prekey + key + "2" for key in jkeys]
+
+    j1 = tree.arrays(j1keys, entry_start=start, entry_stop=stop)
+    j2 = tree.arrays(j2keys, entry_start=start, entry_stop=stop)
+
+    dy_jj = np.abs(j1[prekey + "y_trackj1"] - j2[prekey + "y_trackj2"])
+
+    px1 = j1[prekey + "pT_trackj1"] * np.cos(j1[prekey + "phi_trackj1"])
+    py1 = j1[prekey + "pT_trackj1"] * np.sin(j1[prekey + "phi_trackj1"])
+    mt1 = np.sqrt(j1[prekey + "pT_trackj1"]**2 + j1[prekey + "m_trackj1"]**2)
+    pz1 = mt1 * np.sinh(j1[prekey + "y_trackj1"])
+    E1 = mt1 * np.cosh(j1[prekey + "y_trackj1"])
+
+    px2 = j2[prekey + "pT_trackj2"] * np.cos(j2[prekey + "phi_trackj2"])
+    py2 = j2[prekey + "pT_trackj2"] * np.sin(j2[prekey + "phi_trackj2"])
+    mt2 = np.sqrt(j2[prekey + "pT_trackj2"]**2 + j2[prekey + "m_trackj2"]**2)
+    pz2 = mt2 * np.sinh(j2[prekey + "y_trackj2"])
+    E2 = mt2 * np.cosh(j2[prekey + "y_trackj2"])
+
+    m_jj = np.sqrt(
+        (E1 + E2)**2 - (px1 + px2)**2 - (py1 + py2)**2 - (pz1 + pz2)**2
+    )
+
+    return m_jj, dy_jj
