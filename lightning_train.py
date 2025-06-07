@@ -431,7 +431,7 @@ class OfTrain:
             os.symlink(best_checkpoint, best_model_link)
 
         # If this is a timeout or preemption, check if we are past the finish steps
-        elif self.trainer.global_steps >= self.finish_steps:
+        elif self.trainer.global_step >= self.finish_steps:
             # Find the best checkpoint
             best_checkpoint = self._find_best_checkpoint()
             if not best_checkpoint:
@@ -482,7 +482,7 @@ class OfTrain:
         )
 
         # Return the best (lowest wasserstein) checkpoint
-        return sorted_checkpoints[0]
+        return os.basename(sorted_checkpoints[0])
 
     def _extract_info_from_checkpoint(self, checkpoint_path):
         """_extract_info_from_checkpoint - This function extracts the step
