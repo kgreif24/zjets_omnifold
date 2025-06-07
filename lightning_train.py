@@ -249,7 +249,7 @@ class OfTrain:
             logging_interval="step"
         )
         save_filename = "{epoch:02d}-{step:06d}-{val_wasserstein:.1f}"
-        n_train_steps = 1501 if (self.iteration == 0 and not self.unit_test) else None
+        n_train_steps = 800 if (self.iteration == 0 and not self.unit_test) else None
         self.checkpoints = L.pytorch.callbacks.ModelCheckpoint(
             monitor="val_wasserstein",
             filename=save_filename,
@@ -265,7 +265,7 @@ class OfTrain:
         )
 
         # Build trainer
-        val_check = 1500 if (self.iteration == 0 and not self.unit_test) else None
+        val_check = 800 if (self.iteration == 0 and not self.unit_test) else None
         devices = (
             "auto" if (self.config.debug or self.unit_test) else self.config.num_gpus
         )
