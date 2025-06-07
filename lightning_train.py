@@ -482,7 +482,7 @@ class OfTrain:
         )
 
         # Return the best (lowest wasserstein) checkpoint
-        return os.basename(sorted_checkpoints[0])
+        return os.path.basename(sorted_checkpoints[0])
 
     def _extract_info_from_checkpoint(self, checkpoint_path):
         """_extract_info_from_checkpoint - This function extracts the step

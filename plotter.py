@@ -682,7 +682,7 @@ class Plotter:
 
     def apply_kinematic_cuts(self, region):
         """apply_kinematic_cuts - Applies kinematic cuts to the source_pass190 and
-        target_pass190 vectors. Can use this to restric the plotting to a
+        target_pass190 vectors. Can use this to restrict the plotting to a
         specific phase space.
 
         Args:
