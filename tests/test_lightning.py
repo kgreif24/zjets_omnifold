@@ -105,7 +105,7 @@ def test_checkpoint_behavior(tmp_path):
 
     # Test best checkpoint
     best_checkpoint = trainer._find_best_checkpoint()
-    assert best_checkpoint == checkpoint_paths[2]
+    assert best_checkpoint == os.path.basename(checkpoint_paths[2])
 
 
 def test_lightning_eval(tmp_path):
