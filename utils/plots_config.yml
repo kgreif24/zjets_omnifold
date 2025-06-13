@@ -642,91 +642,91 @@ plots:
     multifold: false
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
-  # pT_tracks:
-  #   <<: *default_plot
-  #   key: "pT_tracks"
-  #   xlabel: "$p_{T,tracks}$ [GeV]"
-  #   binlow: 0
-  #   binhigh: 5
-  #   ibubins:
-  #    - 0.5
-  #    - 0.75
-  #    - 1.0
-  #    - 1.3
-  #    - 1.6
-  #    - 1.9
-  #    - 2.3
-  #    - 2.7
-  #    - 3.2
-  #    - 3.7
-  #   verbosity_level: 3
-  #   type: "track"
-  #   w1_eval: false
-  #   multifold: false
+  pT_tracks:
+    <<: *default_plot
+    key: "pT_tracks"
+    xlabel: "$p_{T,tracks}$ [GeV]"
+    binlow: 0
+    binhigh: 5
+    ibubins:
+     - 0.5
+     - 0.75
+     - 1.0
+     - 1.3
+     - 1.6
+     - 1.9
+     - 2.3
+     - 2.7
+     - 3.2
+     - 3.7
+    verbosity_level: 3
+    type: "track"
+    w1_eval: false
+    multifold: false
 
-  # eta_tracks:
-  #   <<: *default_plot
-  #   key: "eta_tracks"
-  #   xlabel: '$\eta_{tracks}$'
-  #   binlow: -2.5
-  #   binhigh: 2.5
-  #   ibubins:
-  #     - -2.5
-  #     - -2.0
-  #     - -1.75
-  #     - -1.5
-  #     - -1.25
-  #     - -1.0
-  #     - -0.75
-  #     - -0.5
-  #     - -0.25
-  #     - 0.0
-  #     - 0.25
-  #     - 0.5
-  #     - 0.75
-  #     - 1.0
-  #     - 1.25
-  #     - 1.5
-  #     - 1.75
-  #     - 2.0
-  #     - 2.5
-  #   verbosity_level: 3
-  #   type: "track"
-  #   w1_eval: false
-  #   multifold: false
+  eta_tracks:
+    <<: *default_plot
+    key: "eta_tracks"
+    xlabel: '$\eta_{tracks}$'
+    binlow: -2.5
+    binhigh: 2.5
+    ibubins:
+      - -2.5
+      - -2.0
+      - -1.75
+      - -1.5
+      - -1.25
+      - -1.0
+      - -0.75
+      - -0.5
+      - -0.25
+      - 0.0
+      - 0.25
+      - 0.5
+      - 0.75
+      - 1.0
+      - 1.25
+      - 1.5
+      - 1.75
+      - 2.0
+      - 2.5
+    verbosity_level: 3
+    type: "track"
+    w1_eval: false
+    multifold: false
 
-  # phi_tracks:
-  #   <<: *default_plot
-  #   key: "phi_tracks"
-  #   xlabel: '$\phi_{tracks}$'
-  #   rlim:
-  #     - 0.9
-  #     - 1.1
-  #   linear_yscale: true
-  #   binlow: -3.2
-  #   binhigh: 3.2
-  #   ibubins:
-  #     - -3.1416
-  #     - -2.8
-  #     - -2.4
-  #     - -2.0
-  #     - -1.6
-  #     - -1.2
-  #     - -0.8
-  #     - -0.4
-  #     - 0.0
-  #     - 0.4
-  #     - 0.8
-  #     - 1.2
-  #     - 1.6
-  #     - 2.0
-  #     - 2.4
-  #     - 2.8
-  #     - 3.1516
-  #   verbosity_level: 3
-  #   type: "track"
-  #   w1_eval: false
-  #   multifold: false
+  phi_tracks:
+    <<: *default_plot
+    key: "phi_tracks"
+    xlabel: '$\phi_{tracks}$'
+    rlim:
+      - 0.9
+      - 1.1
+    linear_yscale: true
+    binlow: -3.2
+    binhigh: 3.2
+    ibubins:
+      - -3.1416
+      - -2.8
+      - -2.4
+      - -2.0
+      - -1.6
+      - -1.2
+      - -0.8
+      - -0.4
+      - 0.0
+      - 0.4
+      - 0.8
+      - 1.2
+      - 1.6
+      - 2.0
+      - 2.4
+      - 2.8
+      - 3.1516
+    verbosity_level: 3
+    type: "track"
+    w1_eval: false
+    multifold: false
 
   hm3_R04:
     <<: *default_plot
@@ -867,35 +867,35 @@ plots:
     type: "fastjet"
     multifold: false
 
-  # hLund_plane_R04:
-  #   <<: *default_plot
-  #   key: "hLund_plane_R04"
-  #   xlabel: '$\Delta R_{j1}$'
-  #   ylabel: '$z_{j1}$'
-  #   title: "Anti-kt R=0.4 Jets"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
+  hLund_plane_R04:
+    <<: *default_plot
+    key: "hLund_plane_R04"
+    xlabel: '$\Delta R_{j1}$'
+    ylabel: '$z_{j1}$'
+    title: "Anti-kt R=0.4 Jets"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
 
-  # hLund_plane_R06:
-  #   <<: *default_plot
-  #   key: "hLund_plane_R06"
-  #   xlabel: '$\Delta R_{j1}$'
-  #   ylabel: '$z_{j1}$'
-  #   title: "Anti-kt R=0.6 Jets"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
+  hLund_plane_R06:
+    <<: *default_plot
+    key: "hLund_plane_R06"
+    xlabel: '$\Delta R_{j1}$'
+    ylabel: '$z_{j1}$'
+    title: "Anti-kt R=0.6 Jets"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
 
-  # hLund_plane_R10:
-  #   <<: *default_plot
-  #   key: "hLund_plane_R10"
-  #   xlabel: '$\Delta R_{j1}$'
-  #   ylabel: '$z_{j1}$'
-  #   title: "Anti-kt R=1.0 Jets"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
+  hLund_plane_R10:
+    <<: *default_plot
+    key: "hLund_plane_R10"
+    xlabel: '$\Delta R_{j1}$'
+    ylabel: '$z_{j1}$'
+    title: "Anti-kt R=1.0 Jets"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false

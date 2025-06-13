@@ -96,7 +96,7 @@ class UncertaintyPlotter(plotter.Plotter):
         # Get central weights, nominal ensemble weights, and systematic weights
         central_weights = weights_file["nominal-ensemble-central"]
         nraw_events = len(central_weights)
-        central_weights = central_weights[:self.max_events]
+        central_weights = central_weights[: self.max_events]
         central_weights = central_weights[self.source_pass190 == 1]
 
         ens_names = [
@@ -105,7 +105,7 @@ class UncertaintyPlotter(plotter.Plotter):
         ensemble_weights = np.zeros((nraw_events, len(ens_names)))
         for i, name in enumerate(ens_names):
             ensemble_weights[:, i] = weights_file[name]
-        ensemble_weights = ensemble_weights[:self.max_events, :]
+        ensemble_weights = ensemble_weights[: self.max_events, :]
         ensemble_weights = ensemble_weights[self.source_pass190 == 1, :]
 
         systematic_weights = {}
@@ -113,7 +113,7 @@ class UncertaintyPlotter(plotter.Plotter):
             if self.active_systs[syst]["stochastic"]:
                 continue
             systematic_weights[syst] = weights_file[syst + "-central"]
-            systematic_weights[syst] = systematic_weights[syst][:self.max_events]
+            systematic_weights[syst] = systematic_weights[syst][: self.max_events]
             systematic_weights[syst] = systematic_weights[syst][
                 self.source_pass190 == 1
             ]
@@ -137,16 +137,17 @@ class UncertaintyPlotter(plotter.Plotter):
             print("Calculating track level weights!")
             central_weights_trk = self._get_track_weights(central_weights)
             target_trk = self._get_track_weights(target, is_target=True)
-            ensemble_weights_trk = []
-            for i in tqdm.tqdm(ensemble_weights.shape[1]):
-                ensemble_weights_trk.append(
-                    self._get_track_weights(ensemble_weights[:, i])
+            ensemble_weights_trk = np.zeros(
+                (len(central_weights_trk), ensemble_weights.shape[1])
+            )
+            for i in tqdm.tqdm(range(ensemble_weights.shape[1])):
+                ensemble_weights_trk[:, i] = self._get_track_weights(
+                    ensemble_weights[:, i]
                 )
-            systematic_weights_trk = {}
-            for syst in tqdm.tqdm(self.active_systs):
-                systematic_weights_trk[syst] = self._get_track_weights(
-                    systematic_weights[syst]
-                )
+            systematic_weights_trk = {
+                syst: self._get_track_weights(syst_wgt)
+                for syst, syst_wgt in tqdm.tqdm(systematic_weights.items())
+            }
 
         # Calculate fastjet observables if needed
         if self.fastjet:
@@ -160,25 +161,20 @@ class UncertaintyPlotter(plotter.Plotter):
                 print("Error compiling fastjet package. Please check your setup.")
                 print(make_process.stderr)
 
-            # Save final weights to .npz file for input to fastjet
-            central_weights_file = pathlib.Path(self.store) / "central_weights.npz"
-            np.savez(central_weights_file, test=central_weights, **systematic_weights)
-
             # Run for each root file that does not exist
             # Note we need to raise all paths by one directory
-            weights = [pathlib.Path("..") / central_weights_file, "weight_mc"]
+            weights = [pathlib.Path("..") / of_weights, "weight_mc"]
             for i, (use_weights, file) in enumerate(zip(weights, self.root_files)):
                 if recalculate and pathlib.Path(file).exists():
                     os.remove(file)
                 if not pathlib.Path(file).exists():
                     # Need to raise paths by one directory
                     up_file = pathlib.Path("..") / file
-                    up_weights_path = pathlib.Path("..") / central_weights_file
                     self._run_fastjet(
                         use_weights,
                         up_file,
-                        # Don't run ensemble for target, only for source
-                        ens_weights=up_weights_path if i == 0 else None,
+                        syst_names=(systematic_weights.keys()),
+                        nEns=ensemble_weights.shape[1],
                         is_target=(i == 1),
                     )
 
@@ -314,29 +310,22 @@ class UncertaintyPlotter(plotter.Plotter):
         norm_target_hist = norm_factor * target_hist
         ratio = source_hist / norm_target_hist
 
-        # Calculate ratios for systematic histograms
-        syst_ratios = {
-            key: self.active_systs[key]["hist"] / norm_target_hist
-            for key in self.active_systs if self.active_systs[key]["plot_ratio"]
-        }
-
         # Find method bias
         mbias = (source_hist - norm_target_hist) ** 2
         rel_mbias = np.sqrt(mbias) / norm_target_hist
 
-        # If we have uncertainties, calculate total variance and uncertainty
+        # Calculate total variance and uncertainty
         total_var = np.sum(
             [self.active_systs[key]["var"] for key in self.active_systs], axis=0
         )
         total_uncert = np.sqrt(total_var)
-        ratio_uncert = total_uncert / norm_target_hist
         rel_total_uncert = total_uncert / source_hist
 
         # Duplicate last bins for all step plots
         plot_source_hist = np.append(source_hist, source_hist[-1])
         norm_target_hist = np.append(norm_target_hist, norm_target_hist[-1])
         rel_mbias = np.append(rel_mbias, rel_mbias[-1])
-        rel_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
+        plot_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
         for key in self.active_systs:
             self.active_systs[key]["var"] = np.append(
                 self.active_systs[key]["var"], self.active_systs[key]["var"][-1]
@@ -383,17 +372,18 @@ class UncertaintyPlotter(plotter.Plotter):
         rax.errorbar(
             bin_centers,
             ratio,
-            yerr=ratio_uncert,
+            yerr=rel_total_uncert,
             fmt="o",
             color=color,
         )
-        for key, syst_ratio in syst_ratios.items():
-            rax.plot(
-                bin_centers,
-                syst_ratio,
-                ".",
-                color=self.active_systs[key]["color"],
-            )
+        for key, syst_ratio in self.active_systs.items():
+            if syst_ratio["plot_ratio"]:
+                rax.plot(
+                    bin_centers,
+                    syst_ratio["hist"] / norm_target_hist,
+                    ".",
+                    color=syst_ratio["color"],
+                )
         rax.set_ylim(0.85, 1.15)
         rax.set_yticks([0.9, 1.0, 1.1])
         rax.set_ylabel("Ratio to target")
@@ -402,14 +392,14 @@ class UncertaintyPlotter(plotter.Plotter):
         # Uncertainties
         vax.plot(
             bins,
-            rel_total_uncert,
+            plot_total_uncert,
             "--",
             color="black",
             label="Total unc.",
             drawstyle="steps-post",
         )
         vax.fill_between(
-            bins, 0, rel_total_uncert, step="post", color="gray", alpha=0.3
+            bins, 0, plot_total_uncert, step="post", color="gray", alpha=0.3
         )
         for key in self.active_systs:
             vax.plot(
@@ -447,24 +437,18 @@ class UncertaintyPlotter(plotter.Plotter):
         bins,
         source_hist,
         target_hist,
-        variances=None,
         color="blue",
     ):
         """_build_2d_uncert_plots - Produce a 2D uncertainty plot for a given
         observable. This plot will compare the source histogram to the target
         histogram, and additionally draw all of the uncertainties from the
-        variances contained in the optional variances argument detailed below.
+        variances contained in self.active_systs.
 
         Arguments:
             plot (dict): Dictionary containing the plotting style information
             bins (tuple): Tuple of two arrays of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
             target_hist (np.array): Array of target histogram values.
-            variances (dict): Dictionary of dictionaries containined the
-                following information for each uncertainty:
-                    - name (str): Name of the uncertainty.
-                    - color (str): Color for plotting the uncertainty.
-                    - values (np.array): Array of uncertainty values in each bin
             color (str): Color to use for the histogram and ratio plots.
 
         Returns:
@@ -476,24 +460,26 @@ class UncertaintyPlotter(plotter.Plotter):
         norm_target_hist = norm_factor * target_hist
         ratio = source_hist / norm_target_hist
 
-        # If we have uncertainties, calculate total variance and uncertainty
-        if variances is not None:
-            total_var = []
-            for var in variances.values():
-                total_var.append(var["values"])
-                # Convert from variances to relative uncertatinties here
-                var["values"] = np.sqrt(var["values"]) / source_hist
-            total_var = np.sum(total_var, axis=0)
-            total_uncert = np.sqrt(total_var)
-            rel_total_uncert = total_uncert / source_hist
+        # Find method bias
+        mbias = (source_hist - norm_target_hist) ** 2
+        rel_mbias = np.sqrt(mbias) / norm_target_hist
+
+        # Calculate total variance and uncertainty
+        total_var = np.sum(
+            [self.active_systs[key]["var"] for key in self.active_systs], axis=0
+        )
+        total_uncert = np.sqrt(total_var)
+        rel_total_uncert = total_uncert / source_hist
 
         # If the relative MC stat error is larger than 10%, mask the bin
         bin_mask = np.zeros_like(source_hist, dtype=bool)
-        bin_mask[variances["mc_stat"]["values"] > 0.1] = True
+        rel_mc_stat = np.sqrt(self.active_systs["mc-stat"]["var"]) / source_hist
+        bin_mask[rel_mc_stat > 0.1] = True
         ratio = np.ma.masked_where(bin_mask, ratio)
         rel_total_uncert = np.ma.masked_where(bin_mask, rel_total_uncert)
+        rel_mbias = np.ma.masked_where(bin_mask, rel_mbias)
 
-        # Define custom color map
+        # Define custom color maps
         ratio_cmap = matplotlib.cm.get_cmap("coolwarm").copy()
         ratio_cmap.set_bad(color="white")
         uncert_cmap = matplotlib.cm.get_cmap("summer").copy()
@@ -501,6 +487,8 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Plot
         fig, (ax, uax) = plt.subplots(1, 2, figsize=(12, 6))
+
+        # Ratio plot
         cax = ax.pcolormesh(
             bins[0],
             bins[1],
@@ -515,6 +503,7 @@ class UncertaintyPlotter(plotter.Plotter):
         ax.set_ylabel(plot["ylabel"])
         ax.set_title(plot["title"])
 
+        # Uncertainty plot
         cuax = uax.pcolormesh(
             bins[0],
             bins[1],
@@ -528,6 +517,19 @@ class UncertaintyPlotter(plotter.Plotter):
         uax.set_xlabel(plot["xlabel"])
         uax.set_ylabel(plot["ylabel"])
         uax.set_title(plot["title"])
-        fig.tight_layout()
 
+        # Add method bias as contours
+        uax.contour(
+            bins[0][:-1],
+            bins[1][:-1],
+            rel_mbias.T,
+            levels=[0.1],
+            colors="red",
+            linewidths=2,
+        )
+        # Add legend for contour
+        uax.plot([], [], color="red", linewidth=2, label="10% method bias")
+        uax.legend(loc="upper right")
+
+        fig.tight_layout()
         return fig

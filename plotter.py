@@ -618,7 +618,9 @@ class Plotter:
 
         return ax, axr
 
-    def _run_fastjet(self, weights, save_file, ens_weights=None, is_target=False):
+    def _run_fastjet(
+        self, weights, save_file, syst_names=None, nEns=None, is_target=False
+    ):
         """_run_fastjet - This function computes fastjet observables for a given
         data set and weights, and saves them to a root file.
         Computation is done by launching a subprocess which compiles and executes
@@ -629,11 +631,9 @@ class Plotter:
             to use for fastjet computation.
             This will be passed to the C++ code as an argument.
         save_file - str - The path to the root file where the fastjet observables
-        ens_weights - list of str - List of paths to weights that make up the
-            ensemble which we use to set the NN init uncertainty.
-            These weights will also be used to bin the data, and a set of
-            histograms for each additional weight vector will be added to the output
-            root file
+        syst_names - list of str - List of systematic names to use for
+            fastjet computation
+        nEns - int - Number of ensemble members to use for fastjet computation
         is_target - bool - If true, use the target data for fastjet computation
             instead of source.
 
@@ -656,9 +656,12 @@ class Plotter:
         ]
         if self.use_truth:
             command.append("--truth")
-        if ens_weights is not None:
-            command.append("--ens_weights")
-            command.extend([str(ens) for ens in ens_weights])
+        if syst_names is not None:
+            command.append("--syst")
+            command.append(",".join(syst_names))
+        if nEns is not None:
+            command.append("--nEns")
+            command.append(str(nEns))
 
         # Run fastjet computation
         try:
@@ -696,12 +699,8 @@ class Plotter:
         target_mask = self.get_kinematic_region(region, is_source=False)
 
         # Apply masks to pass190 flags
-        self.source_pass190 = np.logical_and(
-            self.source_pass190, source_mask
-        )
-        self.target_pass190 = np.logical_and(
-            self.target_pass190, target_mask
-        )
+        self.source_pass190 = np.logical_and(self.source_pass190, source_mask)
+        self.target_pass190 = np.logical_and(self.target_pass190, target_mask)
 
     def get_kinematic_region(self, region, is_source=True):
         """get_kinematic_region - This function returns a boolean mask for the
@@ -742,9 +741,7 @@ class Plotter:
             )
             return np.logical_and(pT_j2 > 50, pT_ll > 350)
         elif region == 2:
-            m_jj, dy_jj = du.get_jj_info(
-                get_tree, use_truth=self.use_truth, stop=evts
-            )
+            m_jj, dy_jj = du.get_jj_info(get_tree, use_truth=self.use_truth, stop=evts)
             return np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
         elif region == 3:
             m_j1 = ak.to_numpy(
