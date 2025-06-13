@@ -30,7 +30,8 @@ public :
    bool isTruth; // Flag to indicate if we are processing truth data
    // bool loadSystematics; // Flag to indicate if we are loading systematics
    string weightName;
-   vector<string> ens_weight_names;
+   int nEns;
+   vector<string> syst_weight_names;
    TString saveName;
 
    // HistoGroups
@@ -147,7 +148,7 @@ public :
    TBranch        *b_ntrackJetIndex_tracks;   //!
    TBranch        *b_trackJetIndex_tracks;   //!
 
-   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false);
+   MakeOmni(TTree*, string, TString, bool runTruth = false, int nEnsembles = 0, vector<string> syst_weights = vector<string>());
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -156,7 +157,7 @@ public :
    virtual void     Loop(Long64_t maxEvents = 0);
    virtual Bool_t   Notify();
    virtual void     Show(Long64_t entry = -1);
-   virtual vector<float> LoadWeights(string);
+   virtual vector<float> LoadWeights(string, string);
    virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight);
    virtual void     FillLund(shared_ptr<TH1D>& hz, shared_ptr<TH1D>& hdr, shared_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
 };
@@ -164,24 +165,27 @@ public :
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> ens_weights, TString outFile, bool runTruth) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, TString outFile, bool runTruth, int nEnsembles,vector<string> syst_weights) : fChain(0) 
 {
 
    // Store instance variables
    weightName = weightFile; // Store the weight file name
-   ens_weight_names = ens_weights; // Store the ensemble weights
+   nEns = nEnsembles; // Store the number of ensembles
+   syst_weight_names = syst_weights; // Store the systematics weights
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
 
    // Initialize histogram groups
-   for (unsigned int i = 0; i < ens_weights.size() + 1; ++i) {
-      string ens_w;
-      if (i == 0) {
-         ens_w = "";
-      } else {
-         ens_w = "ens_" + to_string(i) + "_";
-      }
-      histoGroups.push_back(HistoGroup(ens_w.c_str()));
+   histoGroups.push_back(HistoGroup("nominal-ensemble-central-"));
+
+   // Initialize the ensemble histograms
+   for (int i = 0; i < nEns; ++i) {
+      histoGroups.push_back(HistoGroup("nominal-ensemble-" + to_string(i) + "-"));
+   }
+
+   // Initialize the systematics histograms
+   for (const auto& syst_weight : syst_weight_names) {
+      histoGroups.push_back(HistoGroup(syst_weight + "-"));
    }
 
    // Initialize the tree

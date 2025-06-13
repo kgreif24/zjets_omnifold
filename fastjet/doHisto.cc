@@ -16,7 +16,8 @@ int main(int argc, char* argv[]){
 	TString outFile;
 	bool isTruth = false;
 	int maxEvents = 5000000;
-
+	int nEns = 0;
+	vector<string> syst_weights;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 		if (arg == "--file") {
@@ -37,20 +38,34 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
-		if (arg == "--ens_weights") {
-			// Loop through all the ens_weights arguments
-			int j = 1;
-			if (i + 1 < argc && argv[i+1][0] != '-') { // Make sure we aren't at the end of argv!
-				while (i + j < argc && argv[i+j][0] != '-') {
-					ens_weights.push_back(string(argv[i+j]));
-					j++; // Move to the next arg
+		if (arg == "--syst") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				string systList = string(argv[i+1]);
+				// Parse comma separated list into vector
+				size_t pos = 0;
+				string token;
+				while ((pos = systList.find(",")) != string::npos) {
+					token = systList.substr(0, pos);
+					syst_weights.push_back(token);
+					systList.erase(0, pos + 1);
 				}
+				syst_weights.push_back(systList); // Add the last token
+				i++; // Move to the next arg
 			} else { // Throw error if no argument provided
-				std::cerr << "--ens_weights option requires one argument." << std::endl;
+				std::cerr << "--syst option requires one argument." << std::endl;
 				return 1;
 			}
-			i += j - 1; // Move to the next arg
 		}
+		if (arg == "--nEns") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				nEns = std::stoi(argv[i+1]);
+				i++; // Move to the next arg
+			} else { // Throw error if no argument provided
+				std::cerr << "--nEns option requires one argument." << std::endl;
+				return 1;
+			}
+		}
+		
 		if (arg == "--outFile") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				outFile = TString(argv[i+1]);
@@ -91,7 +106,7 @@ int main(int argc, char* argv[]){
 	cout << "Max events: " << maxEvents << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weights, ens_weights, outFile, isTruth);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weights, outFile, isTruth, nEns, syst_weights);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;

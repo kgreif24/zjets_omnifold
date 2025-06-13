@@ -12,11 +12,11 @@
 using namespace fastjet;
 using namespace std;
 
-vector<float> MakeOmni::LoadWeights(string filename) {
+vector<float> MakeOmni::LoadWeights(string filename, string key) {
 
    // Access weights, assume we want the test weights
    cnpy::npz_t npz_file = cnpy::npz_load(filename);
-   cnpy::NpyArray array = npz_file["test"];
+   cnpy::NpyArray array = npz_file[key];
 
    // Convert to vector<float> and return
    vector<float> vec(array.data<float>(), array.data<float>() + array.num_vals);
@@ -26,18 +26,23 @@ vector<float> MakeOmni::LoadWeights(string filename) {
 
 void MakeOmni::Loop(Long64_t maxEvents) {
 
-   // Load needed weights into a vector
-   vector<vector<float>> loadedWeights;
-   if (weightName.size() >= 4 && weightName.substr(weightName.size() - 4) == ".npz") {
-      std::cout << "Loading central weights from .npz file: " << weightName << std::endl;
-      loadedWeights.push_back(LoadWeights(weightName));
-   }
+   // Load needed weights
+   vector<float> central_weights;
+   vector<vector<float>> ens_weights;
+   vector<vector<float>> syst_weights;
 
-   // If ens_weights are provided, also add these to the vector
-   if (ens_weight_names.size() > 0) {
-      for (const auto& ens_weight : ens_weight_names) {
-         loadedWeights.push_back(LoadWeights(ens_weight));
+   if (weightName != "weight_mc" && weightName != "weight") {
+
+      central_weights = LoadWeights(weightName, "nominal-ensemble-central");
+
+      for (int i = 0; i < nEns; ++i) {
+         ens_weights.push_back(LoadWeights(weightName, "nominal-ensemble-" + to_string(i)));
       }
+
+      for (int i = 0; i < syst_weight_names.size(); ++i) {
+         syst_weights.push_back(LoadWeights(weightName, syst_weight_names[i] + "-central"));
+      }
+
    }
 
    // // Define histograms here
@@ -107,6 +112,11 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
       // Apply event selection, filtering on pass190 flag
       if (pass190 == 0) {
+         continue;
+      }
+
+      // Skip events that have no tracks stored
+      if (npT_tracks == 0) {
          continue;
       }
 
@@ -202,7 +212,13 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          } else if (weightName == "weight_mc") {
             use_weight = weight_mc;
          } else {
-            use_weight = loadedWeights[i][jentry];
+            if (i == 0) {
+               use_weight = central_weights[jentry] * weight_mc;
+            } else if (i <= nEns) {
+               use_weight = ens_weights[i-1][jentry] * weight_mc;
+            } else {
+               use_weight = syst_weights[i-nEns-1][jentry] * weight_mc;
+            }
          } 
 
          // R=0.4 jets

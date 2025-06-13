@@ -26,9 +26,9 @@ parser.add_argument(
     "--weights",
     type=str,
     help=(
-        "The path to the weight files that are the output of Omnifold."
-        "Wildcards will be globbed over in order to assess the NN init"
-        "uncertainty."
+        "The path to the weight file outputted by the ensemble_weights.py script. "
+        "This file should contain all of the omnifold weights for a given iteration "
+        "of a campaign."
     ),
 )
 parser.add_argument("--store", type=str, help="The path to store the plots")

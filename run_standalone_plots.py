@@ -99,7 +99,6 @@ plotter = plotter.Plotter(
     max_events=args.max_events,
     root_files=args.root_files,
     kinematic_region=args.cut_region,
-    ibu_bins=True,
 )
 
 # Make plots

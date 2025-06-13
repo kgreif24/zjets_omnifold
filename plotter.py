@@ -376,7 +376,6 @@ class Plotter:
         weights=None,
         density=False,
         root_index=0,
-        ens_index=None,
         **kwargs,
     ):
         """_get_histogram - This function computes a histogram for a given
@@ -401,9 +400,6 @@ class Plotter:
                 form a probability density function (PDF). Default is False.
             root_index (int): Index of the root file to use for fastjet
                 observables. Default is 0, or the first root file provided.
-            ens_index (int): Index of the ensemble from which to retrieve
-                the histogram. Default is None, in which case the central
-                value is taken.
 
         Returns:
             tuple: A tuple containing the histograms for the source start,
@@ -419,11 +415,7 @@ class Plotter:
             assert self.root_files is not None
             assert root_index < len(self.root_files)
 
-            key = plot_dict["key"]
-            if ens_index is not None:
-                key = "ens_" + str(ens_index) + "_" + key
-
-            tobject = uproot.open(self.root_files[root_index])[key]
+            tobject = uproot.open(self.root_files[root_index])[plot_dict["key"]]
             if "TH2" in tobject.classname:
                 hist, binsx, binsy = tobject.to_numpy()
                 return hist, (binsx, binsy)
@@ -518,7 +510,10 @@ class Plotter:
 
             # Load weights from file
             weights = np.load(weights)
-            if use_train:
+            if "nominal-ensemble-central" in weights.files:
+                assert not use_train
+                weights = weights["nominal-ensemble-central"]
+            elif use_train:
                 weights = weights["train"]
             else:
                 weights = weights["test"]
