@@ -42,7 +42,7 @@ class OfDataset(torch.utils.data.Dataset):
             Shape should be (n_events, n_features, VAR n_tracks)
         labels (np.ndarray) - The labels for the events
         weights (np.ndarray) - The weights for the events
-        w1_obs (np.ndarray) - The W1 observables for the events, used to calculate 
+        w1_obs (np.ndarray) - The W1 observables for the events, used to calculate
             W1 metrics.
         object_indeces (np.ndarray) - The indeces of the objects to include in the
             dataset. If None, do not include one-hot encodings for the tracks in the

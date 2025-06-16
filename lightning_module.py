@@ -15,7 +15,7 @@ from pytorch_optimizer import Lion
 
 from of_transformer.of_transformer import OfTransformer
 from of_transformer.simple_network import DumbNeuralNetwork
-from wasserstein_metric import WassersteinOne
+# from wasserstein_metric import WassersteinOne
 
 
 class LOfTransformer(L.LightningModule):
@@ -118,8 +118,8 @@ class LOfTransformer(L.LightningModule):
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task="binary")
         self.test_auc = torchmetrics.classification.AUROC(task="binary")
-        self.wasserstein_val = WassersteinOne()
-        self.wasserstein_test = WassersteinOne()
+        # self.wasserstein_val = WassersteinOne()
+        # self.wasserstein_test = WassersteinOne()
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=["run_id", "debug", "step"])
@@ -166,8 +166,8 @@ class LOfTransformer(L.LightningModule):
     def training_step(self, batch, batch_idx):
 
         # Separate batch, make forward pass, calculate loss
-        inputs, target, mask, start_weights, _ = batch
-        output = self(inputs, mask)
+        inputs, target, mask, start_weights, w1_obs = batch
+        output = self(inputs, mask, glb_features=w1_obs)
         loss = self.criterion(output, target) * start_weights
         loss = loss.mean()
 
@@ -181,11 +181,11 @@ class LOfTransformer(L.LightningModule):
 
         # Forward pass
         inputs, target, mask, start_weights, plotting = batch
-        output = self(inputs, mask)
+        output = self(inputs, mask, glb_features=plotting)
 
-        # Calculate new weights
-        network_weights = torch.exp(output)
-        end_weights = network_weights * start_weights
+        # # Calculate new weights
+        # network_weights = torch.exp(output)
+        # end_weights = network_weights * start_weights
 
         # Calculate and log loss
         loss = self.criterion(output, target) * start_weights
@@ -195,8 +195,8 @@ class LOfTransformer(L.LightningModule):
         # Calculate and log AUC, note the AUROC class auto-applies sigmoid to logits
         self.val_auc.update(output, target)
 
-        # Update wasserstein metric
-        self.wasserstein_val.update(plotting, end_weights, target)
+        # # Update wasserstein metric
+        # self.wasserstein_val.update(plotting, end_weights, target)
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
@@ -215,16 +215,16 @@ class LOfTransformer(L.LightningModule):
             )
             self.val_auc.reset()
 
-            # Calculate wasserstein metric and log
-            val_wass = self.wasserstein_val.compute()
-            self.log(
-                "val_wasserstein",
-                val_wass,
-                on_epoch=True,
-                prog_bar=False,
-                sync_dist=True,
-            )
-            self.wasserstein_val.reset()
+            # # Calculate wasserstein metric and log
+            # val_wass = self.wasserstein_val.compute()
+            # self.log(
+            #     "val_wasserstein",
+            #     val_wass,
+            #     on_epoch=True,
+            #     prog_bar=False,
+            #     sync_dist=True,
+            # )
+            # self.wasserstein_val.reset()
 
     # Test step
     def test_step(self, batch, batch_idx):
@@ -233,15 +233,15 @@ class LOfTransformer(L.LightningModule):
         inputs, target, mask, start_weights, plotting = batch
         output = self(inputs, mask)
 
-        # Calculate new weights
-        network_weights = torch.exp(output)
-        end_weights = network_weights * start_weights
+        # # Calculate new weights
+        # network_weights = torch.exp(output)
+        # end_weights = network_weights * start_weights
 
         # Update AUC
         self.test_auc.update(output, target)
 
-        # Update wasserstein metric
-        self.wasserstein_test.update(plotting, end_weights, target)
+        # # Update wasserstein metric
+        # self.wasserstein_test.update(plotting, end_weights, target)
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
@@ -258,21 +258,21 @@ class LOfTransformer(L.LightningModule):
         )
         self.test_auc.reset()
 
-        # Calculate and log wasserstein metric
-        test_wass = self.wasserstein_test.compute()
-        self.log(
-            "test_wasserstein",
-            test_wass,
-            on_epoch=True,
-            prog_bar=False,
-            sync_dist=False,
-        )
-        self.wasserstein_test.reset()
+        # # Calculate and log wasserstein metric
+        # test_wass = self.wasserstein_test.compute()
+        # self.log(
+        #     "test_wasserstein",
+        #     test_wass,
+        #     on_epoch=True,
+        #     prog_bar=False,
+        #     sync_dist=False,
+        # )
+        # self.wasserstein_test.reset()
 
     # Prediction step
     def predict_step(self, batch, batch_idx):
-        inputs, _, mask, _, _ = batch
-        return self(inputs, mask)
+        inputs, _, mask, _, w1_obs = batch
+        return self(inputs, mask, glb_features=w1_obs)
 
     # Configure optimizer
     def configure_optimizers(self):
