@@ -1,4 +1,4 @@
-"""run_uncert_plots.py - This script will use the UncertaintyPlotter class 
+"""run_uncert_plots.py - This script will use the UncertaintyPlotter class
 to generate uncertainty plots for the final result of Omnifold.
 
 Author: Kevin Greif
@@ -12,6 +12,8 @@ import uncertainty_plotter
 parser = argparse.ArgumentParser(description="Run plotting functions")
 parser.add_argument("--f1", type=str, help="The path to file 1")
 parser.add_argument("--f2", type=str, help="The path to file 2")
+parser.add_argument("--hv", type=str, help="The path to the sherpa file")
+parser.add_argument("--data", type=str, help="The path to the data file")
 parser.add_argument(
     "--root_files",
     type=str,
@@ -68,6 +70,8 @@ args = parser.parse_args()
 plotter = uncertainty_plotter.UncertaintyPlotter(
     args.f1,
     args.f2,
+    args.hv,
+    args.data,
     args.store,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
