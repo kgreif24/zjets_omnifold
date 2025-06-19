@@ -3,6 +3,7 @@ test_omnifold.py - Test suite for the Omnifolder class
 """
 
 import os
+import shutil
 import pathlib
 import glob
 import pytest
@@ -17,11 +18,21 @@ from omnifold import Omnifolder
 @pytest.mark.slow
 def test_omnifold_process(tmp_path):
 
+    # Make a directory for the pretrained models
+    os.makedirs(f"{tmp_path}/pretrained_models", exist_ok=True)
+
+    # Copy the debug checkpoint to the tmp path
+    shutil.copy(
+        "./assets/debug_checkpoint.ckpt",
+        f"{tmp_path}/pretrained_models/debug_checkpoint.ckpt",
+    )
+
     # Create config object
     config = OfConfig(config_name="./assets/test_of.yml")
 
     # Overwrite the checkpoint dir with the tmp path
     config.mod_config("checkpoint_dir", tmp_path)
+    config.mod_config("pretrain_directory", f"{tmp_path}/pretrained_models")
 
     # Write the config to a file
     config.create_template(template_path=f"{tmp_path}/test_of.yml")
@@ -73,9 +84,7 @@ def test_omnifold_process(tmp_path):
     expected_net_weights = np.exp(raw_test)
     assert np.all(expected_net_weights == i1s1["network_test"])
     test_weights = i1s1["test"]
-    assert np.all(
-        test_weights[p190 == 1] == expected_net_weights
-    )
+    assert np.all(test_weights[p190 == 1] == expected_net_weights)
     assert np.all(test_weights[p190 == 0] == np.ones(len(p190[p190 == 0])))
 
     # Check that the i1s2 weights are correct
@@ -88,9 +97,7 @@ def test_omnifold_process(tmp_path):
     expected_net_weights = np.exp(raw_test)
     assert np.all(expected_net_weights == i1s2["network_test"])
     test_weights = i1s2["test"]
-    assert np.all(
-        test_weights[truth_p190 == 1] == expected_net_weights
-    )
+    assert np.all(test_weights[truth_p190 == 1] == expected_net_weights)
     assert np.all(
         test_weights[truth_p190 == 0] == np.ones(len(truth_p190[truth_p190 == 0]))
     )
