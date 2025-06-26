@@ -5,6 +5,7 @@
 #include "fastjet/ClusterSequence.hh"
 #include "fastjet/tools/Recluster.hh" 
 #include <TLorentzVector.h>
+#include <TMath.h>
 #include "jetHelpers.h"
 #include "cnpy.h"
 #include <memory>
@@ -27,71 +28,30 @@ vector<float> MakeOmni::LoadWeights(string filename, string key) {
 void MakeOmni::Loop(Long64_t maxEvents) {
 
    // Load needed weights
-   vector<float> central_weights;
+   vector<vector<float>> central_weights;
    vector<vector<float>> ens_weights;
-   vector<vector<float>> syst_weights;
 
-   if (weightName != "weight_mc" && weightName != "weight") {
-
-      central_weights = LoadWeights(weightName, "nominal-ensemble-central");
-
-      for (int i = 0; i < nEns; ++i) {
-         ens_weights.push_back(LoadWeights(weightName, "nominal-ensemble-" + to_string(i)));
+   // Load the needed weights
+   for (const auto& weight_name : weightBranchNames) {
+      if (weight_name != "weight" && weight_name != "weight_mc") {
+         central_weights.push_back(LoadWeights(weightFilename, weight_name + "-central"));
+      } else {
+         central_weights.push_back(vector<float>());
       }
-
-      for (int i = 0; i < syst_weight_names.size(); ++i) {
-         syst_weights.push_back(LoadWeights(weightName, syst_weight_names[i] + "-central"));
-      }
-
    }
 
-   // // Define histograms here
-   // // Later add code for reading binning information from config file
-
-   // // R=0.4 jets
-   // unique_ptr<TH1D> hpT_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-   // unique_ptr<TH1D> hm1_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 100));
-   // unique_ptr<TH1D> hm2_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 80));
-   // unique_ptr<TH1D> hm3_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 50));
-   // unique_ptr<TH1D> hm4_R04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 30));
-   // unique_ptr<TH1D> hEEC_R04 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-   // unique_ptr<TH1D> hLund_z_R04 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 10));
-   // unique_ptr<TH1D> hLund_dR_R04 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   // unique_ptr<TH2D> hLund_plane_R04 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-   // // R=0.6 jets
-   // unique_ptr<TH1D> hpT_R06 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-   // unique_ptr<TH1D> hEEC_R06 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-   // unique_ptr<TH1D> hLund_z_R06 = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
-   // unique_ptr<TH1D> hLund_dR_R06 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   // unique_ptr<TH2D> hLund_plane_R06 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-   // // R=1.0 jets
-   // unique_ptr<TH1D> hpT_R10 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-   // unique_ptr<TH1D> hEEC_R10 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-   // unique_ptr<TH1D> hLund_z_R10 = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
-   // unique_ptr<TH1D> hLund_dR_R10 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   // unique_ptr<TH2D> hLund_plane_R10 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-   // // CA R=0.4 jets
-   // unique_ptr<TH1D> hpT_CA04 = unique_ptr<TH1D>(new TH1D("", "", 150, 0, 1000));
-   // unique_ptr<TH1D> hEEC_CA04 = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
-   // unique_ptr<TH1D> hLund_z_CA04 = unique_ptr<TH1D>(new TH1D("", "",  10, 0, 10));
-   // unique_ptr<TH1D> hLund_dR_CA04 = unique_ptr<TH1D>(new TH1D("", "", 10, 0, 5));
-   // unique_ptr<TH2D> hLund_plane_CA04 = unique_ptr<TH2D>(new TH2D("", "", 10, 0, 5, 12, 0, 6));
-
-   // // ring around 0.6
-   // unique_ptr<TH1D> h_fracpT_ring = unique_ptr<TH1D>(new TH1D("", "", 100, 0, 1));
-   // unique_ptr<TH1D> h_fracE_ring = unique_ptr<TH1D>(new TH1D("", "", 100, 0, 1));
-
-   // // TEEC
-   // unique_ptr<TH1D> hTEEC = unique_ptr<TH1D>(new TH1D("", "", nbins, binEdges));
+   // Load the ensemble weights
+   for (int i = 0; i < nEns; ++i) {
+      ens_weights.push_back(LoadWeights(weightFilename, weightBranchNames[0] + "-" + to_string(i)));
+   }
 
    // Jet definitions to consider
+   JetDefinition jetdef_kt(kt_algorithm, 0.4);
    JetDefinition jetdef_r04(antikt_algorithm, 0.4);
    JetDefinition jetdef_r06(antikt_algorithm, 0.6);
    JetDefinition jetdef_r10(antikt_algorithm, 1.0);
    JetDefinition jetdef_ca04(cambridge_algorithm, 0.4);
+   JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
 
 
    // ----------------------- Loop over events -----------------------
@@ -108,7 +68,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       if (ientry < 0) break;
       nb = fChain->GetEntry(jentry);   nbytes += nb;
 
-      if (jentry%100000==0) cout << " Entry #" << jentry << endl;
+      if (jentry%10000==0) cout << " Entry #" << jentry << endl;
 
       // Apply event selection, filtering on pass190 flag
       if (pass190 == 0) {
@@ -141,14 +101,30 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       }
 
       // Build anti-kt jets w/ R=0.4, 0.6, 1.0 and CA
+      ClusterSequence cs_seq_kt(particles, jetdef_kt);
       ClusterSequence cs_seq_r04(particles, jetdef_r04);
       ClusterSequence cs_seq_r06(particles, jetdef_r06);
       ClusterSequence cs_seq_r10(particles, jetdef_r10);
       ClusterSequence cs_seq_ca04(particles, jetdef_ca04);
+      ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
+      vector<PseudoJet> KT_jets = sorted_by_pt(cs_seq_kt.inclusive_jets());
       vector<PseudoJet> R04_jets = sorted_by_pt(cs_seq_r04.inclusive_jets());
       vector<PseudoJet> R06_jets = sorted_by_pt(cs_seq_r06.inclusive_jets());
       vector<PseudoJet> R10_jets = sorted_by_pt(cs_seq_r10.inclusive_jets());
       vector<PseudoJet> CA04_jets = sorted_by_pt(cs_seq_ca04.inclusive_jets());
+      vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
+
+      // Calculate mjj, dRjj, dyjj for CA04 jets
+      double CA04_mjj, CA04_dRjj, CA04_dyjj;
+      if (CA04_jets.size() > 1) {
+         CA04_mjj = (CA04_jets[0] + CA04_jets[1]).m();
+         CA04_dRjj = CA04_jets[0].delta_R(CA04_jets[1]);
+         CA04_dyjj = TMath::Abs(CA04_jets[0].rap() - CA04_jets[1].rap());
+      } else {
+         CA04_mjj = -999;
+         CA04_dRjj = -999;
+         CA04_dyjj = -999;
+      }
 
       // Get Lund variables 
       vector<double> R04_lundz;
@@ -203,80 +179,73 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       // Can also use the FillEEC function for the TEEC
 
       // Loop through all groups
-      for (unsigned int i = 0; i < histoGroups.size(); ++i) {
+      for (unsigned int i = 0; i < centralHistoGroups.size() + ensHistoGroups.size(); ++i) {
 
          // Get weight
          float use_weight;
-         if (weightName == "weight") {
+         if (weightBranchNames[i] == "weight") {
             use_weight = weight;
-         } else if (weightName == "weight_mc") {
+         } else if (weightBranchNames[i] == "weight_mc") {
             use_weight = weight_mc;
+         } else if (i < centralHistoGroups.size()) {
+            use_weight = central_weights[i][jentry] * weight_mc;
          } else {
-            if (i == 0) {
-               use_weight = central_weights[jentry] * weight_mc;
-            } else if (i <= nEns) {
-               use_weight = ens_weights[i-1][jentry] * weight_mc;
-            } else {
-               use_weight = syst_weights[i-nEns-1][jentry] * weight_mc;
-            }
-         } 
+            use_weight = ens_weights[i - centralHistoGroups.size()][jentry] * weight_mc;
+         }
+
+         // Get histogram group
+         HistoGroup histoGroup;
+         if (i < centralHistoGroups.size()) {
+            histoGroup = centralHistoGroups[i];
+         } else {
+            histoGroup = ensHistoGroups[i - centralHistoGroups.size()];
+         }
+
+         // KT R=0.4 jets
+         histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
+         histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
 
          // R=0.4 jets
-         histoGroups[i].hm3_R04->Fill(R04_jets[2].m(), use_weight);
-         histoGroups[i].hm4_R04->Fill(R04_jets[3].m(), use_weight);
-         FillEEC(histoGroups[i].hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
-         FillLund(histoGroups[i].hLund_z_R04, histoGroups[i].hLund_dR_R04, histoGroups[i].hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
+         histoGroup.hm3_R04->Fill(R04_jets[2].m(), use_weight);
+         histoGroup.hm4_R04->Fill(R04_jets[3].m(), use_weight);
+         FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
+         FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
          // R=0.6 jets
-         histoGroups[i].hpT_R06->Fill(R06_jets[0].pt(), use_weight);
-         FillEEC(histoGroups[i].hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
-         FillLund(histoGroups[i].hLund_z_R06, histoGroups[i].hLund_dR_R06, histoGroups[i].hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
+         histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
+         FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
+         FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
 
          // R=1.0 jets
-         histoGroups[i].hpT_R10->Fill(R10_jets[0].pt(), use_weight);
-         FillEEC(histoGroups[i].hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
-         FillLund(histoGroups[i].hLund_z_R10, histoGroups[i].hLund_dR_R10, histoGroups[i].hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
+         histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
+         histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
+         FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
+         FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
 
          // CA R=0.4 jets
-         histoGroups[i].hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
-         FillEEC(histoGroups[i].hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
+         histoGroup.hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
+         FillEEC(histoGroup.hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
+         histoGroup.hmjj_CA04->Fill(CA04_mjj, use_weight);
+         histoGroup.hdRjj_CA04->Fill(CA04_dRjj, use_weight);
+         histoGroup.hdyjj_CA04->Fill(CA04_dyjj, use_weight);
+
+         // CA R=0.6 jets
+         histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
+         histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
 
       }
 
-      // // R=0.4 jets
-
-      // FillEEC(hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
-      // FillLund(hLund_z_R04, hLund_dR_R04, hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
-
-      // // R=0.6 jets
-      // hpT_R06->Fill(R06_jets[0].pt(), use_weight);
-      // FillEEC(hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
-      // FillLund(hLund_z_R06, hLund_dR_R06, hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
-      
-      // // R=1.0 jets
-      // hpT_R10->Fill(R10_jets[0].pt(), use_weight);
-      // FillEEC(hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
-      // FillLund(hLund_z_R10, hLund_dR_R10, hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
-
-      // // CA R=0.4 jets
-      // hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
-      // FillEEC(hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
-      // FillLund(hLund_z_CA04, hLund_dR_CA04, hLund_plane_CA04, CA04_lundz, CA04_lundDr, use_weight);
-
-      // // Ring
-      // h_fracpT_ring->Fill(GetRing(R06_jets[0]), use_weight);
-      // h_fracE_ring->Fill(0., use_weight);
-
-      // // TEEC
-      // FillEEC(hTEEC, etrans, tau, ETransTotal, use_weight);
-      
    }
 
    std::cout << " === create output ROOT file === " << std::endl;
    TFile foutput(saveName, "recreate");
 
    std::cout << " === write in file === " << std::endl;
-   for (auto& histoGroup : histoGroups) {
+   for (auto& histoGroup : centralHistoGroups) {
+      histoGroup.WriteHistos(foutput);
+   }
+
+   for (auto& histoGroup : ensHistoGroups) {
       histoGroup.WriteHistos(foutput);
    }
 

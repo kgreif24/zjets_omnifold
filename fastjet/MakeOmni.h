@@ -29,14 +29,14 @@ public :
 
    bool isTruth; // Flag to indicate if we are processing truth data
    // bool loadSystematics; // Flag to indicate if we are loading systematics
-   string weightName;
+   string weightFilename;
+   vector<string> weightBranchNames;
    int nEns;
-   vector<string> syst_weight_names;
    TString saveName;
 
    // HistoGroups
-   HistoGroup centralGroup;
-   vector<HistoGroup> histoGroups;
+   vector<HistoGroup> centralHistoGroups;
+   vector<HistoGroup> ensHistoGroups;
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
@@ -148,7 +148,7 @@ public :
    TBranch        *b_ntrackJetIndex_tracks;   //!
    TBranch        *b_trackJetIndex_tracks;   //!
 
-   MakeOmni(TTree*, string, TString, bool runTruth = false, int nEnsembles = 0, vector<string> syst_weights = vector<string>());
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0);
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -165,27 +165,28 @@ public :
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, TString outFile, bool runTruth, int nEnsembles,vector<string> syst_weights) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles) : fChain(0) 
 {
 
    // Store instance variables
-   weightName = weightFile; // Store the weight file name
+   weightFilename = weightFile; // Store the weight file name
+   weightBranchNames = weightNames; // Store the weight branch names
    nEns = nEnsembles; // Store the number of ensembles
-   syst_weight_names = syst_weights; // Store the systematics weights
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
 
    // Initialize histogram groups
-   histoGroups.push_back(HistoGroup("nominal-ensemble-central-"));
-
-   // Initialize the ensemble histograms
-   for (int i = 0; i < nEns; ++i) {
-      histoGroups.push_back(HistoGroup("nominal-ensemble-" + to_string(i) + "-"));
+   for (const auto& weight_name : weightBranchNames) {
+      if (weight_name != "weight" && weight_name != "weight_mc") {
+         centralHistoGroups.push_back(HistoGroup(weight_name + "-"));
+      } else {
+         centralHistoGroups.push_back(HistoGroup(""));
+      }
    }
 
-   // Initialize the systematics histograms
-   for (const auto& syst_weight : syst_weight_names) {
-      histoGroups.push_back(HistoGroup(syst_weight + "-"));
+   // Initialize the ensemble histograms for the nominal ensemble
+   for (int i = 0; i < nEns; ++i) {
+      ensHistoGroups.push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-"));
    }
 
    // Initialize the tree

@@ -55,6 +55,7 @@ class UncertaintyPlotter(plotter.Plotter):
         )
 
         # Get the sherpa tree
+        self.sherpa_path = hv_path
         self.sherpa_tree = uproot.open(hv_path)["OmniTree"]
         self.sherpa_events = self.sherpa_tree.num_entries
         if self.sherpa_events > self.max_events:
@@ -64,6 +65,7 @@ class UncertaintyPlotter(plotter.Plotter):
         )
 
         # Get the data tree
+        self.data_path = data_path
         self.data_tree = uproot.open(data_path)["OmniTree"]
         self.data_events = self.data_tree.num_entries
         if self.data_events > self.max_events:
@@ -208,17 +210,31 @@ class UncertaintyPlotter(plotter.Plotter):
 
             # Run for each root file that does not exist
             # Note we need to raise all paths by one directory
-            weights = [pathlib.Path("..") / of_weights, "weight_mc"]
-            for i, (use_weights, file) in enumerate(zip(weights, self.root_files)):
+            inpaths = [self.source_path, self.target_path]
+            weights = ["", "weight_mc"]
+            for key, value in self.active_systs.items():
+                if (not value["stochastic"] and key != "hidden-variable"):
+                    inpaths.append(self.source_path)
+                    weights.append(key)
+                if key == "hidden-variable":
+                    inpaths.append(self.sherpa_path)
+                    weights.append("hidden-variable")
+                if key == "data-stat":
+                    inpaths.append(self.data_path)
+                    weights.append("weight")
+            assert len(weights) == len(self.root_files) == len(inpaths)
+            iterable = zip(weights, self.root_files, inpaths)
+            for i, (use_weights, file, inpath) in enumerate(iterable):
                 if recalculate and pathlib.Path(file).exists():
                     os.remove(file)
                 if not pathlib.Path(file).exists():
                     # Need to raise paths by one directory
                     up_file = pathlib.Path("..") / file
                     self._run_fastjet(
+                        inpath,
+                        pathlib.Path("..") / of_weights,
                         use_weights,
                         up_file,
-                        syst_names=(systematic_weights.keys()),
                         nEns=ensemble_weights.shape[1],
                         is_target=(i == 1),
                     )
@@ -245,43 +261,48 @@ class UncertaintyPlotter(plotter.Plotter):
             )
 
             # MC stat uncertainty
-            source_stat_var, _ = self._get_histogram(
-                nominal_plot,
-                weights=(
-                    central_weights_trk**2
-                    if plot["type"] == "track"
-                    else central_weights**2
-                ),
-            )
-            self.active_systs["mc-stat"].update({"var": source_stat_var})
+            if "mc-stat" in self.active_systs:
+                source_stat_var, _ = self._get_histogram(
+                    nominal_plot,
+                    weights=(
+                        central_weights_trk**2
+                        if plot["type"] == "track"
+                        else central_weights**2
+                    ),
+                )
+                self.active_systs["mc-stat"].update({"var": source_stat_var})
 
             # Data stat uncertainty, note this is copied from reco level
-            data_hist, _ = self._get_data_histogram(nominal_plot)
-            data_var = source_hist**2 / data_hist
-            self.active_systs["data-stat"].update({"var": data_var})
+            if "data-stat" in self.active_systs:
+                data_hist, _ = self._get_data_histogram(nominal_plot)
+                data_var = source_hist**2 / data_hist
+                self.active_systs["data-stat"].update({"var": data_var})
 
             # NN initialization uncertainty
-            var_hists = []
-            use_nominal_weights = (
-                ensemble_weights_trk if plot["type"] == "track" else ensemble_weights
-            )
-            for i in range(use_nominal_weights.shape[1]):
-                member_weights = use_nominal_weights[:, i]
-                member_plot = plot.copy()
-                if member_plot["type"] == "fastjet":
-                    member_plot["key"] = (
-                        "nominal-ensemble-" + str(i) + "-" + plot["key"]
-                    )
-                member_hist, _ = self._get_histogram(
-                    member_plot,
-                    weights=member_weights,
+            if "nn-init" in self.active_systs:
+                var_hists = []
+                use_nominal_weights = (
+                    ensemble_weights_trk
+                    if plot["type"] == "track"
+                    else ensemble_weights
                 )
-                # Remember to normalize to the source histogram!
-                norm_factor = np.sum(source_hist) / np.sum(member_hist)
-                member_hist *= norm_factor
-                var_hists.append(member_hist)
-            nn_init_var = np.var(var_hists, axis=0) / (len(var_hists) - 1)
-            self.active_systs["nn-init"].update({"var": nn_init_var})
+                for i in range(use_nominal_weights.shape[1]):
+                    member_weights = use_nominal_weights[:, i]
+                    member_plot = plot.copy()
+                    if member_plot["type"] == "fastjet":
+                        member_plot["key"] = (
+                            "nominal-ensemble-" + str(i) + "-" + plot["key"]
+                        )
+                    member_hist, _ = self._get_histogram(
+                        member_plot,
+                        weights=member_weights,
+                    )
+                    # Remember to normalize to the source histogram!
+                    norm_factor = np.sum(source_hist) / np.sum(member_hist)
+                    member_hist *= norm_factor
+                    var_hists.append(member_hist)
+                nn_init_var = np.var(var_hists, axis=0) / (len(var_hists) - 1)
+                self.active_systs["nn-init"].update({"var": nn_init_var})
 
             # Systematic uncertainties
             use_syst_weights = (
@@ -367,9 +388,8 @@ class UncertaintyPlotter(plotter.Plotter):
         """
 
         # Get the data and weights from the sherpa tree
-        sherpa_data = self.sherpa_tree[plot_dict["key"]].array(
-            entry_stop=self.sherpa_events
-        )
+        get_key = "truth_" + plot_dict["key"]
+        sherpa_data = self.sherpa_tree[get_key].array(entry_stop=self.sherpa_events)
         sherpa_data = sherpa_data[self.sherpa_pass190 == 1]
         sherpa_data = ak.to_numpy(ak.flatten(sherpa_data, axis=None))
 
@@ -406,9 +426,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Get the data from the data tree, note no pass190 cut here since all
         # events pass by definition
-        data_data = self.data_tree[plot_dict["key"]].array(
-            entry_stop=self.data_events
-        )
+        data_data = self.data_tree[plot_dict["key"]].array(entry_stop=self.data_events)
         data_data = ak.to_numpy(ak.flatten(data_data, axis=None))
 
         # Get the bins
@@ -470,31 +488,24 @@ class UncertaintyPlotter(plotter.Plotter):
         rel_total_uncert = total_uncert / source_hist
 
         # Duplicate last bins for all step plots
-        plot_source_hist = np.append(source_hist, source_hist[-1])
-        norm_target_hist = np.append(norm_target_hist, norm_target_hist[-1])
+        plot_target_hist = np.append(norm_target_hist, norm_target_hist[-1])
         rel_mbias = np.append(rel_mbias, rel_mbias[-1])
-        plot_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
-        plot_systs = {
-            key: np.append(
-                self.active_systs[key]["var"], self.active_systs[key]["var"][-1]
-            ) for key in self.active_systs
-        }
 
         # Plot
         bin_centers = (bins[1:] + bins[:-1]) / 2
-        fig, (ax, rax, vax) = plt.subplots(
-            3,
+        fig, (ax, rax) = plt.subplots(
+            2,
             1,
-            figsize=(6, 6.8),
+            figsize=(6, 4.8),
             sharex=True,
-            gridspec_kw={"height_ratios": [2, 1, 1]},
+            gridspec_kw={"height_ratios": [2, 1]},
         )
         plt.subplots_adjust(hspace=0, top=0.95)
 
         # Densities
         ax.plot(
             bins,
-            norm_target_hist,
+            plot_target_hist,
             "--",
             label="Target",
             color="black",
@@ -533,46 +544,11 @@ class UncertaintyPlotter(plotter.Plotter):
                     ".",
                     color=syst_ratio["color"],
                 )
-        rax.set_ylim(0.85, 1.15)
-        rax.set_yticks([0.9, 1.0, 1.1])
+        rax.set_ylim(0.5, 1.5)
+        rax.set_yticks([0.5, 1.0, 1.5])
         rax.set_ylabel("Ratio to target")
+        rax.set_xlabel(plot["xlabel"])
         rax.tick_params(axis="x", direction="in", bottom=True, top=False)
-
-        # Uncertainties
-        vax.plot(
-            bins,
-            plot_total_uncert,
-            "--",
-            color="black",
-            label="Total unc.",
-            drawstyle="steps-post",
-        )
-        for key in plot_systs:
-            vax.plot(
-                bins,
-                np.sqrt(plot_systs[key]) / plot_source_hist,
-                "-",
-                color=self.active_systs[key]["color"],
-                label=self.active_systs[key]["name"],
-                drawstyle="steps-post",
-            )
-
-        # Always want to plot the method bias in the bottom panel
-        vax.plot(
-            bins,
-            rel_mbias,
-            "-",
-            color="red",
-            label="Method bias",
-            drawstyle="steps-post",
-        )
-        vax.fill_between(
-            bins, 0, plot_total_uncert, step="post", color="gray", alpha=0.3
-        )
-        vax.set_ylim(0, 0.2)
-        vax.set_xlabel(plot["xlabel"])
-        vax.set_ylabel("Uncertainty")
-        vax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=4)
 
         # Finalize layout and return
         fig.tight_layout()
@@ -726,7 +702,8 @@ class UncertaintyPlotter(plotter.Plotter):
         plot_systs = {
             key: np.append(
                 self.active_systs[key]["var"], self.active_systs[key]["var"][-1]
-            ) for key in self.active_systs
+            )
+            for key in self.active_systs
         }
 
         # Create figure
@@ -763,12 +740,10 @@ class UncertaintyPlotter(plotter.Plotter):
             label="Method bias",
             drawstyle="steps-post",
         )
-        ax.fill_between(
-            bins, 0, rel_mbias, step="post", color="gray", alpha=0.3
-        )
+        ax.fill_between(bins, 0, rel_mbias, step="post", color="gray", alpha=0.3)
 
         # Set plot properties
-        ax.set_ylim(0, 0.4)
+        ax.set_ylim(top=ax.get_ylim()[1] * 1.1)
         ax.set_xlabel(plot["xlabel"])
         ax.set_ylabel("Uncertainty")
         ax.set_title("Uncertainty Budget")

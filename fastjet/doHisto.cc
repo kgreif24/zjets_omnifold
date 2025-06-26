@@ -11,13 +11,12 @@ int main(int argc, char* argv[]){
 
 	// Read command line args
 	TString fileName;
-	string weights;
-	vector<string> ens_weights;
+	string weight_file;
+	vector<string> weight_names;
 	TString outFile;
 	bool isTruth = false;
 	int maxEvents = 5000000;
 	int nEns = 0;
-	vector<string> syst_weights;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 		if (arg == "--file") {
@@ -29,16 +28,16 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
-		if (arg == "--weights") {
+		if (arg == "--weight_file") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
-				weights = string(argv[i+1]);
+				weight_file = string(argv[i+1]);
 				i++; // Move to the next arg
 			} else { // Throw error if no argument provided
-				std::cerr << "--weights option requires one argument." << std::endl;
+				std::cerr << "--weight_file option requires one argument." << std::endl;
 				return 1;
 			}
 		}
-		if (arg == "--syst") {
+		if (arg == "--weight_names") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				string systList = string(argv[i+1]);
 				// Parse comma separated list into vector
@@ -46,13 +45,13 @@ int main(int argc, char* argv[]){
 				string token;
 				while ((pos = systList.find(",")) != string::npos) {
 					token = systList.substr(0, pos);
-					syst_weights.push_back(token);
+					weight_names.push_back(token);
 					systList.erase(0, pos + 1);
 				}
-				syst_weights.push_back(systList); // Add the last token
+				weight_names.push_back(systList); // Add the last token
 				i++; // Move to the next arg
 			} else { // Throw error if no argument provided
-				std::cerr << "--syst option requires one argument." << std::endl;
+				std::cerr << "--weight_names option requires one argument." << std::endl;
 				return 1;
 			}
 		}
@@ -93,11 +92,11 @@ int main(int argc, char* argv[]){
 	TChain* myChain = new TChain("OmniTree");
 	myChain->Add(fileName);
 	cout << "Building hists from file: " << fileName << endl;
-	cout << "Using weights: " << weights << endl;
-	if (ens_weights.size() > 0) {
-		cout << "Using ens_weights: ";
-		for (const auto& ens_weight : ens_weights) {
-			cout << ens_weight << " ";
+	cout << "Using weights from file: " << weight_file << endl;
+	if (weight_names.size() > 0) {
+		cout << "Using weight_names: ";
+		for (const auto& weight_name : weight_names) {
+			cout << weight_name << " ";
 		}
 		cout << endl;
 	}
@@ -106,7 +105,7 @@ int main(int argc, char* argv[]){
 	cout << "Max events: " << maxEvents << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weights, outFile, isTruth, nEns, syst_weights);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;

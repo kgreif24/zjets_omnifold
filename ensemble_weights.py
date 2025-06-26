@@ -75,6 +75,11 @@ parser.add_argument(
     default=10,
     help="The maximum number of ensembles to pull weights for",
 )
+parser.add_argument(
+    "--iterations",
+    nargs="+",
+    help="The iterations to pull weights for, in order of the run groups",
+)
 parser.add_argument("--output", type=str, help="Output file path")
 args = parser.parse_args()
 
@@ -83,10 +88,11 @@ indices = np.load("/pscratch/sd/k/kgreif/data/matching_indices.npy")
 
 # Define the names of the various run groups in a campaign
 group_names = ["nominal-ensemble", "track-eff", "hidden-variable"]
-iteration_number = [6, 8, 5]
 all_weights = {}
 
-for gn, it in zip(group_names, iteration_number):
+for gn, it in zip(group_names, args.iterations):
+
+    print(f"Pulling weights for {gn} at iteration {it}")
 
     if gn == "nominal-ensemble":
         pulled_weights = pull_weights(

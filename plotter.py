@@ -619,7 +619,7 @@ class Plotter:
         return ax, axr
 
     def _run_fastjet(
-        self, weights, save_file, syst_names=None, nEns=None, is_target=False
+        self, inpath, weightpath, weightlist, save_file, nEns=None, is_target=False
     ):
         """_run_fastjet - This function computes fastjet observables for a given
         data set and weights, and saves them to a root file.
@@ -627,12 +627,12 @@ class Plotter:
         the C++ code in the fastjet subdirectory.
 
         Arguments:
-        weights - pathlib.Path or str - The path to the weights file or branch name
-            to use for fastjet computation.
-            This will be passed to the C++ code as an argument.
-        save_file - str - The path to the root file where the fastjet observables
-        syst_names - list of str - List of systematic names to use for
-            fastjet computation
+        inpath - pathlib.Path or str - The path to the ROOT file containing the
+            data to be used for calculating observables.
+        weightpath - pathlib.Path or str - The path to the weights file
+        weightlist - list of str - List of weight branch names to use for
+            each computation
+        save_file - str - The path to the root file where to save the histograms
         nEns - int - Number of ensemble members to use for fastjet computation
         is_target - bool - If true, use the target data for fastjet computation
             instead of source.
@@ -641,14 +641,15 @@ class Plotter:
         """
 
         # Determine the commands to run based on the index
-        inpath = self.target_path if is_target else self.source_path
         inpath = str(pathlib.Path("..") / inpath)
         command = [
             "./doHisto.out",
             "--file",
             inpath,
-            "--weights",
-            str(weights),
+            "--weight_file",
+            str(weightpath),
+            "--weight_names",
+            ",".join(weightlist),
             "--outFile",
             str(save_file),
             "--maxEvents",
@@ -656,9 +657,6 @@ class Plotter:
         ]
         if self.use_truth:
             command.append("--truth")
-        if syst_names is not None:
-            command.append("--syst")
-            command.append(",".join(syst_names))
         if nEns is not None:
             command.append("--nEns")
             command.append(str(nEns))
