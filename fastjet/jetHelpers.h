@@ -8,7 +8,7 @@ using namespace std;
 
 vector<fastjet::PseudoJet> GetJet(vector<fastjet::PseudoJet> particles, float radius);
 double GetFrag_zT( vector<fastjet::PseudoJet> jet_constit, fastjet::PseudoJet jet );
-double GetEEC( fastjet::PseudoJet& jet, std::vector<double>& esum, std::vector<double>& z );
+double GetEEC( vector<fastjet::PseudoJet> jet_constit, std::vector<double>& esum, std::vector<double>& z );
 double GetTEEC( const vector<fastjet::PseudoJet>& all_tracks, const fastjet::PseudoJet& zboson, std::vector<double>& etrans, std::vector<double>& tau);
 void processJets(fastjet::PseudoJet& jet, double radius,  std::vector<double>& lundz,  std::vector<double>& lundkt,  std::vector<double>& lundDr);
 double GetRing(fastjet::PseudoJet jet);

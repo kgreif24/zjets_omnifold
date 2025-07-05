@@ -51,13 +51,6 @@ parser.add_argument(
     help="The color to use for the plots (default: blue)",
 )
 parser.add_argument(
-    "--recalculate", action="store_true",
-    help=(
-        "If true, recalculate all fastjet observables, regardless of whether root files"
-        "already exist."
-    ),
-)
-parser.add_argument(
     "--cut_region",
     type=int,
     default=0,
@@ -83,6 +76,5 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
 plot_dict = plotter.plot(
     args.weights,
     color=args.color,
-    recalculate=args.recalculate,
 )
 print("Plotting complete")

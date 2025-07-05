@@ -8,9 +8,6 @@ Last updated 03.28.2025
 python3
 """
 
-import os
-import pathlib
-import subprocess
 import tqdm
 import numpy as np
 import uproot
@@ -28,7 +25,9 @@ class UncertaintyPlotter(plotter.Plotter):
     defined in this context.
     """
 
-    def __init__(self, source_path, target_path, hv_path, data_path, store, **kwargs):
+    def __init__(
+        self, source_path, target_path, hv_path, data_path, store, root_files, **kwargs
+    ):
         """
         Initialize the UncertaintyPlotter class by calling the parent class's
         constructor.
@@ -44,6 +43,10 @@ class UncertaintyPlotter(plotter.Plotter):
                 to look like MG that is used for the hidden variable uncertainty.
             data_path (str): Path to the data file containing the data.
             store (str): Path to the directory where the plots will be stored.
+            root_files (list of str): List of root files to load histograms of
+                fastjet observables from. In order [source_end, target, hv, data].
+                Defaults to None, in which case there should be no fastjet observables
+                in the config.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         super().__init__(
@@ -51,6 +54,7 @@ class UncertaintyPlotter(plotter.Plotter):
             target_path,
             store,
             use_truth=True,
+            root_files=root_files,
             **kwargs,
         )
 
@@ -107,7 +111,44 @@ class UncertaintyPlotter(plotter.Plotter):
             },
         }
 
-    def plot(self, of_weights, color="blue", recalculate=False, **kwargs):
+        # Verify that we have the correct number of root files
+        # if there are fastjet observables
+        if self.fastjet:
+            assert (
+                len(self.root_files) == 4
+            ), "Must have 4 root files for fastjet observables"
+            assert self.root_files[0] is not None, "Must have a source_end root file"
+            assert self.root_files[1] is not None, "Must have a target root file"
+            assert self.root_files[2] is not None, "Must have a hv root file"
+            assert self.root_files[3] is not None, "Must have a data root file"
+
+        # Hardcode symlog x ticks
+        self.symlog_raw_xticks = np.array(
+            [
+                1e-5,
+                1e-4,
+                1e-3,
+                1e-2,
+                1e-1,
+                0.5,
+                1 - 1e-1,
+                1 - 1e-2,
+            ]
+        )
+        self.symlog_xticklabels = np.array(
+            [
+                r"$10^{-5}$",
+                r"$10^{-4}$",
+                r"$10^{-3}$",
+                r"$10^{-2}$",
+                r"$10^{-1}$",
+                r"$0.5$",
+                r"$1-10^{-1}$",
+                r"$1-10^{-2}$",
+            ]
+        )
+
+    def plot(self, of_weights, color="blue", **kwargs):
         """plot - Override of the base class plot method. Here we will build
         uncertainty plots comparing truth pseudodata to re-weighted truth
         level MC. The weights argument controls which weights will be used .
@@ -118,8 +159,6 @@ class UncertaintyPlotter(plotter.Plotter):
             wildcards will be globbed over for the purpose of calculating the NN
             initialization uncertainty.
         color (str): Color to use for the histogram and ratio plots.
-        recalculate (bool): If True, will recalculate fastjet observables
-            even if the root files already exist.
 
         Returns:
             dict: Dictionary with the format {plot_name: path_to_file} for
@@ -196,49 +235,6 @@ class UncertaintyPlotter(plotter.Plotter):
                 for syst, syst_wgt in tqdm.tqdm(systematic_weights.items())
             }
 
-        # Calculate fastjet observables if needed
-        if self.fastjet:
-            assert self.root_files is not None
-
-            # Compile the fastjet package
-            make_process = subprocess.run(
-                ["make"], cwd="./fastjet/", capture_output=True
-            )
-            if make_process.returncode != 0:
-                print("Error compiling fastjet package. Please check your setup.")
-                print(make_process.stderr)
-
-            # Run for each root file that does not exist
-            # Note we need to raise all paths by one directory
-            inpaths = [self.source_path, self.target_path]
-            weights = ["", "weight_mc"]
-            for key, value in self.active_systs.items():
-                if (not value["stochastic"] and key != "hidden-variable"):
-                    inpaths.append(self.source_path)
-                    weights.append(key)
-                if key == "hidden-variable":
-                    inpaths.append(self.sherpa_path)
-                    weights.append("hidden-variable")
-                if key == "data-stat":
-                    inpaths.append(self.data_path)
-                    weights.append("weight")
-            assert len(weights) == len(self.root_files) == len(inpaths)
-            iterable = zip(weights, self.root_files, inpaths)
-            for i, (use_weights, file, inpath) in enumerate(iterable):
-                if recalculate and pathlib.Path(file).exists():
-                    os.remove(file)
-                if not pathlib.Path(file).exists():
-                    # Need to raise paths by one directory
-                    up_file = pathlib.Path("..") / file
-                    self._run_fastjet(
-                        inpath,
-                        pathlib.Path("..") / of_weights,
-                        use_weights,
-                        up_file,
-                        nEns=ensemble_weights.shape[1],
-                        is_target=(i == 1),
-                    )
-
         # Loop through plots and make histograms
         return_dict = {}
         for plot in self.plots:
@@ -246,7 +242,7 @@ class UncertaintyPlotter(plotter.Plotter):
             # Get histograms
             nominal_plot = plot.copy()
             if nominal_plot["type"] == "fastjet":
-                nominal_plot["key"] = "nominal-ensemble-central-" + nominal_plot["key"]
+                nominal_plot["key"] = "nominal-ensemble-" + nominal_plot["key"]
             source_hist, bins = self._get_histogram(
                 nominal_plot,
                 weights=(
@@ -269,6 +265,7 @@ class UncertaintyPlotter(plotter.Plotter):
                         if plot["type"] == "track"
                         else central_weights**2
                     ),
+                    return_variance=True if plot["type"] == "fastjet" else False,
                 )
                 self.active_systs["mc-stat"].update({"var": source_stat_var})
 
@@ -358,7 +355,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             # Create and save uncertainty budget plot
             if not type(bins) is tuple:  # Only create for 1D plots
-                budget_fig = self.plot_uncertainty_budget(
+                budget_fig = self._plot_uncertainty_budget(
                     plot,
                     bins,
                     source_hist,
@@ -387,27 +384,47 @@ class UncertaintyPlotter(plotter.Plotter):
             bins (np.array): Array of bin edges.
         """
 
-        # Get the data and weights from the sherpa tree
-        get_key = "truth_" + plot_dict["key"]
-        sherpa_data = self.sherpa_tree[get_key].array(entry_stop=self.sherpa_events)
-        sherpa_data = sherpa_data[self.sherpa_pass190 == 1]
-        sherpa_data = ak.to_numpy(ak.flatten(sherpa_data, axis=None))
-
-        # Get the bins
-        if self.ibu_bins:
-            bins = np.array(plot_dict["ibubins"])
-            if self.kinematic_region != 0 and "region_bins" in plot_dict:
-                if str(self.kinematic_region) in plot_dict["region_bins"]:
-                    bins = np.array(
-                        plot_dict["region_bins"][str(self.kinematic_region)]
-                    )
-        else:
-            bins = np.linspace(
-                plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
+        # If the observable is computed using fastjet, we need to load the data
+        # histogram from the correct ROOT file
+        if plot_dict["type"] == "fastjet":
+            sherpa_hist, bins = self._get_histogram(
+                plot_dict,
+                root_index=2,
             )
 
-        # Get the histogram
-        sherpa_hist, _ = np.histogram(sherpa_data, bins=bins, weights=weights)
+        # Else we can load the data and weights from the sherpa tree
+        else:
+
+            get_key = "truth_" + plot_dict["key"]
+            sherpa_data = self.sherpa_tree[get_key].array(entry_stop=self.sherpa_events)
+            sherpa_p190 = self.sherpa_tree["truth_pass190"].array(
+                entry_stop=self.sherpa_events
+            )
+            if self.kinematic_region != 0:
+                cuts = self.get_kinematic_region(
+                    self.sherpa_tree, self.kinematic_region, evts=self.sherpa_events
+                )
+                # Unfortunate hack needed because the weights are already filtered
+                weights = weights[cuts[sherpa_p190 == 1] == 1]
+                sherpa_p190 = np.logical_and(sherpa_p190, cuts)
+            sherpa_data = sherpa_data[sherpa_p190 == 1]
+            sherpa_data = ak.to_numpy(ak.flatten(sherpa_data, axis=None))
+
+            # Get the bins
+            if self.ibu_bins:
+                bins = np.array(plot_dict["ibubins"])
+                if self.kinematic_region != 0 and "region_bins" in plot_dict:
+                    if str(self.kinematic_region) in plot_dict["region_bins"]:
+                        bins = np.array(
+                            plot_dict["region_bins"][str(self.kinematic_region)]
+                        )
+            else:
+                bins = np.linspace(
+                    plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
+                )
+
+            # Get the histogram
+            sherpa_hist, _ = np.histogram(sherpa_data, bins=bins, weights=weights)
 
         return sherpa_hist, bins
 
@@ -424,26 +441,43 @@ class UncertaintyPlotter(plotter.Plotter):
             bins (np.array): Array of bin edges.
         """
 
-        # Get the data from the data tree, note no pass190 cut here since all
-        # events pass by definition
-        data_data = self.data_tree[plot_dict["key"]].array(entry_stop=self.data_events)
-        data_data = ak.to_numpy(ak.flatten(data_data, axis=None))
-
-        # Get the bins
-        if self.ibu_bins:
-            bins = np.array(plot_dict["ibubins"])
-            if self.kinematic_region != 0 and "region_bins" in plot_dict:
-                if str(self.kinematic_region) in plot_dict["region_bins"]:
-                    bins = np.array(
-                        plot_dict["region_bins"][str(self.kinematic_region)]
-                    )
-        else:
-            bins = np.linspace(
-                plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
+        # If the observable is computed using fastjet, we need to load the data
+        # histogram from the correct ROOT file
+        if plot_dict["type"] == "fastjet":
+            data_hist, bins = self._get_histogram(
+                plot_dict,
+                root_index=3,
             )
 
-        # Get the histogram
-        data_hist, _ = np.histogram(data_data, bins=bins)
+        # Else we can load the data histogram from the data tree
+        else:
+
+            data = self.data_tree[plot_dict["key"]].array(entry_stop=self.data_events)
+            if self.kinematic_region != 0:
+                cuts = self.get_kinematic_region(
+                    self.data_tree,
+                    self.kinematic_region,
+                    evts=self.data_events,
+                    use_truth=False,
+                )
+                data = data[cuts == 1]
+            data = ak.to_numpy(ak.flatten(data, axis=None))
+
+            # Get the bins
+            if self.ibu_bins:
+                bins = np.array(plot_dict["ibubins"])
+                if self.kinematic_region != 0 and "region_bins" in plot_dict:
+                    if str(self.kinematic_region) in plot_dict["region_bins"]:
+                        bins = np.array(
+                            plot_dict["region_bins"][str(self.kinematic_region)]
+                        )
+            else:
+                bins = np.linspace(
+                    plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
+                )
+
+            # Get the histogram
+            data_hist, _ = np.histogram(data, bins=bins)
 
         return data_hist, bins
 
@@ -502,6 +536,11 @@ class UncertaintyPlotter(plotter.Plotter):
         )
         plt.subplots_adjust(hspace=0, top=0.95)
 
+        # If the x-axis is a symmetric log scale, transform the bins
+        if plot["symlog_xscale"]:
+            bins = self._transform_to_symlog(bins)
+            bin_centers = self._transform_to_symlog(bin_centers)
+
         # Densities
         ax.plot(
             bins,
@@ -519,12 +558,25 @@ class UncertaintyPlotter(plotter.Plotter):
             label="Omnifold",
             color=color,
         )
+
+        # Set tick parameters
+        if plot["symlog_xscale"]:
+            xticks = self._transform_to_symlog(self.symlog_raw_xticks)
+            ax.set_xticks(xticks)
+            ax.tick_params(axis="x", direction="in", top=True)
+        else:
+            ax.tick_params(axis="x", direction="in", top=True)
+
         if not plot["linear_yscale"]:
             ax.set_yscale("log")
         if plot["log_xscale"]:
             ax.set_xscale("log")
-        ax.tick_params(axis="x", direction="in", top=True)
-        ax.set_ylabel("Counts")
+
+        # Set y-axis label
+        if plot["ylabel"] is not None:
+            ax.set_ylabel(plot["ylabel"])
+        else:
+            ax.set_ylabel("Counts")
         ax.legend()
 
         # Ratios
@@ -548,7 +600,14 @@ class UncertaintyPlotter(plotter.Plotter):
         rax.set_yticks([0.5, 1.0, 1.5])
         rax.set_ylabel("Ratio to target")
         rax.set_xlabel(plot["xlabel"])
-        rax.tick_params(axis="x", direction="in", bottom=True, top=False)
+
+        # Set tick parameters
+        if plot["symlog_xscale"]:
+            xticks = self._transform_to_symlog(self.symlog_raw_xticks)
+            rax.set_xticks(xticks)
+            rax.set_xticklabels(self.symlog_xticklabels, rotation=45)
+        else:
+            rax.tick_params(axis="x", direction="in", bottom=True, top=False)
 
         # Finalize layout and return
         fig.tight_layout()
@@ -659,7 +718,7 @@ class UncertaintyPlotter(plotter.Plotter):
         fig.tight_layout()
         return fig
 
-    def plot_uncertainty_budget(
+    def _plot_uncertainty_budget(
         self,
         plot,
         bins,
@@ -697,7 +756,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Duplicate last bins for all step plots
         plot_source_hist = np.append(source_hist, source_hist[-1])
-        rel_mbias = np.append(rel_mbias, rel_mbias[-1])
+        plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         plot_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
         plot_systs = {
             key: np.append(
@@ -708,6 +767,10 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Create figure
         fig, ax = plt.subplots(figsize=(6.4, 4.8))
+
+        # If the x-axis is a symlog scale, transform the bins
+        if plot["symlog_xscale"]:
+            bins = self._transform_to_symlog(bins)
 
         # Plot total uncertainty
         ax.plot(
@@ -734,23 +797,55 @@ class UncertaintyPlotter(plotter.Plotter):
         # Always want to plot the method bias
         ax.plot(
             bins,
-            rel_mbias,
+            plot_mbias,
             "-",
             color="red",
             label="Method bias",
             drawstyle="steps-post",
         )
-        ax.fill_between(bins, 0, rel_mbias, step="post", color="gray", alpha=0.3)
+        ax.fill_between(bins, 0, plot_mbias, step="post", color="gray", alpha=0.3)
 
-        # Set plot properties
-        ax.set_ylim(top=ax.get_ylim()[1] * 1.1)
+        # Set tick parameters
+        if plot["symlog_xscale"]:
+            xticks = self._transform_to_symlog(self.symlog_raw_xticks)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(self.symlog_xticklabels, rotation=45)
+        else:
+            ax.tick_params(axis="x", direction="in", top=True)
+
+        # Set other plot properties
+        top_uncert = np.max(np.concatenate([rel_total_uncert, rel_mbias]))
+        if top_uncert > 0.2 or np.isnan(top_uncert):
+            ax.set_ylim(bottom=0.0, top=0.2)
+        else:
+            ax.set_ylim(bottom=0.0, top=top_uncert * 1.1)
+        if plot["log_xscale"]:
+            ax.set_xscale("log")
         ax.set_xlabel(plot["xlabel"])
         ax.set_ylabel("Uncertainty")
         ax.set_title("Uncertainty Budget")
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4)
+        if plot["symlog_xscale"]:
+            ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=4)
+        else:
+            ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4)
 
         # Finalize layout
         fig.tight_layout()
-        fig.subplots_adjust(bottom=0.2)
+        if plot["symlog_xscale"]:
+            fig.subplots_adjust(bottom=0.3)
+        else:
+            fig.subplots_adjust(bottom=0.2)
 
         return fig
+
+    def _transform_to_symlog(self, x):
+        """_transform_to_symlog - Transform a linear scale to a symmetric log scale.
+        This is used to transform the x-axis of some EEC plots to a symmetric log scale.
+        """
+        return np.where(x < 0.5, np.log10(x + 1e-10), -1 * np.log10(1 - x + 1e-10))
+
+    def _inverse_transform_from_symlog(self, y):
+        """_inverse_transform_from_symlog - Inverse of the symmetric log
+        transformation.
+        """
+        return np.where(y < 0, 10**y - 1e-10, 1 - 10 ** (-y) + 1e-10)

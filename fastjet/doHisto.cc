@@ -17,6 +17,7 @@ int main(int argc, char* argv[]){
 	bool isTruth = false;
 	int maxEvents = 5000000;
 	int nEns = 0;
+	int kinematic_region = 0;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 		if (arg == "--file") {
@@ -86,6 +87,15 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
+		if (arg == "--kinematic_region") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				kinematic_region = std::stoi(argv[i+1]);
+				i++; // Move to the next arg
+			} else { // Throw error if no argument provided
+				std::cerr << "--kinematic_region option requires one argument." << std::endl;
+				return 1;
+			}
+		}
     }
 
 	// Set up the chain
@@ -103,9 +113,10 @@ int main(int argc, char* argv[]){
 	cout << "Using truth: " << isTruth << endl;
 	cout << "Has entries: " << myChain->GetEntries() << endl;
 	cout << "Max events: " << maxEvents << endl;
+	cout << "Kinematic region: " << kinematic_region << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, kinematic_region);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;

@@ -13,6 +13,32 @@
 using namespace fastjet;
 using namespace std;
 
+float MakeOmni::GetMassFromPID(int pdgId) {
+   int absPdgId = TMath::Abs(pdgId);
+   if (absPdgId == 11) {
+      return 0.00051;
+   } else if (absPdgId == 13) {
+      return 0.10566;
+   } else if (absPdgId == 211) {
+      return 0.13957;
+   } else if (absPdgId == 321) {
+      return 0.493677;
+   } else if (absPdgId == 2212) {
+      return 0.938272;
+   } else if (absPdgId == 3112) {
+      return 1.11794;
+   } else if (absPdgId == 3222) {
+      return 1.18937;
+   } else if (absPdgId == 3312) {
+      return 1.3217;
+   } else if (absPdgId == 3334) {
+      return 1.67243;
+   } else {
+      cout << "Unknown PDG ID: " << pdgId << endl;
+      return -999;
+   }
+}
+
 vector<float> MakeOmni::LoadWeights(string filename, string key) {
 
    // Access weights, assume we want the test weights
@@ -70,13 +96,13 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
       if (jentry%10000==0) cout << " Entry #" << jentry << endl;
 
-      // Apply event selection, filtering on pass190 flag
+      // Filter on pass 190 flag here
       if (pass190 == 0) {
          continue;
       }
 
       // Skip events that have no tracks stored
-      if (npT_tracks == 0) {
+      if (Ntracks == 0) {
          continue;
       }
 
@@ -94,7 +120,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          TLorentzVector constit_tlv;
          // Which track 3 vectors to use depend on whether we are processing truth or reco
          // Truth files use double precision while reco files use float precision
-         constit_tlv.SetPtEtaPhiM(pT_tracks[i], eta_tracks[i], phi_tracks[i], 0.13957);
+         // float constit_mass = GetMassFromPID(pdgId_tracks[i]);
+         float constit_mass = 0.13957;
+         constit_tlv.SetPtEtaPhiM(pT_tracks[i], eta_tracks[i], phi_tracks[i], constit_mass);
          PseudoJet constit_pj;
          constit_pj.reset_PtYPhiM(constit_tlv.Pt(), constit_tlv.Rapidity(), constit_tlv.Phi(), constit_tlv.M());
          particles.push_back(constit_pj);
@@ -114,59 +142,102 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       vector<PseudoJet> CA04_jets = sorted_by_pt(cs_seq_ca04.inclusive_jets());
       vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
 
+      // Calculate mjj, dyjj for R04 jets
+      double R04_mjj, R04_dyjj;
+      if (R04_jets.size() > 1) {
+         R04_mjj = (R04_jets[0] + R04_jets[1]).m();
+         R04_dyjj = TMath::Abs(R04_jets[0].rap() - R04_jets[1].rap());
+      } else {
+         R04_mjj = -999;
+         R04_dyjj = -999;
+      }
+
       // Calculate mjj, dRjj, dyjj for CA04 jets
-      double CA04_mjj, CA04_dRjj, CA04_dyjj;
+      double CA04_mjj, CA04_dRjj, CA04_dyjj, CA04_dphijj;
       if (CA04_jets.size() > 1) {
          CA04_mjj = (CA04_jets[0] + CA04_jets[1]).m();
          CA04_dRjj = CA04_jets[0].delta_R(CA04_jets[1]);
          CA04_dyjj = TMath::Abs(CA04_jets[0].rap() - CA04_jets[1].rap());
+         CA04_dphijj = (CA04_jets[0].rapidity() > CA04_jets[1].rapidity()) ? CA04_jets[0].delta_phi_to(CA04_jets[1]) : CA04_jets[1].delta_phi_to(CA04_jets[0]);
       } else {
          CA04_mjj = -999;
          CA04_dRjj = -999;
          CA04_dyjj = -999;
+         CA04_dphijj = -999;
+      }
+
+      // Apply kinematic region cuts here
+      if (kinematicRegion == 1 && (pT_trackj2 < 50 || pT_ll < 350)) {
+         continue;
+      } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2)) {
+         continue;
+      } else if (kinematicRegion == 3 && m_trackj1 < 32) {
+         continue;
       }
 
       // Get Lund variables 
       vector<double> R04_lundz;
       vector<double> R04_lundkt;
       vector<double> R04_lundDr;
-      processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
+      if (R04_jets.size() > 0) {
+         processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
+      }
 
       vector<double> R06_lundz;
       vector<double> R06_lundkt;
       vector<double> R06_lundDr;
-      processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
+      if (R06_jets.size() > 0) {
+         processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
+      }
 
       vector<double> R10_lundz;
       vector<double> R10_lundkt;
       vector<double> R10_lundDr;
-      processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
+      if (R10_jets.size() > 0) {
+         processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
+      }
 
       vector<double> CA04_lundz;
       vector<double> CA04_lundkt;
       vector<double> CA04_lundDr;
-      processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
+      if (CA04_jets.size() > 0) {
+         processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
+      }
 
-      // Get EEC variables
-      double R04_Q2;
+      // Get EEC variables in jets
+      double R04_Q2 = 0.0;
       vector<double> R04_esum;
       vector<double> R04_z;
-      R04_Q2 = GetEEC(R04_jets[0], R04_esum, R04_z);
+      if (R04_jets.size() > 0) {
+         R04_Q2 = GetEEC(R04_jets[0].constituents(), R04_esum, R04_z);
+      }
 
-      double R06_Q2;
+      double R06_Q2 = 0.0;
       vector<double> R06_esum;
       vector<double> R06_z;
-      R06_Q2 = GetEEC(R06_jets[0], R06_esum, R06_z);
+      if (R06_jets.size() > 0) {
+         R06_Q2 = GetEEC(R06_jets[0].constituents(), R06_esum, R06_z);
+      }
 
-      double R10_Q2;
+      double R10_Q2 = 0.0;
       vector<double> R10_esum;
       vector<double> R10_z;
-      R10_Q2 = GetEEC(R10_jets[0], R10_esum, R10_z);
+      if (R10_jets.size() > 0) {
+         R10_Q2 = GetEEC(R10_jets[0].constituents(), R10_esum, R10_z);
+      }
 
-      double CA04_Q2;
+      double CA04_Q2 = 0.0;
       vector<double> CA04_esum;
       vector<double> CA04_z;
-      CA04_Q2 = GetEEC(CA04_jets[0], CA04_esum, CA04_z);
+      if (CA04_jets.size() > 0) {
+         CA04_Q2 = GetEEC(CA04_jets[0].constituents(), CA04_esum, CA04_z);
+      }
+
+      // Get event level EEC variables
+      double EEC_Q2;
+      vector<double> EEC_esum;
+      vector<double> EEC_z;
+      EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
 
       // Get TEEC variables
       double ETransTotal;
@@ -202,36 +273,69 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          }
 
          // KT R=0.4 jets
-         histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
-         histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
+         if (KT_jets.size() > 0) {
+            histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
+            histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
+         }
 
          // R=0.4 jets
-         histoGroup.hm3_R04->Fill(R04_jets[2].m(), use_weight);
-         histoGroup.hm4_R04->Fill(R04_jets[3].m(), use_weight);
+         if (R04_jets.size() > 0) {
+            histoGroup.hm1_R04->Fill(R04_jets[0].m(), use_weight);
+         }
+         if (R04_jets.size() > 1) {
+            histoGroup.hm2_R04->Fill(R04_jets[1].m(), use_weight);
+         }
+         if (R04_jets.size() > 2) {
+            histoGroup.hm3_R04->Fill(R04_jets[2].m(), use_weight);
+         }
+         if (R04_jets.size() > 3) {
+            histoGroup.hm4_R04->Fill(R04_jets[3].m(), use_weight);
+         }
+         histoGroup.hmjj_R04->Fill(R04_mjj, use_weight);
+         histoGroup.hdyjj_R04->Fill(R04_dyjj, use_weight);
          FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
          FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
          // R=0.6 jets
-         histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
+         if (R06_jets.size() > 0) {
+            histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
+         }
          FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
          FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
 
          // R=1.0 jets
-         histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
-         histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
+         if (R10_jets.size() > 0) {
+            histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
+            histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
+         }
          FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
          FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
 
          // CA R=0.4 jets
-         histoGroup.hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
+         if (CA04_jets.size() > 0) {
+            histoGroup.hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
+         }
          FillEEC(histoGroup.hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
          histoGroup.hmjj_CA04->Fill(CA04_mjj, use_weight);
          histoGroup.hdRjj_CA04->Fill(CA04_dRjj, use_weight);
          histoGroup.hdyjj_CA04->Fill(CA04_dyjj, use_weight);
+         histoGroup.hdphijj_CA04->Fill(CA04_dphijj, use_weight);
 
          // CA R=0.6 jets
-         histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
-         histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
+         if (CA06_jets.size() > 0) {
+            histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
+            histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
+         }
+
+         // Event-level EEC
+         FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
+         FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
+         FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
+         FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
+         FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
 
       }
 
@@ -254,9 +358,13 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
 }
 
-void MakeOmni::FillEEC(shared_ptr<TH1D>& hEEC, const vector<double>& esum, const vector<double>& z, double Q2, double weight) {
+void MakeOmni::FillEEC(shared_ptr<TH1D>& hEEC, const vector<double>& esum, const vector<double>& z, double Q2, double weight, bool flip_z) {
    for (size_t i = 0; i < esum.size(); ++i) {
-      hEEC->Fill(z[i], esum[i] * weight / Q2);
+      if (flip_z) {
+         hEEC->Fill(1.0 - z[i], esum[i] * weight / Q2);
+      } else {
+         hEEC->Fill(z[i], esum[i] * weight / Q2);
+      }
    }
 }
 

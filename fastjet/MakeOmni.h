@@ -33,6 +33,7 @@ public :
    vector<string> weightBranchNames;
    int nEns;
    TString saveName;
+   int kinematicRegion;
 
    // HistoGroups
    vector<HistoGroup> centralHistoGroups;
@@ -92,7 +93,9 @@ public :
    Int_t           nphi_tracks;
    Double_t        phi_tracks[309];   //[nphi_tracks]
    Int_t           ntrackJetIndex_tracks;
-   Double_t        trackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
+   Double_t           trackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
+   // Int_t           npdgId_tracks;
+   // Int_t           pdgId_tracks[309];   //[npdgId_tracks]
 
    // List of branches
    TBranch        *b_weight;   //!
@@ -147,8 +150,10 @@ public :
    TBranch        *b_phi_tracks;   //!
    TBranch        *b_ntrackJetIndex_tracks;   //!
    TBranch        *b_trackJetIndex_tracks;   //!
+   // TBranch        *b_npdgId_tracks;   //!
+   // TBranch        *b_pdgId_tracks;   //!
 
-   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0);
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int kinematic_region = 0);
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -158,14 +163,15 @@ public :
    virtual Bool_t   Notify();
    virtual void     Show(Long64_t entry = -1);
    virtual vector<float> LoadWeights(string, string);
-   virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight);
+   virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight, bool flip_z = false);
    virtual void     FillLund(shared_ptr<TH1D>& hz, shared_ptr<TH1D>& hdr, shared_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
+   virtual float    GetMassFromPID(int pdgId);
 };
 
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int kinematic_region) : fChain(0) 
 {
 
    // Store instance variables
@@ -174,19 +180,20 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
    nEns = nEnsembles; // Store the number of ensembles
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
+   kinematicRegion = kinematic_region; // Store the kinematic region
 
    // Initialize histogram groups
    for (const auto& weight_name : weightBranchNames) {
       if (weight_name != "weight" && weight_name != "weight_mc") {
-         centralHistoGroups.push_back(HistoGroup(weight_name + "-"));
+         centralHistoGroups.push_back(HistoGroup(weight_name + "-", kinematicRegion));
       } else {
-         centralHistoGroups.push_back(HistoGroup(""));
+         centralHistoGroups.push_back(HistoGroup("nominal-ensemble-", kinematicRegion));
       }
    }
 
    // Initialize the ensemble histograms for the nominal ensemble
    for (int i = 0; i < nEns; ++i) {
-      ensHistoGroups.push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-"));
+      ensHistoGroups.push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-", kinematicRegion));
    }
 
    // Initialize the tree
@@ -278,6 +285,8 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("ntruth_eta_tracks", &neta_tracks, &b_neta_tracks);
       fChain->SetBranchAddress("ntruth_phi_tracks", &nphi_tracks, &b_nphi_tracks);
       fChain->SetBranchAddress("ntruth_trackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
+      // fChain->SetBranchAddress("ntruth_pdgId_tracks", &npdgId_tracks, &b_npdgId_tracks);
+      // fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks, &b_pdgId_tracks);
    } else {
       fChain->SetBranchAddress("pass190", &pass190, &b_pass190);
       fChain->SetBranchAddress("pT_ll", &pT_ll, &b_pT_ll);
