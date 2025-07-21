@@ -2,17 +2,15 @@ import torch.nn as nn
 
 
 class DumbNeuralNetwork(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim):
         super().__init__()
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(6, 512),
+            nn.Linear(input_dim, 256),
             nn.GELU(),
-            nn.Linear(512, 512),
+            nn.Linear(256, 256),
             nn.GELU(),
-            # nn.Linear(512, 512),
-            # nn.GELU(),
-            nn.Linear(512, 1),
+            nn.Linear(256, 1),
         )
 
     def forward(self, x, mask=None):
