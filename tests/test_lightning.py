@@ -125,7 +125,7 @@ def test_lightning_eval(tmp_path):
             config_name,
             1,
             1,
-            check_path="./assets/full_checkpoint.ckpt",
+            check_path="./assets/full_checkpoint/full_checkpoint.ckpt",
             store=tmp_path,
             unit_test=True,
         )
