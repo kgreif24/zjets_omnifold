@@ -23,7 +23,7 @@ def test_omnifold_process(tmp_path):
 
     # Copy the debug checkpoint to the tmp path
     shutil.copy(
-        "./assets/debug_checkpoint.ckpt",
+        "./assets/debug_checkpoint/debug_checkpoint.ckpt",
         f"{tmp_path}/pretrained_models/debug_checkpoint.ckpt",
     )
 

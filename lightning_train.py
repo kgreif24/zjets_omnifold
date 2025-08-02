@@ -102,6 +102,10 @@ class OfTrain:
             else:
                 glob_path = f"{self.config.pretrain_directory}/*.ckpt"
                 models = glob.glob(glob_path)
+                if not models:
+                    raise FileNotFoundError(
+                        f"No checkpoint files found in {self.config.pretrain_directory}"
+                    )
                 ws_path = str(np.random.choice(models))
             if not os.path.exists(ws_path):
                 raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
