@@ -11,6 +11,7 @@ python3
 
 import argparse
 import atexit
+import random
 from lightning_train import OfTrain
 from utils.subprocess_utils import cleanup_resources
 
@@ -47,6 +48,10 @@ parser.add_argument(
     help="Step of the Omnifold algorithm",
 )
 args = parser.parse_args()
+
+# Get random seed if requested
+if args.split_seed == -1:
+    args.split_seed = random.randint(0, 1000000)
 
 # Build trainer
 trainer = OfTrain(
