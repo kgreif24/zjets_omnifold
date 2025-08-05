@@ -15,6 +15,7 @@ import argparse
 import atexit
 import glob
 import signal
+import numpy as np
 
 import lightning as L
 from lightning.pytorch.plugins.environments import SLURMEnvironment
@@ -94,11 +95,18 @@ class OfTrain:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # If we are running itertaion >= 1, get warm start path
+        # Choose a random model from the directory
         if iteration >= 1:
-            if self.config.pretrain_checkpoint is None:
+            if self.config.pretrain_directory is None:
                 ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
             else:
-                ws_path = self.config.pretrain_checkpoint
+                glob_path = f"{self.config.pretrain_directory}/*.ckpt"
+                models = glob.glob(glob_path)
+                if not models:
+                    raise FileNotFoundError(
+                        f"No checkpoint files found in {self.config.pretrain_directory}"
+                    )
+                ws_path = str(np.random.choice(models))
             if not os.path.exists(ws_path):
                 raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
         else:

@@ -15,7 +15,7 @@ interactive: False
 num_iterations: 2
 
 # Path to checkpoint which will be used as the starting pointfor all iterations
-pretrain_checkpoint: ./assets/debug_checkpoint.ckpt
+pretrain_directory: ./assets/debug_checkpoint/
 
 # Path to the source file to use in pretraining
 pretrain_source_path: ./assets/evts_200_300.root

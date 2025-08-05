@@ -52,15 +52,14 @@ class OfConfig:
             help="Number of iterations to run the Omnifold algorithm",
         )
         self.parser.add_argument(
-            "--pretrain_checkpoint",
+            "--pretrain_directory",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/omnifold-tuning/"
-                "pretrain/run-9/epoch=8-step=20097.ckpt"
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
+                "pretrained-models/"
             ),
             help=(
-                "Path to checkpoint which will be used as the starting point"
-                "for all iterations"
+                "Path to the directory containing all of the pretrained models"
             ),
         )
 
@@ -91,7 +90,7 @@ class OfConfig:
             default=(
                 "/pscratch/sd/k/kgreif/data/"
                 "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "Train_shuffled.root"
+                "Train_shuffled_syst.root"
             ),
             help="Path for the MC training data",
         )
@@ -101,7 +100,7 @@ class OfConfig:
             default=(
                 "/pscratch/sd/k/kgreif/data/"
                 "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "Test_shuffled.root"
+                "Test_shuffled_syst.root"
             ),
             help="Path for the MC testing data",
         )
@@ -141,7 +140,7 @@ class OfConfig:
         self.parser.add_argument(
             "--max_events_target",
             type=int,
-            default=500000,
+            default=99999999,
             help="Maximum number of events to use in the target data",
         )
         self.parser.add_argument(
@@ -179,7 +178,7 @@ class OfConfig:
         self.parser.add_argument(
             "--num_nodes",
             type=int,
-            default=1,
+            default=4,
             help="Number of nodes to use for training",
         )
 
@@ -195,13 +194,13 @@ class OfConfig:
         self.parser.add_argument(
             "--pt_min_lr",
             type=float,
-            default=0.00001,
+            default=0.000006,
             help="Minimum learning rate for pre-training",
         )
         self.parser.add_argument(
             "--pt_max_lr",
             type=float,
-            default=0.0001,
+            default=0.00018,
             help="Maximum learning rate for pre-training",
         )
         self.parser.add_argument(
@@ -213,13 +212,13 @@ class OfConfig:
         self.parser.add_argument(
             "--pt_warmup_steps",
             type=int,
-            default=2000,
+            default=0,
             help="Number of steps to warm up the learning rate for pre-training",
         )
         self.parser.add_argument(
             "--pt_cos_steps",
             type=int,
-            default=50000,
+            default=15000,
             help="Number of steps in a cosine cycle for pre-training",
         )
         self.parser.add_argument(
@@ -243,7 +242,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_max_steps",
             type=int,
-            default=8000,
+            default=4000,
             help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
@@ -267,7 +266,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_lr_decay",
             type=float,
-            default=1.0,
+            default=0.5,
             help="Decay with iteration for step one trainings maximum learning rate",
         )
         self.parser.add_argument(
