@@ -402,7 +402,7 @@ class OfTrain:
 
     @rank_zero_only
     def cleanup_on_exit(self, natural_exit=False):
-        """ cleanup_on_exit - This function is called in two cases:
+        """cleanup_on_exit - This function is called in two cases:
             1. When training has finished, to make `best_model.ckpt` symlink
             2. When the training process is going to be timed out or preempted,
                to make a symlink if we are past the 'finish_steps' threshold.
@@ -470,9 +470,7 @@ class OfTrain:
             if self._extract_info_from_checkpoint(f)[0] >= self.min_steps
         ]
         if not checkpoint_files:
-            rank_zero_info(
-                f"No checkpoint files found with steps >= {self.min_steps}."
-            )
+            rank_zero_info(f"No checkpoint files found with steps >= {self.min_steps}.")
             return
 
         # Sort checkpoints above min_steps by their wasserstein distance

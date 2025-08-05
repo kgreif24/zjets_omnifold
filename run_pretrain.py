@@ -40,13 +40,19 @@ parser.add_argument(
     default=-1,
     help="Index of the run within an ensemble",
 )
+parser.add_argument(
+    "--step",
+    type=int,
+    default=1,
+    help="Step of the Omnifold algorithm",
+)
 args = parser.parse_args()
 
 # Build trainer
 trainer = OfTrain(
     args.config,
     0,
-    1,
+    args.step,
     seed=args.split_seed,
     index=args.index,
 )

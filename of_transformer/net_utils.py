@@ -28,6 +28,7 @@ def to_pt2(x, eps=1e-8):
     return pt2
 
 
+@torch.compile
 def to_m2(xi, xj, eps=1e-8):
     """to_m2 - This function calculates the invariant mass squared of the sum
     of the four vectors given by xi and xj. The xi and xj are assumed to have
@@ -48,27 +49,18 @@ def to_m2(xi, xj, eps=1e-8):
     """
 
     # Separate the pT, eta, and phi from the input
-    logpti, etai, phii, onehotsi = torch.split(
-        xi, [1, 1, 1, xi.shape[1] - 3], dim=1
+    logpti, etai, phii, logmi = torch.split(
+        xi, [1, 1, 1, 1], dim=1
     )  # log(pT), eta, phi, onehots
-    logptj, etaj, phij, onehotsj = torch.split(
-        xj, [1, 1, 1, xj.shape[1] - 3], dim=1
-    )  # log(pT), eta, phi, onehots
+    logptj, etaj, phij, logmj = torch.split(
+        xj, [1, 1, 1, 1], dim=1
+    )  # log(pT), eta, phi, log(m)
 
-    # Remember we take the log of the pTs, so we need to exponentiate them
+    # Exponentiate the pT and m
     pti = torch.exp(logpti)
     ptj = torch.exp(logptj)
-
-    # Determine masses for the mi, mj based on the onehot encodings
-    # muon mass = 0.11, pion mass = 0.14, so not so huge of a difference anyway
-    mi = torch.cat(
-        (0.11 * onehotsi[:, :2, :], 0.14 * onehotsi[:, 2:, :]),
-        dim=1,
-    ).sum(dim=1, keepdim=True)
-    mj = torch.cat(
-        (0.11 * onehotsj[:, :2, :], 0.14 * onehotsj[:, 2:, :]),
-        dim=1,
-    ).sum(dim=1, keepdim=True)
+    mi = torch.exp(logmi)
+    mj = torch.exp(logmj)
 
     # Calculate px, py, pz, and E
     pxi = pti * torch.cos(phii)
@@ -125,8 +117,8 @@ def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
     E, px, py, pz as input.
     """
 
-    logpti, etai, phii = xi.split((1, 1, 1), dim=1)
-    logptj, etaj, phij = xj.split((1, 1, 1), dim=1)
+    logpti, etai, phii, logmi = xi.split((1, 1, 1, 1), dim=1)
+    logptj, etaj, phij, logmj = xj.split((1, 1, 1, 1), dim=1)
 
     pti = torch.exp(logpti)
     ptj = torch.exp(logptj)

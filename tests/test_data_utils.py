@@ -42,30 +42,27 @@ def test_get_one_hot():
         [[[-1, -1, 0, 0, 1, 1]], [[-1, -1, 0, 1, 2, 2]], [[-1, -1, 0, 1, 1, 2]]]
     )
 
-    one_hot = du.get_one_hot(kinematics, indeces, n_jets=2)
-    test_out = np.array(
+    one_hot_reco = du.get_one_hot(kinematics, indeces, n_jets=2)
+    test_out_reco = np.array(
         [
             [
-                [1, 1, 0, 0, 0, 0],
                 [0, 0, 1, 1, 0, 0],
                 [0, 0, 0, 0, 1, 1],
                 [0, 0, 0, 0, 0, 0],
             ],
             [
-                [1, 1, 0, 0, 0, 0],
                 [0, 0, 1, 0, 0, 0],
                 [0, 0, 0, 1, 0, 0],
                 [0, 0, 0, 0, 1, 1],
             ],
             [
-                [1, 1, 0, 0, 0, 0],
                 [0, 0, 1, 0, 0, 0],
                 [0, 0, 0, 1, 1, 0],
                 [0, 0, 0, 0, 0, 1],
             ],
         ]
     )
-    assert np.all(one_hot == test_out)
+    assert np.all(one_hot_reco == test_out_reco)
 
 
 def test_get_kinematics():
@@ -154,12 +151,8 @@ def test_get_observables_syst():
     # Filter out 3 keys
     nominal_3keys = ["Ntracks", "HT_tracks", "pT_ll"]
     trackeff_3keys = ["syst_TrackFilter_Ntracks", "syst_TrackFilter_HT_tracks", "pT_ll"]
-    assert all(
-        [key in nominal_keys for key in nominal_3keys]
-    )
-    assert all(
-        [key in trackeff_keys for key in trackeff_3keys]
-    )
+    assert all([key in nominal_keys for key in nominal_3keys])
+    assert all([key in trackeff_keys for key in trackeff_3keys])
 
     # Get nominal and syst varied observables
     nominal_obs = du.get_observables(t, nominal_3keys)
