@@ -95,16 +95,23 @@ class OfTrain:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # If we are running itertaion >= 1, get warm start path
-        # Choose a random model from the directory
         if iteration >= 1:
-            if self.config.pretrain_directory is None:
-                ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
+            glob_path = None
+            if self.step == 1:
+                if self.config.s1_pretrain_directory is None:
+                    ws_path = f"{root_dir}/pretrain_step_{self.step}/best_model.ckpt"
+                else:
+                    glob_path = f"{self.config.s1_pretrain_directory}/*.ckpt"
             else:
-                glob_path = f"{self.config.pretrain_directory}/*.ckpt"
+                if self.config.s2_pretrain_directory is None:
+                    ws_path = f"{root_dir}/pretrain_step_{self.step}/best_model.ckpt"
+                else:
+                    glob_path = f"{self.config.s2_pretrain_directory}/*.ckpt"
+            if glob_path is not None:
                 models = glob.glob(glob_path)
                 if not models:
                     raise FileNotFoundError(
-                        f"No checkpoint files found in {self.config.pretrain_directory}"
+                        f"No checkpoint files found in {glob_path}"
                     )
                 ws_path = str(np.random.choice(models))
             if not os.path.exists(ws_path):
@@ -410,7 +417,7 @@ class OfTrain:
 
     @rank_zero_only
     def cleanup_on_exit(self, natural_exit=False):
-        """ cleanup_on_exit - This function is called in two cases:
+        """cleanup_on_exit - This function is called in two cases:
             1. When training has finished, to make `best_model.ckpt` symlink
             2. When the training process is going to be timed out or preempted,
                to make a symlink if we are past the 'finish_steps' threshold.
@@ -478,9 +485,7 @@ class OfTrain:
             if self._extract_info_from_checkpoint(f)[0] >= self.min_steps
         ]
         if not checkpoint_files:
-            rank_zero_info(
-                f"No checkpoint files found with steps >= {self.min_steps}."
-            )
+            rank_zero_info(f"No checkpoint files found with steps >= {self.min_steps}.")
             return
 
         # Sort checkpoints above min_steps by their wasserstein distance

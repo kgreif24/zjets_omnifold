@@ -52,14 +52,22 @@ class OfConfig:
             help="Number of iterations to run the Omnifold algorithm",
         )
         self.parser.add_argument(
-            "--pretrain_directory",
+            "--s1_pretrain_directory",
             type=str,
             default=(
                 "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
                 "pretrained-models/"
             ),
             help=(
-                "Path to the directory containing all of the pretrained models"
+                "Path to the directory containing pretrained models for step one"
+            ),
+        )
+        self.parser.add_argument(
+            "--s2_pretrain_directory",
+            type=str,
+            default=None,
+            help=(
+                "Path to the directory containing pretrained models for step two"
             ),
         )
 
@@ -89,8 +97,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "Train_shuffled_syst.root"
+                "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Train_shuffled.root"
             ),
             help="Path for the MC training data",
         )
@@ -99,8 +106,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "Test_shuffled_syst.root"
+                "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
             ),
             help="Path for the MC testing data",
         )
@@ -109,7 +115,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "Pseudodata_WithSherapaNoReweighting_12May2025_shuffled.root"
+                "Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled.root"
             ),
             help="Path for the data",
         )
@@ -118,7 +124,8 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "Sum_Sherpa2211DY_Dibo_EW_Top_PosWeights_WithTracks_All_shuffled.root"
+                "TruthPseudodata_Sherpa2211DY_Dibo_EW_PowhegPythiaTop_PosWeights"
+                "_WithTracks_shuffled.root"
             ),
             help="Path to the truth pseudodata",
         )

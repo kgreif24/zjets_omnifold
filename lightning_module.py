@@ -156,7 +156,7 @@ class LOfTransformer(L.LightningModule):
 
     # Forward pass
     def forward(self, inputs, mask, glb_features=None):
-        tracks = inputs[:, :3, :]
+        tracks = inputs[:, :4, :]
         if self.debug:
             return self.model(tracks)
         else:

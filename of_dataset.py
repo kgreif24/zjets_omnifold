@@ -3,7 +3,7 @@ dataset class and implements a custom procedure for promoting data loaded as awk
 arrays to the format needed for training and evaluating models.
 
 Authors: Kevin Greif
-Last updated 11/20/2024
+Last updated 8/2/2025
 python3
 """
 
@@ -29,8 +29,10 @@ class OfDataset(torch.utils.data.Dataset):
         labels,
         weights,
         w1_obs,
+        pdgids,
         object_indeces=None,
         n_jets=5,
+        truth_level=False,
         max_tracks=None,
     ):
         """__init__ - Custom init function for the class. The only important difference
@@ -42,11 +44,12 @@ class OfDataset(torch.utils.data.Dataset):
             Shape should be (n_events, n_features, VAR n_tracks)
         labels (np.ndarray) - The labels for the events
         weights (np.ndarray) - The weights for the events
-        w1_obs (np.ndarray) - The W1 observables for the events, used to calculate 
+        w1_obs (np.ndarray) - The W1 observables for the events, used to calculate
             W1 metrics.
-        object_indeces (np.ndarray) - The indeces of the objects to include in the
-            dataset. If None, do not include one-hot encodings for the tracks in the
-            data.
+        pdgids (ak.Array) - The pdgids of the particles in the event.
+            Shape should be (n_events, 1, VAR n_tracks)
+        object_indeces (ak.Array) - The indeces of the objects to include in the
+            dataset. Should be shape (n_events, 1, VAR n_tracks)
         n_jets (int) - The maximum number of jets to include in the one-hot encodings.
             If object_indeces is None, this is not used
         max_tracks (int) - The maximum number of tracks to include in the dataset. If
@@ -54,14 +57,15 @@ class OfDataset(torch.utils.data.Dataset):
             tracks minus 2, since we count the muons as well.
 
         Returns:
-        none
+        None
         """
 
-        # Store kinematics and track indeces as awkward arrays
+        # Store kinematics, track indeces, and pdgids as awkward arrays
         self.kinematics = kinematics
         self.object_indeces = object_indeces
+        self.pdgids = pdgids
 
-        # Make max tracks and n_jets a class variable
+        # Set class variables
         self.max_tracks = max_tracks
         self.n_jets = n_jets
 
@@ -77,6 +81,7 @@ class OfDataset(torch.utils.data.Dataset):
                 == len(self.weights)
                 == len(self.labels)
                 == len(self.w1_obs)
+                == len(self.pdgids)
             )
         except AssertionError:
             raise Exception(
@@ -112,6 +117,8 @@ class OfDataset(torch.utils.data.Dataset):
             self.object_indeces = ak.concatenate(
                 [self.object_indeces, dataset.object_indeces], axis=0
             )
+        if self.pdgids is not None:
+            self.pdgids = ak.concatenate([self.pdgids, dataset.pdgids], axis=0)
         self.labels = torch.cat([self.labels, dataset.labels], dim=0)
         self.weights = torch.cat([self.weights, dataset.weights], dim=0)
         self.w1_obs = torch.cat([self.w1_obs, dataset.w1_obs], dim=0)
@@ -168,7 +175,7 @@ class OfDataset(torch.utils.data.Dataset):
 
         # ------------- Kinematics + One Hots -------------
 
-        # Slice kinematics
+        # Slice kinematics and pdgids
         kinematics = self.kinematics[indeces, ...]
 
         # Find max tracks for this batch
@@ -176,21 +183,34 @@ class OfDataset(torch.utils.data.Dataset):
         if self.max_tracks is not None and batch_max_tracks > self.max_tracks:
             batch_max_tracks = self.max_tracks
 
-        # Zero pad kinematicc
+        # Zero pad kinematics
         # Result is a numpy array of shape (batch, n_features, batch_max_tracks)
         kinematics = utils.pad_kinematics(kinematics, max_tracks=batch_max_tracks)
 
-        # Process one-hot encodings
+        # Process pdgids, goal is to infer the object mass as
+        # an extra kinematic feature
+        pdgids = self.pdgids[indeces, ...]
+        pdgids = utils.pad_kinematics(
+            pdgids, max_tracks=batch_max_tracks, fill=-999
+        )
+        masses = utils.get_masses(pdgids)
+        kinematics = np.concatenate([kinematics, masses], axis=1)
+
+        # Process one-hot encodings for track indeces
         if self.object_indeces is not None:
 
-            # Slice and zero pad the object indeces
+            # Slice the indeces then run padding
             object_indeces = self.object_indeces[indeces, ...]
             object_indeces = utils.pad_kinematics(
                 object_indeces, max_tracks=batch_max_tracks, fill=-999
             )
 
             # Get one hot encodings
-            one_hots = utils.get_one_hot(kinematics, object_indeces, n_jets=self.n_jets)
+            one_hots = utils.get_one_hot(
+                kinematics,
+                object_indeces,
+                n_jets=self.n_jets,
+            )
 
             # Concatenate kinematics with one hot encodings
             kinematics = np.concatenate([kinematics, one_hots], axis=1)
