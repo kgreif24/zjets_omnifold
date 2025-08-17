@@ -14,8 +14,11 @@ interactive: False
 # Number of iterations to run the Omnifold algorithm
 num_iterations: 1
 
-# Path to checkpoint which will be used as the starting pointfor all iterations
-pretrain_directory: ./assets/full_checkpoint/
+# Path to the directory containing pretrained models for step one
+s1_pretrain_directory: ./assets/full_checkpoint/
+
+# Path to the directory containing pretrained models for step two
+s2_pretrain_directory: ./assets/full_checkpoint/
 
 # Path to the source file to use in pretraining
 pretrain_source_path: ./assets/evts_200_300.root

@@ -65,6 +65,25 @@ def test_get_one_hot():
     assert np.all(one_hot_reco == test_out_reco)
 
 
+def test_get_masses():
+
+    # Test events with 2 muons and 4 tracks
+    pdgids = np.array(
+        [
+            [[13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999]],
+            [[13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999]],
+        ]
+    )
+    masses = du.get_masses(pdgids)
+    masses_test = ak.Array(
+        [
+            [[0.105658, 0.13957, 0.493677, 0.938272, 0.000511, 1.189, 1.197, 1.321, 1.672, 0.0]],
+            [[0.105658, 0.13957, 0.493677, 0.938272, 0.000511, 1.189, 1.197, 1.321, 1.672, 0.0]],
+        ]
+    )
+    assert ak.all(ak.isclose(masses, masses_test))
+
+
 def test_get_kinematics():
 
     # Hardcode the location of the event sample
@@ -78,9 +97,10 @@ def test_get_kinematics():
     nt = nt[p190 == 1]
 
     # Assert we have the expected number of events
-    gk1, ind1 = du.get_kinematics(t)
+    gk1, ind1, pdgids = du.get_kinematics(t)
     assert len(gk1) == np.sum(p190)
     assert len(ind1) == np.sum(p190)
+    assert len(pdgids) == np.sum(p190)
 
     # Assert that we've taken the log of the pT (some negative values)
     assert np.any(gk1[:, 0, :] < 0)
@@ -88,11 +108,43 @@ def test_get_kinematics():
     # Assert the number of tracks in each event is correct
     gk1_count = ak.to_numpy(ak.count(gk1[:, 0, :], axis=1))
     ind1_count = ak.to_numpy(ak.count(ind1[:, 0, :], axis=1))
+    pdgids_count = ak.to_numpy(ak.count(pdgids[:, 0, :], axis=1))
     assert np.all(gk1_count == ind1_count)
+    assert np.all(gk1_count == pdgids_count)
     assert np.all(gk1_count == nt + 2)
 
     # Assert that we have two muons within each event
     assert np.all(np.count_nonzero(ind1[:, 0, :] == -1, axis=1) == 2)
+    assert np.all(np.count_nonzero(pdgids[:, 0, :] == 13, axis=1) == 2)
+
+    # Assert that the pdgids contain only 13 and 211
+    assert np.all(np.unique(ak.to_numpy(ak.flatten(pdgids, axis=None))) == [13, 211])
+
+
+def test_get_kinematics_truth():
+
+    # Hardcode the location of the event sample
+    sample = "./assets/evts_000_100.root"
+    f = uproot.open(sample)
+    t = f["OmniTree"]
+    nt = ak.to_numpy(t["truth_Ntracks"].array())
+    p190 = ak.to_numpy(t["truth_pass190"].array())
+
+    # Filter the number of tracks
+    nt = nt[p190 == 1]
+
+    # Assert we have the expected number of events
+    gk1, ind1, pdgids = du.get_kinematics(t, get_truth=True)
+    assert len(gk1) == np.sum(p190)
+    assert len(ind1) == np.sum(p190)
+    assert len(pdgids) == np.sum(p190)
+
+    # Assert that we have two muons within each event
+    assert np.all(np.count_nonzero(ind1[:, 0, :] == -1, axis=1) == 2)
+    assert np.all(np.count_nonzero(pdgids[:, 0, :] == 13, axis=1) == 2)
+
+    # Assert that the pdgids contain not just 13 and 211
+    assert len(np.unique(ak.to_numpy(ak.flatten(pdgids, axis=None)))) > 2
 
 
 def test_get_kinematics_syst():
@@ -104,11 +156,11 @@ def test_get_kinematics_syst():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Get nominal kinematics
-    nominal_kinematics, nominal_indices = du.get_kinematics(t)
+    nominal_kinematics, nominal_indices, _ = du.get_kinematics(t)
     assert len(nominal_kinematics) == np.sum(p190)
 
     # Get systematic kinematics
-    trackeff_kinematics, trackeff_indices = du.get_kinematics(t, syst_kw="track_eff")
+    trackeff_kinematics, trackeff_indices, _ = du.get_kinematics(t, syst_kw="track_eff")
     assert len(trackeff_kinematics) == np.sum(p190)
 
     # Count tracks and assert track efficiency varied data has fewer
@@ -173,21 +225,25 @@ def test_stack():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Get kinematics
-    gk1, ind1 = du.get_kinematics(t)
+    gk1, ind1, pdgids = du.get_kinematics(t)
 
     # Zero pad kinematics
-    gk1 = du.pad_kinematics(gk1, max_tracks=20, fill=0)
+    gk1 = du.pad_kinematics(gk1, max_tracks=10, fill=0)
+
+    # Zero pad pdgids and get masses
+    pdgids = du.pad_kinematics(pdgids, max_tracks=10, fill=-999)
+    masses = du.get_masses(pdgids)
 
     # Zero pad indeces
-    ind1 = du.pad_kinematics(ind1, max_tracks=20, fill=999)
+    ind1 = du.pad_kinematics(ind1, max_tracks=10, fill=-999)
 
     # Get one hots
     one_hot = du.get_one_hot(gk1, ind1, n_jets=5)
 
     # Verify each object has a single one-hot encoding
     one_hot_count = np.count_nonzero(one_hot, axis=1)
-    assert np.all(one_hot_count == 1)
+    assert np.all(one_hot_count[:, 2:] == 1)
 
     # Concatenate one hot with kinematics
-    gk1 = np.concatenate([gk1, one_hot], axis=1)
-    assert gk1.shape == (np.sum(p190), 10, 20)
+    gk1 = np.concatenate([gk1, masses, one_hot], axis=1)
+    assert gk1.shape == (np.sum(p190), 10, 10)
