@@ -28,10 +28,7 @@ double GetFrag_zT( vector<PseudoJet> jet_constit, PseudoJet jet ){
 }
 
 // add EEC
-double GetEEC( PseudoJet& jet, std::vector<double>& esum, std::vector<double>& z ){
-
-  // Get jet constituents
-  vector<PseudoJet> jet_constit = jet.constituents();
+double GetEEC(vector<PseudoJet> jet_constit, std::vector<double>& esum, std::vector<double>& z ){
 
   double Q = 0;
   for (size_t iconstit = 0; iconstit < jet_constit.size(); ++iconstit) {
@@ -39,11 +36,11 @@ double GetEEC( PseudoJet& jet, std::vector<double>& esum, std::vector<double>& z
 
       // For constituent pairs, add to total Q
       if (iconstit == jconstit) {
-        Q += jet_constit[iconstit].e();
+        Q += jet_constit[iconstit].Et();
       }
 
       // For all pairs, calculate esum and z
-      esum.push_back(jet_constit[iconstit].e() * jet_constit[jconstit].e());
+      esum.push_back(jet_constit[iconstit].Et() * jet_constit[jconstit].Et());
       double cos_theta = GetDotProduct(jet_constit[iconstit], jet_constit[jconstit]) / (GetPseudoJetP(jet_constit[iconstit]) * GetPseudoJetP(jet_constit[jconstit]));
       z.push_back((1 - cos_theta) / 2);
 

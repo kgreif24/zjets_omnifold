@@ -58,17 +58,13 @@ class OfConfig:
                 "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
                 "pretrained-models/"
             ),
-            help=(
-                "Path to the directory containing pretrained models for step one"
-            ),
+            help=("Path to the directory containing pretrained models for step one"),
         )
         self.parser.add_argument(
             "--s2_pretrain_directory",
             type=str,
             default=None,
-            help=(
-                "Path to the directory containing pretrained models for step two"
-            ),
+            help=("Path to the directory containing pretrained models for step two"),
         )
 
         # Data

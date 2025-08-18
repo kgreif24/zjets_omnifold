@@ -95,6 +95,7 @@ class OfTrain:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # If we are running itertaion >= 1, get warm start path
+        # Choose a random model from the directory
         if iteration >= 1:
             glob_path = None
             if self.step == 1:
@@ -110,9 +111,7 @@ class OfTrain:
             if glob_path is not None:
                 models = glob.glob(glob_path)
                 if not models:
-                    raise FileNotFoundError(
-                        f"No checkpoint files found in {glob_path}"
-                    )
+                    raise FileNotFoundError(f"No checkpoint files found in {glob_path}")
                 ws_path = str(np.random.choice(models))
             if not os.path.exists(ws_path):
                 raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
