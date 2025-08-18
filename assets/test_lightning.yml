@@ -35,6 +35,9 @@ mc_test_path: ./assets/evts_100_200.root
 # Path for the data
 data_path: ./assets/evts_200_300.root
 
+# Path to the weights for the top substructure layer
+top_sub_weights: null
+
 # Path to the truth pseudodata
 truth_data_path: ./assets/truth_evts_000_100.root
 

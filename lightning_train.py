@@ -333,7 +333,7 @@ class OfTrain:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
                 source_weight_file = None
-                target_weight_file = None
+                target_weight_file = self.config.top_sub_weights
             # Otherwise use the weights from the previous step two for the source,
             # and weights from the ROOT file for target
             else:

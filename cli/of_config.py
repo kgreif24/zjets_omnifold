@@ -116,6 +116,15 @@ class OfConfig:
             help="Path for the data",
         )
         self.parser.add_argument(
+            "--top_sub_weights",
+            type=str,
+            default=None,
+            help=(
+                "Path to the weights for the top substructure layer leave None if not "
+                "using top subtraction"
+            ),
+        )
+        self.parser.add_argument(
             "--truth_data_path",
             type=str,
             default=(
@@ -123,7 +132,7 @@ class OfConfig:
                 "TruthPseudodata_Sherpa2211DY_Dibo_EW_PowhegPythiaTop_PosWeights"
                 "_WithTracks_shuffled.root"
             ),
-            help="Path to the truth pseudodata",
+            help="Path to the truth pseudodata, leave None if not using truth data",
         )
         self.parser.add_argument(
             "--split_seed",

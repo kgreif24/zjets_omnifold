@@ -254,7 +254,7 @@ class OfEval:
                 max_events=self.config.max_events_target,
             )
 
-            if step == 2:
+            if step == 2 and self.config.truth_data_path is not None:
                 self.comp_plotter = Plotter(
                     self.config.mc_test_path,
                     self.config.truth_data_path,
@@ -428,7 +428,7 @@ class OfEval:
 
             # Evaluate difference between reweighted truth MC and truth data
             # if this is step 2
-            if self.step == 2:
+            if self.step == 2 and self.config.truth_data_path is not None:
                 self.compare(plot_weights_test)
 
         # Wait for rank 0 process to finish saving weights and plotting
