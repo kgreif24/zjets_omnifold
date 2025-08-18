@@ -6,7 +6,7 @@ class DumbNeuralNetwork(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(6, 512),
+            nn.Linear(8, 512),
             nn.GELU(),
             nn.Linear(512, 512),
             nn.GELU(),

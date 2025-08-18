@@ -97,15 +97,21 @@ class OfTrain:
         # If we are running itertaion >= 1, get warm start path
         # Choose a random model from the directory
         if iteration >= 1:
-            if self.config.pretrain_directory is None:
-                ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
+            glob_path = None
+            if self.step == 1:
+                if self.config.s1_pretrain_directory is None:
+                    ws_path = f"{root_dir}/pretrain_step_{self.step}/best_model.ckpt"
+                else:
+                    glob_path = f"{self.config.s1_pretrain_directory}/*.ckpt"
             else:
-                glob_path = f"{self.config.pretrain_directory}/*.ckpt"
+                if self.config.s2_pretrain_directory is None:
+                    ws_path = f"{root_dir}/pretrain_step_{self.step}/best_model.ckpt"
+                else:
+                    glob_path = f"{self.config.s2_pretrain_directory}/*.ckpt"
+            if glob_path is not None:
                 models = glob.glob(glob_path)
                 if not models:
-                    raise FileNotFoundError(
-                        f"No checkpoint files found in {self.config.pretrain_directory}"
-                    )
+                    raise FileNotFoundError(f"No checkpoint files found in {glob_path}")
                 ws_path = str(np.random.choice(models))
             if not os.path.exists(ws_path):
                 raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")

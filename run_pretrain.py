@@ -11,6 +11,7 @@ python3
 
 import argparse
 import atexit
+import random
 from lightning_train import OfTrain
 from utils.subprocess_utils import cleanup_resources
 
@@ -40,13 +41,23 @@ parser.add_argument(
     default=-1,
     help="Index of the run within an ensemble",
 )
+parser.add_argument(
+    "--step",
+    type=int,
+    default=1,
+    help="Step of the Omnifold algorithm",
+)
 args = parser.parse_args()
+
+# Get random seed if requested
+if args.split_seed == -1:
+    args.split_seed = random.randint(0, 1000000)
 
 # Build trainer
 trainer = OfTrain(
     args.config,
     0,
-    1,
+    args.step,
     seed=args.split_seed,
     index=args.index,
 )
