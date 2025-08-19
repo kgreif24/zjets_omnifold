@@ -25,10 +25,5 @@ conda activate zfjets
 export WANDB__SERVICE_WAIT=400
 wandb login
 
-# OpenMP settings:
-export OMP_NUM_THREADS=1
-export OMP_PLACES=threads
-export OMP_PROC_BIND=spread
-
 # run the application:
 srun --nodes 4 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python run_pretrain.py --config ./cli/base_ensemble_v3.yml --split_seed 484 --index 1

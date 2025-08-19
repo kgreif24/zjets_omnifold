@@ -31,11 +31,6 @@ conda activate zfjets
 export WANDB__SERVICE_WAIT=400
 wandb login
 
-# OpenMP settings:
-export OMP_NUM_THREADS=1
-export OMP_PLACES=threads
-export OMP_PROC_BIND=spread
-
 # run the application:
 python run_omnifold.py --config_path ./cli/base_ensemble_v3.yml --ensemble_index $SLURM_ARRAY_TASK_ID
 sleep 120 # sleep for 2 minutes to allow slurm to send SIGTERM in case of preemption
