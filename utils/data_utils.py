@@ -86,18 +86,18 @@ def get_masses(pdgids) -> np.ndarray:
     """
 
     assert np.all(
-        np.isin(pdgids, [13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999])
+        np.isin(pdgids, [13, 211, -999])
     )
     masses = np.zeros_like(pdgids, dtype=np.float32)
     masses[pdgids == 13] = 0.105658
     masses[pdgids == 211] = 0.13957
-    masses[pdgids == 321] = 0.493677
-    masses[pdgids == 2212] = 0.938272
-    masses[pdgids == 11] = 0.000511
-    masses[pdgids == 3222] = 1.189
-    masses[pdgids == 3112] = 1.197
-    masses[pdgids == 3312] = 1.321
-    masses[pdgids == 3334] = 1.672
+    # masses[pdgids == 321] = 0.493677
+    # masses[pdgids == 2212] = 0.938272
+    # masses[pdgids == 11] = 0.000511
+    # masses[pdgids == 3222] = 1.189
+    # masses[pdgids == 3112] = 1.197
+    # masses[pdgids == 3312] = 1.321
+    # masses[pdgids == 3334] = 1.672
     return masses
 
 
@@ -228,14 +228,8 @@ def get_kinematics(
             **kwargs,
         )
 
-        # Get pdgids
-        if get_truth:
-            track_pdgids = tree["truth_pdgId_tracks"].array(
-                entry_start=start, entry_stop=stop
-            )
-            track_pdgids = ak.unflatten(np.abs(track_pdgids), 1, axis=0)
-        else:
-            track_pdgids = 211 * ak.ones_like(track_pt)
+        # Track pdgids
+        track_pdgids = 211 * ak.ones_like(track_pt)
 
         # Apply filter then truncate if necessary
         track_kinematics = track_kinematics[evt_filter == 1, ...]
