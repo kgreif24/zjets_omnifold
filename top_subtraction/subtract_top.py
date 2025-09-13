@@ -1,28 +1,53 @@
 """subtract_top.py - Subtract the top contribution to the fiducial
-volume in 2 steps:
+volume by training a classifier to distinguish between the top subtracted
+pseudodata and the raw pseudodata.
 
-1. Train classifier to subtract 10x the top contribution
-2. Train classifier to add back 9x the top contribution
+Because the top contribution is very subtle, subtraction will only be differential
+in 3 observables: Ntracks, HT_tracks, and the isTop logit.
 
-Both of these classifiers will use a single floating point number as input.
-This is the isTop logit from the original top classifier.
+Author: Kevin Greif
+Last updated September 12, 2025
 """
 
+import sys
+import argparse
 import uproot
 import awkward as ak
 import numpy as np
 import torch
 import lightning as L
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities.rank_zero import rank_zero_only
-from of_transformer.simple_network import DumbNeuralNetwork
-from utils.data_utils import get_observables
+from sklearn.model_selection import train_test_split
+# from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.utilities.rank_zero import rank_zero_only, rank_zero_info
+
+sys.path.append("..")
+from utils.data_utils import get_observables  # noqa: E402
+
+
+class SimpleNN(torch.nn.Module):
+    def __init__(self, input_dim=3, droprate=0.0):
+        super().__init__()
+        self.flatten = torch.nn.Flatten()
+        self.linear_relu_stack = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, 512),
+            torch.nn.GELU(),
+            torch.nn.Dropout(droprate),
+            torch.nn.Linear(512, 512),
+            torch.nn.GELU(),
+            torch.nn.Dropout(droprate),
+            torch.nn.Linear(512, 1),
+        )
+
+    def forward(self, x):
+        x = self.flatten(x)
+        logits = self.linear_relu_stack(x)
+        return logits
 
 
 class SubtractTop(L.LightningModule):
-    def __init__(self, input_dim=1):
+    def __init__(self, input_dim=1, droprate=0.0):
         super().__init__()
-        self.model = DumbNeuralNetwork(input_dim)
+        self.model = SimpleNN(input_dim, droprate=droprate)
         self.loss_fn = torch.nn.BCEWithLogitsLoss(reduction="none")
 
     def forward(self, x):
@@ -33,7 +58,7 @@ class SubtractTop(L.LightningModule):
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y) * w
         loss = loss.mean()
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=True, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -41,7 +66,7 @@ class SubtractTop(L.LightningModule):
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y) * w
         loss = loss.mean()
-        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_loss", loss, prog_bar=True, sync_dist=True)
         return loss
 
     def predict_step(self, batch, batch_idx):
@@ -50,113 +75,200 @@ class SubtractTop(L.LightningModule):
         return y_hat
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.model.parameters(), lr=1e-3, weight_decay=0.2)
+        return torch.optim.AdamW(self.model.parameters(), lr=1e-4, weight_decay=0.2)
 
 
 @rank_zero_only
-def predict_and_save(model, dataloader, output_file, labels):
-    preds = []
-    for batch in dataloader:
-        x, y, w = batch
-        y_hat = model(x.to(model.device))
-        preds.append(y_hat)
-    preds = np.concatenate([p.detach().cpu().numpy().flatten() for p in preds])
-    source_preds = np.exp(preds[labels.flatten() == 0])
+def predict_and_save(model, dataloader, output_file):
+    with torch.no_grad():
+        model.eval()
+        preds = []
+        for batch in dataloader:
+            x = batch[0]
+            y_hat = model(x.to(model.device))
+            preds.append(y_hat)
+        preds = np.concatenate([p.detach().cpu().numpy().flatten() for p in preds])
+        source_preds = np.exp(preds)
     print(f"Mean of subtraction weights: {np.mean(source_preds)}")
     np.savez(output_file, reweighting=source_preds)
 
 
-# Set the observables to use
-observables = ["isTop_logit", "HT_tracks", "Ntracks"]
-input_dim = len(observables)
+def bootstrap_sample(data, weights, bootstrap):
+    rng = np.random.default_rng(bootstrap)
+    indices = rng.choice(len(data), size=len(data), replace=True)
+    return data[indices], weights[indices]
 
-# Load pseudodata file
-f_pd = uproot.open(
-    "/pscratch/sd/k/kgreif/data/"
-    "Pseudodata_WithSherapaNoReweighting_12May2025_topLogit.root"
-)
-t_pd = f_pd["OmniTree"]
 
-# Load pass 190 and isTop logit
-pd_data = get_observables(t_pd, observables)
-
-# Load top MC file
-f_top = uproot.open(
-    "/pscratch/sd/k/kgreif/data/ZjetOmnifold_14May2025_Background"
-    "_Sherpa2212_AllTop_WithTracks_slim_Systematics_topLogit.root"
-)
-t_top = f_top["OmniTree"]
-
-# Load top MC data
-pass190_top = ak.to_numpy(t_top["pass190"].array())
-print(f"top events: {np.sum(pass190_top)}")
-print(
-    "We have a fracion {} of good events in top".format(
-        np.sum(pass190_top) / len(pass190_top)
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Subtract the top contribution to the fiducial volume"
     )
-)
-top_data = get_observables(t_top, ["isTop_logit", "HT_tracks", "Ntracks"])
-top_weights = ak.to_numpy(t_top["weight"].array())
-top_weights = top_weights[pass190_top == 1]
-pd_minus_top_logits = np.concatenate([pd_data, top_data], axis=0)
-weights_pd_minus_top = np.concatenate(
-    [np.ones(len(pd_data)), -1.0 * top_weights]
-)
+    parser.add_argument(
+        "--data_path", type=str, required=True, help="Path to the data file"
+    )
+    parser.add_argument(
+        "--top_path", type=str, required=True, help="Path to the top MC file"
+    )
+    parser.add_argument(
+        "--output_file", type=str, required=True, help="Path to the output file"
+    )
+    parser.add_argument(
+        "--bootstrap",
+        type=int,
+        default=None,
+        help="Enable bootstrapping (sample with replacement)",
+    )
+    return parser.parse_args()
 
-# Combine the data
-data = np.concatenate([pd_data, pd_minus_top_logits], axis=0)
-labels = np.expand_dims(
-    np.concatenate([np.zeros(len(pd_data)), np.ones(len(pd_minus_top_logits))]),
-    axis=1,
-)
-weights = np.expand_dims(
-    np.concatenate([np.ones(len(pd_data)), weights_pd_minus_top]), axis=1
-)
-print("data shapes:")
-print(f"data: {data.shape}")
-print(f"labels: {labels.shape}")
-print(f"weights: {weights.shape}")
 
-# Normalize the data
-data = (data - data.mean(axis=0)) / data.std(axis=0)
+# Main function
+if __name__ == "__main__":
 
-# Make pytorch dataset and dataloader
-dataset = torch.utils.data.TensorDataset(
-    torch.tensor(data, dtype=torch.float32),
-    torch.tensor(labels, dtype=torch.float32),
-    torch.tensor(weights, dtype=torch.float32),
-)
-all_dataloader = torch.utils.data.DataLoader(dataset, batch_size=256, shuffle=False)
-train_dataset, val_dataset = torch.utils.data.random_split(dataset, [0.9, 0.1])
-train_dataloader = torch.utils.data.DataLoader(
-    train_dataset, batch_size=256, shuffle=True, num_workers=16,
-)
-val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, shuffle=False)
+    args = parse_args()
 
-# Load the model
-top_model = SubtractTop(input_dim)
+    # Set the observables to use
+    observables = ["isTop_logit", "HT_tracks", "Ntracks"]
+    input_dim = len(observables)
 
-# Train the model
-trainer = L.Trainer(
-    accelerator="gpu",
-    devices=4,
-    max_epochs=20,
-    logger=WandbLogger(project="top-subtraction", group="sub-1x"),
-    callbacks=[
-        L.pytorch.callbacks.ModelCheckpoint(
-            monitor="val_loss", mode="min", save_top_k=1, save_last=True
+    # Load pseudodata file and data
+    f_pd = uproot.open(args.data_path)
+    t_pd = f_pd["OmniTree"]
+    pd_data = get_observables(t_pd, observables)
+    pd_data_full = pd_data.copy()
+    pd_weights = np.ones(len(pd_data))
+
+    # Perform train / test split on pseudodata
+    pd_data_train, pd_data_test, pd_weights_train, pd_weights_test = train_test_split(
+        pd_data, pd_weights, test_size=0.2, random_state=42
+    )
+
+    # Load top MC file and data
+    f_top = uproot.open(args.top_path)
+    t_top = f_top["OmniTree"]
+    pass190_top = ak.to_numpy(t_top["pass190"].array())
+    rank_zero_info(f"top events: {np.sum(pass190_top)}")
+    rank_zero_info(
+        "We have a fracion {} of good events in top".format(
+            np.sum(pass190_top) / len(pass190_top)
         )
-    ],
-)
-trainer.fit(top_model, train_dataloader, val_dataloader)
+    )
+    top_data = get_observables(t_top, observables)
+    top_weights = ak.to_numpy(t_top["weight"].array())
+    top_weights = top_weights[pass190_top == 1]
 
-# Re-load the best model
-print(f"Loading best model from {trainer.checkpoint_callback.best_model_path}")
-top_model = SubtractTop.load_from_checkpoint(
-    trainer.checkpoint_callback.best_model_path, input_dim=input_dim
-)
+    # Perform train / test split on top data
+    top_splits = train_test_split(top_data, top_weights, test_size=0.2, random_state=42)
+    top_data_train, top_data_test, top_weights_train, top_weights_test = top_splits
 
-# Predict and save the reweighting
-reweighting = predict_and_save(top_model, all_dataloader, "reweighting.npz", labels)
+    # Concatenate top data onto the pseudodata
+    pd_minus_top_data_train = np.concatenate([pd_data_train, top_data_train], axis=0)
+    pd_minus_top_weights_train = np.concatenate(
+        [pd_weights_train, -1.0 * top_weights_train]
+    )
+    pd_minus_top_data_test = np.concatenate([pd_data_test, top_data_test], axis=0)
+    pd_minus_top_weights_test = np.concatenate(
+        [pd_weights_test, -1.0 * top_weights_test]
+    )
 
-print("All done!")
+    # Bootstrap sampling of training data if requested
+    if args.bootstrap is not None:
+        pd_data_train, pd_weights_train = bootstrap_sample(
+            pd_data_train, pd_weights_train, args.bootstrap
+        )
+        top_data_train, top_weights_train = bootstrap_sample(
+            top_data_train, top_weights_train, args.bootstrap
+        )
+
+    # Combine the data
+    data_train = np.concatenate([pd_data_train, pd_minus_top_data_train], axis=0)
+    data_test = np.concatenate([pd_data_test, pd_minus_top_data_test], axis=0)
+    weights_train = np.expand_dims(
+        np.concatenate([np.ones(len(pd_data_train)), pd_minus_top_weights_train]),
+        axis=1,
+    )
+    weights_test = np.expand_dims(
+        np.concatenate([np.ones(len(pd_data_test)), pd_minus_top_weights_test]), axis=1
+    )
+    labels_train = np.concatenate(
+        [np.zeros((len(pd_data_train), 1)), np.ones((len(pd_minus_top_data_train), 1))],
+        axis=0,
+    )
+    labels_test = np.concatenate(
+        [np.zeros((len(pd_data_test), 1)), np.ones((len(pd_minus_top_data_test), 1))],
+        axis=0,
+    )
+    rank_zero_info("data shapes:")
+    rank_zero_info(f"data_train: {data_train.shape}")
+    rank_zero_info(f"data_test: {data_test.shape}")
+    rank_zero_info(f"labels_train: {labels_train.shape}")
+    rank_zero_info(f"labels_test: {labels_test.shape}")
+    rank_zero_info(f"weights_train: {weights_train.shape}")
+    rank_zero_info(f"weights_test: {weights_test.shape}")
+
+    # Normalize the data
+    # Remember to apply the same normalization to the stand-alone pseudodata
+    means = data_train.mean(axis=0)
+    stds = data_train.std(axis=0)
+    data_train = (data_train - means) / stds
+    data_test = (data_test - means) / stds
+    pd_data_full = (pd_data_full - means) / stds
+
+    # Make pytorch datasets
+    dataset_train = torch.utils.data.TensorDataset(
+        torch.tensor(data_train, dtype=torch.float32),
+        torch.tensor(labels_train, dtype=torch.float32),
+        torch.tensor(weights_train, dtype=torch.float32),
+    )
+    dataset_test = torch.utils.data.TensorDataset(
+        torch.tensor(data_test, dtype=torch.float32),
+        torch.tensor(labels_test, dtype=torch.float32),
+        torch.tensor(weights_test, dtype=torch.float32),
+    )
+
+    # Make dataloaders
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset_train,
+        batch_size=256,
+        shuffle=True,
+        num_workers=16,
+    )
+    val_dataloader = torch.utils.data.DataLoader(
+        dataset_test, batch_size=256, shuffle=False
+    )
+
+    # Load the model
+    top_model = SubtractTop(input_dim)
+
+    # Train the model
+    trainer = L.Trainer(
+        accelerator="gpu",
+        devices=4,
+        max_epochs=20,
+        logger=None,
+        # logger=WandbLogger(project="top-subtraction", group="sub-1x"),
+        callbacks=[
+            L.pytorch.callbacks.ModelCheckpoint(
+                monitor="val_loss", mode="min", save_top_k=1, save_last=True
+            )
+        ],
+    )
+    trainer.fit(top_model, train_dataloader, val_dataloader)
+
+    # Re-load the best model
+    rank_zero_info(
+        f"Loading best model from {trainer.checkpoint_callback.best_model_path}"
+    )
+    top_model = SubtractTop.load_from_checkpoint(
+        trainer.checkpoint_callback.best_model_path, input_dim=input_dim
+    )
+
+    # Predict and save the reweighting
+    pd_dataset = torch.utils.data.TensorDataset(
+        torch.tensor(pd_data_full, dtype=torch.float32),
+    )
+    pd_dataloader = torch.utils.data.DataLoader(
+        pd_dataset, batch_size=256, shuffle=False
+    )
+    reweighting = predict_and_save(top_model, pd_dataloader, args.output_file)
+
+    rank_zero_info("All done!")
