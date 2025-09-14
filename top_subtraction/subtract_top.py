@@ -31,9 +31,11 @@ class SimpleNN(torch.nn.Module):
         self.linear_relu_stack = torch.nn.Sequential(
             torch.nn.Linear(input_dim, 512),
             torch.nn.GELU(),
+            torch.nn.BatchNorm1d(512),
             torch.nn.Dropout(droprate),
             torch.nn.Linear(512, 512),
             torch.nn.GELU(),
+            torch.nn.BatchNorm1d(512),
             torch.nn.Dropout(droprate),
             torch.nn.Linear(512, 1),
         )
@@ -75,11 +77,11 @@ class SubtractTop(L.LightningModule):
         return y_hat
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.model.parameters(), lr=1e-4, weight_decay=0.2)
+        return torch.optim.AdamW(self.model.parameters(), lr=1e-3, weight_decay=0.2)
 
 
 @rank_zero_only
-def predict_and_save(model, dataloader, output_file):
+def predict_weights(model, dataloader):
     with torch.no_grad():
         model.eval()
         preds = []
@@ -88,9 +90,9 @@ def predict_and_save(model, dataloader, output_file):
             y_hat = model(x.to(model.device))
             preds.append(y_hat)
         preds = np.concatenate([p.detach().cpu().numpy().flatten() for p in preds])
-        source_preds = np.exp(preds)
-    print(f"Mean of subtraction weights: {np.mean(source_preds)}")
-    np.savez(output_file, reweighting=source_preds)
+        weights = np.exp(preds)
+    print(f"Mean of weights: {np.mean(weights)}")
+    return weights
 
 
 def bootstrap_sample(data, weights, bootstrap):
@@ -153,6 +155,7 @@ if __name__ == "__main__":
         )
     )
     top_data = get_observables(t_top, observables)
+    top_data_full = top_data.copy()
     top_weights = ak.to_numpy(t_top["weight"].array())
     top_weights = top_weights[pass190_top == 1]
 
@@ -237,7 +240,7 @@ if __name__ == "__main__":
     )
 
     # Load the model
-    top_model = SubtractTop(input_dim)
+    top_model = SubtractTop(input_dim, droprate=0.2)
 
     # Train the model
     trainer = L.Trainer(
@@ -245,6 +248,7 @@ if __name__ == "__main__":
         devices=4,
         max_epochs=20,
         logger=None,
+        enable_progress_bar=False,
         # logger=WandbLogger(project="top-subtraction", group="sub-1x"),
         callbacks=[
             L.pytorch.callbacks.ModelCheckpoint(
@@ -269,6 +273,14 @@ if __name__ == "__main__":
     pd_dataloader = torch.utils.data.DataLoader(
         pd_dataset, batch_size=256, shuffle=False
     )
-    reweighting = predict_and_save(top_model, pd_dataloader, args.output_file)
+    top_dataset = torch.utils.data.TensorDataset(
+        torch.tensor(top_data_full, dtype=torch.float32),
+    )
+    top_dataloader = torch.utils.data.DataLoader(
+        top_dataset, batch_size=256, shuffle=False
+    )
+    pd_weights = predict_weights(top_model, pd_dataloader)
+    top_weights = predict_weights(top_model, top_dataloader)
+    np.savez(args.output_file, pd_weights=pd_weights, top_weights=top_weights)
 
     rank_zero_info("All done!")
