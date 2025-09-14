@@ -41,15 +41,21 @@ class WifiEnsemble:
         self.basis_top = [np.ones(num_top)]
         for basis_file_path in basis_file_paths:
             pd_weights = np.load(basis_file_path)["pd_weights"]
-            # Replace any infinite values in pd weights with 1.0
-            pd_weights = np.where(np.isinf(pd_weights), 1.0, pd_weights)
-            self.basis_pd.append(pd_weights)
             top_weights = np.load(basis_file_path)["top_weights"]
-            # Replace any infinite values in top weights with 1.0
+
+            # Clip extreme weights to prevent optimization instability
+            # We can just clip the weights at 1.0 since we never want to add density
+            pd_weights = np.where(np.isinf(pd_weights), 1.0, pd_weights)
+            pd_weights = np.clip(pd_weights, 0.0, 1.0)
+
             top_weights = np.where(np.isinf(top_weights), 1.0, top_weights)
+            top_weights = np.clip(top_weights, 0.0, 1.0)
+
+            self.basis_pd.append(pd_weights)
             self.basis_top.append(top_weights)
-        self.basis_pd = torch.tensor(np.array(self.basis_pd))
-        self.basis_top = torch.tensor(np.array(self.basis_top))
+
+        self.basis_pd = torch.tensor(np.array(self.basis_pd), dtype=torch.float64)
+        self.basis_top = torch.tensor(np.array(self.basis_top), dtype=torch.float64)
 
     def forward_pd(self, ws):
         return ws @ self.basis_pd
@@ -80,7 +86,7 @@ def mlc_min(ws, ensemble, num_weights):
     Note we assume the denominator (data or pseudodata without top)
     always has weights of 1.0!!
 
-    Implements eqn. 8 in the paper.
+    Implements eqn. 8 in the paper with regularization.
 
     Arguments:
         ws (torch.Tensor): The weights for the ensemble.
@@ -88,12 +94,15 @@ def mlc_min(ws, ensemble, num_weights):
         num_weights (torch.Tensor): The weights for the numerator of the MLC.
 
     Returns:
-        torch.Tensor: The MLC loss
+        torch.Tensor: The MLC loss with regularization
     """
 
     num, den = ensemble.forward(ws)
+
+    # MLC loss terms
     mlc1 = (-num + (torch.exp(-num) - 1)) * num_weights
     mlc2 = den + (torch.exp(den) - 1)
+
     return torch.mean(mlc1) + torch.mean(mlc2)
 
 
@@ -132,19 +141,27 @@ if __name__ == "__main__":
 
     # Optimize the wifi ensemble with the MLC loss
     print("Optimizing the wifi ensemble with the MLC loss")
+
     ensemble = WifiEnsemble(basis_file_paths)
+
+    # Initialize weights with small random values to break symmetry
     ws = torch.zeros(len(basis_file_paths) + 1, dtype=torch.float64)
     ws[0] = 1.0
+
     res_root = minimize(
-        lambda w: mlc_min(w, ensemble, num_weights),
-        # lambda w: mlc_min(torch.softmax(w, dim=0), ensemble, num_weights),
+        lambda w: mlc_min(
+            torch.softmax(w, dim=0), ensemble, num_weights
+        ),
         x0=ws,
         method="newton-exact",
     )
-    w0 = res_root.x
-    # w0 = torch.softmax(res_root.x, dim=0)
+
+    # Apply softmax to get final normalized weights
+    w0 = torch.softmax(res_root.x, dim=0)
     print(f"Optimized weights: {w0}")
+    print(f"Weight sum: {torch.sum(w0):.6f}")
+    print(f"Max weight: {torch.max(w0):.6f}, Min weight: {torch.min(w0):.6f}")
 
     # Predict the weights for the data (or pseudodata) and write to output file
-    pd_weights = ensemble.forward_pd(w0)
+    pd_weights = ensemble.forward_pd(w0).clip(max=1.0)
     np.savez(args.output_file, weights=pd_weights)
