@@ -36,4 +36,4 @@ if __name__ == "__main__":
         ensemble_weights.append(raw_weights)
     ensemble_weights = np.array(ensemble_weights)
     weights = np.mean(ensemble_weights, axis=0)
-    np.savez(args.output_file, weights=weights)
+    np.savez(args.output_file, weight=weights)

@@ -23,4 +23,4 @@ module load conda
 conda activate zfjets
 
 # run the application:
-srun --nodes 1 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python subtract_top.py --data_path /pscratch/sd/k/kgreif/data/Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled_topLogit.root --top_path /pscratch/sd/k/kgreif/data/ZjetOmnifold_14May2025_Background_Sherpa2212_AllTop_WithTracks_slim_Systematics_topLogit.root --output_file ./weight_storage/bsv2_$(printf "%03d" $SLURM_ARRAY_TASK_ID).npz --bootstrap $SLURM_ARRAY_TASK_ID
+srun --nodes 1 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python subtract_top.py --data_path /pscratch/sd/k/kgreif/data/Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled_topLogit.root --top_path /pscratch/sd/k/kgreif/data/ZjetOmnifold_14May2025_Background_Sherpa2212_AllTop_WithTracks_slim_Systematics_topLogit.root --output_file ./weight_storage/bsv3_$(printf "%03d" $SLURM_ARRAY_TASK_ID).npz --split_seed $SLURM_ARRAY_TASK_ID

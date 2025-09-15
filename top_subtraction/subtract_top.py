@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import lightning as L
 from sklearn.model_selection import train_test_split
+
 # from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.rank_zero import rank_zero_only, rank_zero_info
 
@@ -77,7 +78,7 @@ class SubtractTop(L.LightningModule):
         return y_hat
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.model.parameters(), lr=1e-3, weight_decay=0.2)
+        return torch.optim.AdamW(self.model.parameters(), lr=1e-3, weight_decay=0.4)
 
 
 @rank_zero_only
@@ -101,6 +102,16 @@ def bootstrap_sample(data, weights, bootstrap):
     return data[indices], weights[indices]
 
 
+def replace_exits(data):
+    """replace_exits - Some of the observables used for training the subtraction
+    networks contain exit codes (-99). This function replaces them with the median
+    of the observable."""
+
+    for i in range(data.shape[1]):
+        data[data[:, i] == -99, i] = np.median(data[data[:, i] != -99, i])
+    return data
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Subtract the top contribution to the fiducial volume"
@@ -120,6 +131,12 @@ def parse_args():
         default=None,
         help="Enable bootstrapping (sample with replacement)",
     )
+    parser.add_argument(
+        "--split_seed",
+        type=int,
+        default=42,
+        help="Seed for the train / test split",
+    )
     return parser.parse_args()
 
 
@@ -129,19 +146,26 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Set the observables to use
-    observables = ["isTop_logit", "HT_tracks", "Ntracks"]
+    observables = [
+        "isTop_logit",
+        "HT_tracks",
+        "Ntracks",
+        "pT_trackj1",
+        "m_trackj1",
+    ]
     input_dim = len(observables)
 
     # Load pseudodata file and data
     f_pd = uproot.open(args.data_path)
     t_pd = f_pd["OmniTree"]
     pd_data = get_observables(t_pd, observables)
+    pd_data = replace_exits(pd_data)
     pd_data_full = pd_data.copy()
     pd_weights = np.ones(len(pd_data))
 
     # Perform train / test split on pseudodata
     pd_data_train, pd_data_test, pd_weights_train, pd_weights_test = train_test_split(
-        pd_data, pd_weights, test_size=0.2, random_state=42
+        pd_data, pd_weights, test_size=0.2, random_state=args.split_seed
     )
 
     # Load top MC file and data
@@ -155,12 +179,15 @@ if __name__ == "__main__":
         )
     )
     top_data = get_observables(t_top, observables)
+    top_data = replace_exits(top_data)
     top_data_full = top_data.copy()
     top_weights = ak.to_numpy(t_top["weight"].array())
     top_weights = top_weights[pass190_top == 1]
 
     # Perform train / test split on top data
-    top_splits = train_test_split(top_data, top_weights, test_size=0.2, random_state=42)
+    top_splits = train_test_split(
+        top_data, top_weights, test_size=0.2, random_state=args.split_seed
+    )
     top_data_train, top_data_test, top_weights_train, top_weights_test = top_splits
 
     # Concatenate top data onto the pseudodata
@@ -240,13 +267,13 @@ if __name__ == "__main__":
     )
 
     # Load the model
-    top_model = SubtractTop(input_dim, droprate=0.2)
+    top_model = SubtractTop(input_dim, droprate=0.0)
 
     # Train the model
     trainer = L.Trainer(
         accelerator="gpu",
         devices=4,
-        max_epochs=20,
+        max_epochs=30,
         logger=None,
         enable_progress_bar=False,
         # logger=WandbLogger(project="top-subtraction", group="sub-1x"),

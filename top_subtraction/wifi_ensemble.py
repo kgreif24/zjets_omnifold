@@ -46,16 +46,40 @@ class WifiEnsemble:
             # Clip extreme weights to prevent optimization instability
             # We can just clip the weights at 1.0 since we never want to add density
             pd_weights = np.where(np.isinf(pd_weights), 1.0, pd_weights)
-            pd_weights = np.clip(pd_weights, 0.0, 1.0)
+            pd_weights = np.where(np.isnan(pd_weights), 1.0, pd_weights)
+            pd_weights = np.clip(pd_weights, 1e-6, 1.0)
 
             top_weights = np.where(np.isinf(top_weights), 1.0, top_weights)
-            top_weights = np.clip(top_weights, 0.0, 1.0)
+            top_weights = np.where(np.isnan(top_weights), 1.0, top_weights)
+            top_weights = np.clip(top_weights, 1e-6, 1.0)
+
+            try:
+                assert bool(np.isinf(top_weights).any()) is False
+                assert bool(np.isnan(top_weights).any()) is False
+            except Exception as e:
+                print(f"Basis file path: {basis_file_path}")
+                print(f"Basis top: {top_weights[:10]}")
+                print(f"Basis pd: {pd_weights[:10]}")
+                raise Exception("Basis top or pd is inf or nan before log") from e
 
             self.basis_pd.append(pd_weights)
             self.basis_top.append(top_weights)
 
         self.basis_pd = torch.tensor(np.array(self.basis_pd), dtype=torch.float64)
         self.basis_top = torch.tensor(np.array(self.basis_top), dtype=torch.float64)
+
+        # self.basis_top = torch.log(self.basis_top)
+        # self.basis_pd = torch.log(self.basis_pd)
+
+        try:
+            assert bool(torch.isinf(self.basis_top).any()) is False
+            assert bool(torch.isinf(self.basis_pd).any()) is False
+            assert bool(torch.isnan(self.basis_top).any()) is False
+            assert bool(torch.isnan(self.basis_pd).any()) is False
+        except Exception as e:
+            print(f"Basis top: {self.basis_top[:3,:10]}")
+            print(f"Basis pd: {self.basis_pd[:3,:10]}")
+            raise Exception("Basis top or pd is inf or nan after log") from e
 
     def forward_pd(self, ws):
         return ws @ self.basis_pd
@@ -86,7 +110,7 @@ def mlc_min(ws, ensemble, num_weights):
     Note we assume the denominator (data or pseudodata without top)
     always has weights of 1.0!!
 
-    Implements eqn. 8 in the paper with regularization.
+    Implements eqn. 8 in the paper
 
     Arguments:
         ws (torch.Tensor): The weights for the ensemble.
@@ -94,7 +118,7 @@ def mlc_min(ws, ensemble, num_weights):
         num_weights (torch.Tensor): The weights for the numerator of the MLC.
 
     Returns:
-        torch.Tensor: The MLC loss with regularization
+        torch.Tensor: The MLC loss
     """
 
     num, den = ensemble.forward(ws)
@@ -104,6 +128,41 @@ def mlc_min(ws, ensemble, num_weights):
     mlc2 = den + (torch.exp(den) - 1)
 
     return torch.mean(mlc1) + torch.mean(mlc2)
+
+
+def bce_min(ws, ensemble, num_weights):
+    """ bce_min - Loss function for minimizing the w's in the ensemble.
+    Note we assume the denominator (data or pseudodata without top)
+    always has weights of 1.0!!
+
+    Implements the BCE loss.
+
+    Arguments:
+        ws (torch.Tensor): The weights for the ensemble.
+        ensemble (WifiEnsemble): The ensemble object.
+        num_weights (torch.Tensor): The weights for the numerator of the BCE.
+
+    Returns:
+        torch.Tensor: The BCE loss
+    """
+
+    num, den = ensemble.forward(ws)
+    try:
+        assert bool(torch.isinf(num).any()) is False
+        assert bool(torch.isinf(den).any()) is False
+        assert bool(torch.isnan(num).any()) is False
+        assert bool(torch.isnan(den).any()) is False
+    except Exception as e:
+        print(f"Num: {num[:10]}")
+        print(f"Den: {den[:10]}")
+        raise Exception("Num or den is inf or nan") from e
+
+    # BCE loss terms
+    bce = torch.nn.BCEWithLogitsLoss(reduction="none")
+    bce1 = (bce(num, torch.ones_like(num)) * num_weights).mean()
+    bce2 = bce(den, torch.zeros_like(den)).mean()
+
+    return bce1 + bce2
 
 
 def parse_args():
@@ -139,25 +198,26 @@ if __name__ == "__main__":
     num_weights = np.concatenate([np.ones(num_pd), -1.0 * weights_top])
     num_weights = torch.tensor(num_weights, dtype=torch.float64)
 
-    # Optimize the wifi ensemble with the MLC loss
-    print("Optimizing the wifi ensemble with the MLC loss")
-
+    # Initialize ensemble
     ensemble = WifiEnsemble(basis_file_paths)
 
     # Initialize weights with small random values to break symmetry
-    ws = torch.zeros(len(basis_file_paths) + 1, dtype=torch.float64)
-    ws[0] = 1.0
+    ws = torch.rand(len(basis_file_paths) + 1, dtype=torch.float64)
 
+    # Minimize!
     res_root = minimize(
         lambda w: mlc_min(
-            torch.softmax(w, dim=0), ensemble, num_weights
+            w, ensemble, num_weights
         ),
+        # lambda w: bce_min(
+        #     torch.softmax(w, dim=0), ensemble, num_weights
+        # ),
         x0=ws,
         method="newton-exact",
     )
 
     # Apply softmax to get final normalized weights
-    w0 = torch.softmax(res_root.x, dim=0)
+    w0 = res_root.x
     print(f"Optimized weights: {w0}")
     print(f"Weight sum: {torch.sum(w0):.6f}")
     print(f"Max weight: {torch.max(w0):.6f}, Min weight: {torch.min(w0):.6f}")
