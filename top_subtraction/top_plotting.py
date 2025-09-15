@@ -6,10 +6,8 @@ This script generates plots comparing pseudodata, pseudodata minus top backgroun
 and reweighted pseudodata for various observables.
 
 Usage:
-    python top_plotting.py <weight_file>
+    python top_plotting.py --weight_file <weight_file> --data_file <data_file>
 
-Example:
-    python top_plotting.py ./weight_storage/bsv3_ensemble.npz
 """
 
 import argparse
@@ -21,13 +19,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-def load_data():
+def load_data(data_file):
     """Load pseudodata and top background data from ROOT files."""
     print("Loading pseudodata...")
-    f_pd = uproot.open(
-        "/pscratch/sd/k/kgreif/data/"
-        "Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled_topLogit.root"
-    )
+    f_pd = uproot.open(data_file)
     t_pd = f_pd["OmniTree"]
 
     pass190_pd = ak.to_numpy(t_pd["pass190"].array())
@@ -56,8 +51,10 @@ def load_weights(weight_file):
     """Load reweighting weights from NPZ file."""
     print(f"Loading weights from {weight_file}...")
     new_weights_file = np.load(weight_file)
-    new_weights = new_weights_file["weight"]
-    new_weights = new_weights.clip(max=1.0)
+    if "weight" in new_weights_file.files:
+        new_weights = new_weights_file["weight"]
+    else:
+        new_weights = new_weights_file["pd_weights"]
 
     print(f"Mean of new weights: {np.mean(new_weights)}")
     print(f"Std of new weights: {np.std(new_weights)}")
@@ -114,7 +111,7 @@ def plot_logit_subtraction(logit_pd, logit_top, weight_top, new_weights, pdf):
         logit_pd_minus_top, bins=bins, density=True, weights=weights_pd_minus_top
     )
     h_logit_pd_rw, _ = np.histogram(
-        logit_pd, bins=bins, density=True, weights=new_weights.clip(max=10)
+        logit_pd, bins=bins, density=True, weights=new_weights
     )
 
     plot_h_logit_pd = np.concatenate([h_logit_pd, h_logit_pd[-1:]])
@@ -391,6 +388,12 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument(
+        "--data_file",
+        help="Path to the ROOT file containing the data",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
         "--weight_file",
         help="Path to the NPZ file containing reweighting weights",
         type=str,
@@ -407,7 +410,9 @@ def main():
 
     try:
         # Load data
-        t_pd, t_top, logit_pd, logit_top, weight_top, pass190_top = load_data()
+        t_pd, t_top, logit_pd, logit_top, weight_top, pass190_top = load_data(
+            args.data_file
+        )
 
         # Load weights
         new_weights = load_weights(args.weight_file)
