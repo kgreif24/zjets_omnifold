@@ -183,7 +183,7 @@ class OfEval:
                 self.train_target_file = None
                 self.test_target_file = self.config.data_path
                 self.source_weight_file = None
-                self.target_weight_file = None
+                self.target_weight_file = self.config.top_sub_weights
             # Otherwise use the weights from the previous step two for the source,
             # and weights from ROOT file for the target
             else:
@@ -194,7 +194,7 @@ class OfEval:
                 self.source_weight_file = (
                     f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 )
-                self.target_weight_file = None
+                self.target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
             self.use_truth = True

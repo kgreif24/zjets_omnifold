@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --gpu-bind=none
 #SBATCH -q preempt
-#SBATCH -J zjets-pretrain-v3
+#SBATCH -J zjets-v4
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
@@ -17,7 +17,7 @@
 #SBATCH --open-mode=append
 
 # Make job array
-#SBATCH --array=1-50
+#SBATCH --array=1-1
 
 # Redirect stdout and stderr to output directory separated by job number
 #SBATCH -o ./outfiles/%x-%A-%a.out
@@ -32,5 +32,5 @@ export WANDB__SERVICE_WAIT=400
 wandb login
 
 # run the application:
-python run_omnifold.py --config_path ./cli/base_ensemble_v3.yml --ensemble_index $SLURM_ARRAY_TASK_ID
+python run_omnifold.py --config_path ./cli/zjets-v4.yml --ensemble_index $SLURM_ARRAY_TASK_ID
 sleep 120 # sleep for 2 minutes to allow slurm to send SIGTERM in case of preemption

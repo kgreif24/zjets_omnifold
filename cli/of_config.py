@@ -56,14 +56,17 @@ class OfConfig:
             type=str,
             default=(
                 "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
-                "pretrained-models/"
+                "pretrained-models/step1/"
             ),
             help=("Path to the directory containing pretrained models for step one"),
         )
         self.parser.add_argument(
             "--s2_pretrain_directory",
             type=str,
-            default=None,
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
+                "pretrained-models/step2/"
+            ),
             help=("Path to the directory containing pretrained models for step two"),
         )
 
@@ -278,7 +281,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_min_checkpoint_steps",
             type=int,
-            default=2000,
+            default=1500,
             help=(
                 "The minimum number of steps for selecting a checkpoint "
                 "in step one training"
@@ -293,13 +296,13 @@ class OfConfig:
         self.parser.add_argument(
             "--s2_min_lr",
             type=float,
-            default=0.00001,
+            default=0.000008,
             help="Minimum learning rate for step two training",
         )
         self.parser.add_argument(
             "--s2_max_lr",
             type=float,
-            default=0.0001,
+            default=0.0005,
             help="Maximum learning rate for step two training",
         )
         self.parser.add_argument(
@@ -317,25 +320,25 @@ class OfConfig:
         self.parser.add_argument(
             "--s2_cos_steps",
             type=int,
-            default=15000,
+            default=3000,
             help="Number of steps in a cosine cycle for step two training",
         )
         self.parser.add_argument(
             "--s2_linear_steps",
             type=int,
-            default=45000,
+            default=15000,
             help="Number of steps in a linear cycle for step two training",
         )
         self.parser.add_argument(
             "--s2_lr_decay",
             type=float,
-            default=0.7,
+            default=0.5,
             help="Decay with iteration for step two trainings maximum learning rate",
         )
         self.parser.add_argument(
             "--s2_min_checkpoint_steps",
             type=int,
-            default=6000,
+            default=4000,
             help=(
                 "The minimum number of steps for selecting a checkpoint "
                 "in step two training"
@@ -344,7 +347,7 @@ class OfConfig:
         self.parser.add_argument(
             "--checkpoint_finish_steps",
             type=int,
-            default=6000,
+            default=4000,
             help=(
                 "After a given training has run this many steps, will be considered"
                 " as finished in the case of a timeout or pre-emption"

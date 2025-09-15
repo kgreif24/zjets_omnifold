@@ -345,7 +345,7 @@ class OfTrain:
                 source_weight_file = (
                     f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 )
-                target_weight_file = None
+                target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
             use_syst_kw = None
