@@ -173,7 +173,7 @@ class OfConfig:
             "--batch_size", type=int, default=256, help="Batch size for training"
         )
         self.parser.add_argument(
-            "--test_batch_size", type=int, default=512, help="Batch size for testing"
+            "--test_batch_size", type=int, default=1024, help="Batch size for testing"
         )
         self.parser.add_argument(
             "--top_k_checkpoints",
@@ -245,19 +245,19 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_min_lr",
             type=float,
-            default=0.000008,
+            default=0.0000001,
             help="Minimum learning rate for step one training",
         )
         self.parser.add_argument(
             "--s1_max_lr",
             type=float,
-            default=0.0005,
+            default=0.00001,
             help="Maximum learning rate for step one training",
         )
         self.parser.add_argument(
             "--s1_max_steps",
             type=int,
-            default=4000,
+            default=6000,
             help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
@@ -281,7 +281,7 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_min_checkpoint_steps",
             type=int,
-            default=1500,
+            default=2000,
             help=(
                 "The minimum number of steps for selecting a checkpoint "
                 "in step one training"
@@ -290,25 +290,25 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_lr_decay",
             type=float,
-            default=0.5,
+            default=1.0,
             help="Decay with iteration for step one trainings maximum learning rate",
         )
         self.parser.add_argument(
             "--s2_min_lr",
             type=float,
-            default=0.000008,
+            default=0.0000001,
             help="Minimum learning rate for step two training",
         )
         self.parser.add_argument(
             "--s2_max_lr",
             type=float,
-            default=0.0005,
+            default=0.00001,
             help="Maximum learning rate for step two training",
         )
         self.parser.add_argument(
             "--s2_max_steps",
             type=int,
-            default=10000,
+            default=11000,
             help="Maximum number of steps to run step two training",
         )
         self.parser.add_argument(
@@ -332,13 +332,13 @@ class OfConfig:
         self.parser.add_argument(
             "--s2_lr_decay",
             type=float,
-            default=0.5,
+            default=1.0,
             help="Decay with iteration for step two trainings maximum learning rate",
         )
         self.parser.add_argument(
             "--s2_min_checkpoint_steps",
             type=int,
-            default=4000,
+            default=5500,
             help=(
                 "The minimum number of steps for selecting a checkpoint "
                 "in step two training"
@@ -347,7 +347,7 @@ class OfConfig:
         self.parser.add_argument(
             "--checkpoint_finish_steps",
             type=int,
-            default=4000,
+            default=6000,
             help=(
                 "After a given training has run this many steps, will be considered"
                 " as finished in the case of a timeout or pre-emption"
