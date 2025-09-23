@@ -1,4 +1,4 @@
-""" lightning_module.py - This file defines the LOfTransformer class.
+"""lightning_module.py - This file defines the LOfTransformer class.
 This is a pytorch lightning module for training networks in Omnifold.
 
 Author: Kevin Greif
@@ -31,6 +31,7 @@ class LOfTransformer(L.LightningModule):
         self,
         input_dim=3,
         debug=False,
+        no_w1=False,
         seed=420,
         run_id=None,
         step=1,
@@ -52,6 +53,8 @@ class LOfTransformer(L.LightningModule):
             input_dim {int} -- The input dimension of the model.
             debug {bool} -- Set to true if we are running in debug mode, use simple
                 network on muons only
+            no_w1 {bool} -- Set to true if we are not using the Wasserstein One
+                metric for the training.
             seed {int} -- The random seed to use for the train / val split. Only used
                 for logging
             run_id {str} -- The run id given by weights and biases. Only used for
@@ -77,6 +80,7 @@ class LOfTransformer(L.LightningModule):
         self.seed = seed
         self.run_id = run_id
         self.step = step
+        self.no_w1 = no_w1
         self.weight_decay = weight_decay
         self.min_lr = min_lr
         self.max_lr = max_lr
@@ -111,15 +115,16 @@ class LOfTransformer(L.LightningModule):
         super().__init__()
         self.criterion = torch.nn.BCEWithLogitsLoss(reduction="none")
         if debug:
-            self.model = DumbNeuralNetwork()
+            self.model = DumbNeuralNetwork(input_dim=8)
         else:
             self.model = OfTransformer(input_dim, **kwargs)
 
         # Performance metrics, note this also handles plotting and logging to wandb
         self.val_auc = torchmetrics.classification.AUROC(task="binary")
         self.test_auc = torchmetrics.classification.AUROC(task="binary")
-        self.wasserstein_val = WassersteinOne()
-        self.wasserstein_test = WassersteinOne()
+        if not self.no_w1:
+            self.wasserstein_val = WassersteinOne()
+            self.wasserstein_test = WassersteinOne()
 
         # Log hyperparameters
         self.save_hyperparameters(ignore=["run_id", "debug", "step"])
@@ -160,7 +165,7 @@ class LOfTransformer(L.LightningModule):
         if self.debug:
             return self.model(tracks)
         else:
-            return self.model(inputs, v=tracks, mask=mask, glb_features=glb_features)
+            return self.model(inputs, v=tracks, mask=mask)
 
     # Training step
     def training_step(self, batch, batch_idx):
@@ -196,7 +201,8 @@ class LOfTransformer(L.LightningModule):
         self.val_auc.update(output, target)
 
         # Update wasserstein metric
-        self.wasserstein_val.update(plotting, end_weights, target)
+        if not self.no_w1:
+            self.wasserstein_val.update(plotting, end_weights, target)
 
     # Validation step end for logging reweighting plots to wandb
     def on_validation_epoch_end(self):
@@ -216,15 +222,16 @@ class LOfTransformer(L.LightningModule):
             self.val_auc.reset()
 
             # Calculate wasserstein metric and log
-            val_wass = self.wasserstein_val.compute()
-            self.log(
-                "val_wasserstein",
-                val_wass,
-                on_epoch=True,
-                prog_bar=False,
-                sync_dist=True,
-            )
-            self.wasserstein_val.reset()
+            if not self.no_w1:
+                val_wass = self.wasserstein_val.compute()
+                self.log(
+                    "val_wasserstein",
+                    val_wass,
+                    on_epoch=True,
+                    prog_bar=False,
+                    sync_dist=True,
+                )
+                self.wasserstein_val.reset()
 
     # Test step
     def test_step(self, batch, batch_idx):
@@ -241,7 +248,8 @@ class LOfTransformer(L.LightningModule):
         self.test_auc.update(output, target)
 
         # Update wasserstein metric
-        self.wasserstein_test.update(plotting, end_weights, target)
+        if not self.no_w1:
+            self.wasserstein_test.update(plotting, end_weights, target)
 
     # Test epoch end for logging plots and metrics to wandb
     def on_test_epoch_end(self):
@@ -259,15 +267,16 @@ class LOfTransformer(L.LightningModule):
         self.test_auc.reset()
 
         # Calculate and log wasserstein metric
-        test_wass = self.wasserstein_test.compute()
-        self.log(
-            "test_wasserstein",
-            test_wass,
-            on_epoch=True,
-            prog_bar=False,
-            sync_dist=False,
-        )
-        self.wasserstein_test.reset()
+        if not self.no_w1:
+            test_wass = self.wasserstein_test.compute()
+            self.log(
+                "test_wasserstein",
+                test_wass,
+                on_epoch=True,
+                prog_bar=False,
+                sync_dist=False,
+            )
+            self.wasserstein_test.reset()
 
     # Prediction step
     def predict_step(self, batch, batch_idx):
