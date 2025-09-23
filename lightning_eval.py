@@ -183,7 +183,7 @@ class OfEval:
                 self.train_target_file = None
                 self.test_target_file = self.config.data_path
                 self.source_weight_file = None
-                self.target_weight_file = None
+                self.target_weight_file = self.config.top_sub_weights
             # Otherwise use the weights from the previous step two for the source,
             # and weights from ROOT file for the target
             else:
@@ -194,7 +194,7 @@ class OfEval:
                 self.source_weight_file = (
                     f"{self.weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 )
-                self.target_weight_file = None
+                self.target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
             self.use_truth = True
@@ -254,7 +254,7 @@ class OfEval:
                 max_events=self.config.max_events_target,
             )
 
-            if step == 2:
+            if step == 2 and self.config.truth_data_path is not None:
                 self.comp_plotter = Plotter(
                     self.config.mc_test_path,
                     self.config.truth_data_path,
@@ -316,7 +316,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=30 if self.world_size > 2 else 20,
+            dataloader_workers=20,
             testing=False,
             use_truth=self.use_truth,
             syst_kw=self.use_syst_kw,
@@ -333,7 +333,7 @@ class OfEval:
             muon_only=self.config.debug,
             batch_size=self.config.test_batch_size,
             split_seed=self.config.split_seed,
-            dataloader_workers=30 if self.world_size > 2 else 20,
+            dataloader_workers=20,
             testing=True,
             use_truth=self.use_truth,
             syst_kw=self.use_syst_kw,
@@ -396,21 +396,6 @@ class OfEval:
             source_truth_pass190_train = d_module_train.get_source_truth_pass190()
             source_truth_pass190_test = d_module_test.get_source_truth_pass190()
 
-            # Save new weights for future use
-            np.savez(
-                f"{self.save_dir}/iteration_{self.iteration}_step_{self.step}.npz",
-                raw_train_output=predictions_train,
-                raw_test_output=predictions_test,
-                network_train=network_weights_train,
-                network_test=network_weights_test,
-                train=self.updated_weights_train,
-                test=self.updated_weights_test,
-                source_pass190_train=source_pass190_train,
-                source_pass190_test=source_pass190_test,
-                source_truth_pass190_train=source_truth_pass190_train,
-                source_truth_pass190_test=source_truth_pass190_test,
-            )
-
             # Make and log test plots
             root_weights_test = d_module_test.get_source_root_weights()
             plot_weights_test = self.updated_weights_test * root_weights_test
@@ -428,8 +413,23 @@ class OfEval:
 
             # Evaluate difference between reweighted truth MC and truth data
             # if this is step 2
-            if self.step == 2:
+            if self.step == 2 and self.config.truth_data_path is not None:
                 self.compare(plot_weights_test)
+
+            # Save new weights for future use
+            np.savez(
+                f"{self.save_dir}/iteration_{self.iteration}_step_{self.step}.npz",
+                raw_train_output=predictions_train,
+                raw_test_output=predictions_test,
+                network_train=network_weights_train,
+                network_test=network_weights_test,
+                train=self.updated_weights_train,
+                test=self.updated_weights_test,
+                source_pass190_train=source_pass190_train,
+                source_pass190_test=source_pass190_test,
+                source_truth_pass190_train=source_truth_pass190_train,
+                source_truth_pass190_test=source_truth_pass190_test,
+            )
 
         # Wait for rank 0 process to finish saving weights and plotting
         if self.world_size > 1:

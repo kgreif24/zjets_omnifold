@@ -14,8 +14,11 @@ interactive: False
 # Number of iterations to run the Omnifold algorithm
 num_iterations: 2
 
-# Path to checkpoint which will be used as the starting pointfor all iterations
-pretrain_checkpoint: ./assets/debug_checkpoint.ckpt
+# Path to the directory containing pretrained models for step one
+s1_pretrain_directory: ./assets/debug_checkpoint/
+
+# Path to the directory containing pretrained models for step two
+s2_pretrain_directory: ./assets/debug_checkpoint/
 
 # Path to the source file to use in pretraining
 pretrain_source_path: ./assets/evts_200_300.root
@@ -31,6 +34,9 @@ mc_test_path: ./assets/evts_100_200.root
 
 # Path for the data
 data_path: ./assets/evts_200_300.root
+
+# Path to the weights for the top substructure layer
+top_sub_weights: null
 
 # Path to the truth pseudodata
 truth_data_path: ./assets/truth_evts_000_100.root
@@ -107,6 +113,9 @@ s1_linear_steps: 5000
 # Decay with iteration for step one trainings maximum learning rate
 s1_lr_decay: 1.000000000
 
+# The minimum number of steps for selecting a checkpoint in step one training
+s1_min_checkpoint_steps: 2000
+
 # Minimum learning rate for step two training
 s2_min_lr: 0.000050000
 
@@ -127,6 +136,9 @@ s2_linear_steps: 45000
 
 # Decay with iteration for step two trainings maximum learning rate
 s2_lr_decay: 0.700000000
+
+# The minimum number of steps for selecting a checkpoint in step two training
+s2_min_checkpoint_steps: 6000
 
 # The minimum number of steps for selecting a checkpoint in the Omnifold iterations
 min_checkpoint_steps: 2000

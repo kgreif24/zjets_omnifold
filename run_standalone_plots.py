@@ -74,13 +74,6 @@ parser.add_argument(
     help="If true, will calculate the wasserstein distances",
 )
 parser.add_argument(
-    "--recalculate", action="store_true",
-    help=(
-        "If true, recalculate all fastjet observables, regardless of whether root files"
-        "already exist."
-    ),
-)
-parser.add_argument(
     "--cut_region", type=int, default=0,
     choices=[0, 1, 2, 3],
     help="Select a kinematic region to restrict to",
@@ -106,7 +99,6 @@ plot_dict = plotter.plot(
     args.start_weights,
     args.end_weights,
     args.target_weights,
-    recalculate=args.recalculate,
     use_train=args.train,
 )
 

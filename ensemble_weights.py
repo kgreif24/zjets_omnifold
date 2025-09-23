@@ -11,8 +11,8 @@ import glob
 import numpy as np
 
 
-def pull_weights(campaign_path, run_group, iteration, indices=None):
-    """ pull_weights - This function will pull the weights produced by a given
+def pull_weights(campaign_path, run_group, iteration, indices=None, max_ens=10):
+    """pull_weights - This function will pull the weights produced by a given
     run group. For example, if the nominal run group is titled "nominal-run-[1-10],
     the function will build a numpy array of weights from all of the step 2 trainings
     for a given iteration within the run group.
@@ -23,6 +23,8 @@ def pull_weights(campaign_path, run_group, iteration, indices=None):
         iteration (int): The iteration number to pull weights for.
         indices (np.ndarray, optional): Indices to reorder the weights. Default is None.
             Note this is only used for the zjets-pretrain-v3 nominal run group.
+        max_ens (int, optional): The maximum number of ensembles to pull weights for.
+            Default is 10.
 
     Returns:
         np.ndarray: A numpy array of the weights with shape (n_runs, n_test_events)
@@ -38,6 +40,10 @@ def pull_weights(campaign_path, run_group, iteration, indices=None):
             f"No weight files found for run group '{run_group}'"
             " at iteration {iteration}."
         )
+
+    # If max_ens is provided, limit the number of weight files to max_ens
+    if max_ens is not None:
+        weight_files = weight_files[:max_ens]
 
     # Place weights in a numpy array
     iteration_weights = np.zeros(
@@ -64,14 +70,15 @@ parser.add_argument(
     help="Path to the directory containing all of the data from a campaign",
 )
 parser.add_argument(
-    "--nominal_iteration",
+    "--max_ens",
     type=int,
-    help="The iteration number to pull nominal weights for",
+    default=10,
+    help="The maximum number of ensembles to pull weights for",
 )
 parser.add_argument(
-    "--syst_iteration",
-    type=int,
-    help="The iteration number to pull systematic weights for",
+    "--iterations",
+    nargs="+",
+    help="The iterations to pull weights for, in order of the run groups",
 )
 parser.add_argument("--output", type=str, help="Output file path")
 args = parser.parse_args()
@@ -80,18 +87,24 @@ args = parser.parse_args()
 indices = np.load("/pscratch/sd/k/kgreif/data/matching_indices.npy")
 
 # Define the names of the various run groups in a campaign
-group_names = ["nominal-ensemble", "track-eff"]
+group_names = ["nominal-ensemble", "track-eff", "hidden-variable"]
 all_weights = {}
 
-for gn in group_names:
+for gn, it in zip(group_names, args.iterations):
+
+    print(f"Pulling weights for {gn} at iteration {it}")
 
     if gn == "nominal-ensemble":
         pulled_weights = pull_weights(
-            args.campaign_path, gn, args.nominal_iteration, indices
+            args.campaign_path,
+            gn,
+            it,
+            indices=indices,
+            max_ens=args.max_ens,
         )
     else:
         pulled_weights = pull_weights(
-            args.campaign_path, gn, args.syst_iteration,
+            args.campaign_path, gn, it, max_ens=args.max_ens
         )
     print(f"Got {len(pulled_weights)} weights for group {gn}")
 

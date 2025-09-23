@@ -52,16 +52,22 @@ class OfConfig:
             help="Number of iterations to run the Omnifold algorithm",
         )
         self.parser.add_argument(
-            "--pretrain_checkpoint",
+            "--s1_pretrain_directory",
             type=str,
             default=(
-                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/omnifold-tuning/"
-                "pretrain/run-9/epoch=8-step=20097.ckpt"
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
+                "pretrained-models/step1/"
             ),
-            help=(
-                "Path to checkpoint which will be used as the starting point"
-                "for all iterations"
+            help=("Path to the directory containing pretrained models for step one"),
+        )
+        self.parser.add_argument(
+            "--s2_pretrain_directory",
+            type=str,
+            default=(
+                "/global/cfs/cdirs/m3246/ZjetOmnifold/model_repository/"
+                "pretrained-models/step2/"
             ),
+            help=("Path to the directory containing pretrained models for step two"),
         )
 
         # Data
@@ -90,8 +96,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "Train_shuffled.root"
+                "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Train_shuffled.root"
             ),
             help="Path for the MC training data",
         )
@@ -100,8 +105,7 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_"
-                "Test_shuffled.root"
+                "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
             ),
             help="Path for the MC testing data",
         )
@@ -110,18 +114,28 @@ class OfConfig:
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "Pseudodata_WithSherapaNoReweighting_12May2025_shuffled.root"
+                "Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled.root"
             ),
             help="Path for the data",
+        )
+        self.parser.add_argument(
+            "--top_sub_weights",
+            type=str,
+            default=None,
+            help=(
+                "Path to the weights for the top substructure layer leave None if not "
+                "using top subtraction"
+            ),
         )
         self.parser.add_argument(
             "--truth_data_path",
             type=str,
             default=(
                 "/pscratch/sd/k/kgreif/data/"
-                "Sum_Sherpa2211DY_Dibo_EW_Top_PosWeights_WithTracks_All_shuffled.root"
+                "TruthPseudodata_Sherpa2211DY_Dibo_EW_PowhegPythiaTop_PosWeights"
+                "_WithTracks_shuffled.root"
             ),
-            help="Path to the truth pseudodata",
+            help="Path to the truth pseudodata, leave None if not using truth data",
         )
         self.parser.add_argument(
             "--split_seed",
@@ -141,7 +155,7 @@ class OfConfig:
         self.parser.add_argument(
             "--max_events_target",
             type=int,
-            default=500000,
+            default=99999999,
             help="Maximum number of events to use in the target data",
         )
         self.parser.add_argument(
@@ -159,7 +173,7 @@ class OfConfig:
             "--batch_size", type=int, default=256, help="Batch size for training"
         )
         self.parser.add_argument(
-            "--test_batch_size", type=int, default=512, help="Batch size for testing"
+            "--test_batch_size", type=int, default=1024, help="Batch size for testing"
         )
         self.parser.add_argument(
             "--top_k_checkpoints",
@@ -179,7 +193,7 @@ class OfConfig:
         self.parser.add_argument(
             "--num_nodes",
             type=int,
-            default=1,
+            default=4,
             help="Number of nodes to use for training",
         )
 
@@ -195,13 +209,13 @@ class OfConfig:
         self.parser.add_argument(
             "--pt_min_lr",
             type=float,
-            default=0.00001,
+            default=0.000006,
             help="Minimum learning rate for pre-training",
         )
         self.parser.add_argument(
             "--pt_max_lr",
             type=float,
-            default=0.0001,
+            default=0.00018,
             help="Maximum learning rate for pre-training",
         )
         self.parser.add_argument(
@@ -213,13 +227,13 @@ class OfConfig:
         self.parser.add_argument(
             "--pt_warmup_steps",
             type=int,
-            default=2000,
+            default=0,
             help="Number of steps to warm up the learning rate for pre-training",
         )
         self.parser.add_argument(
             "--pt_cos_steps",
             type=int,
-            default=50000,
+            default=15000,
             help="Number of steps in a cosine cycle for pre-training",
         )
         self.parser.add_argument(
@@ -231,19 +245,19 @@ class OfConfig:
         self.parser.add_argument(
             "--s1_min_lr",
             type=float,
-            default=0.000008,
+            default=0.0000001,
             help="Minimum learning rate for step one training",
         )
         self.parser.add_argument(
             "--s1_max_lr",
             type=float,
-            default=0.0005,
+            default=0.00001,
             help="Maximum learning rate for step one training",
         )
         self.parser.add_argument(
             "--s1_max_steps",
             type=int,
-            default=8000,
+            default=6000,
             help="Maximum number of steps to run step one training",
         )
         self.parser.add_argument(
@@ -265,6 +279,15 @@ class OfConfig:
             help="Number of steps in a linear cycle for step one training",
         )
         self.parser.add_argument(
+            "--s1_min_checkpoint_steps",
+            type=int,
+            default=2000,
+            help=(
+                "The minimum number of steps for selecting a checkpoint "
+                "in step one training"
+            ),
+        )
+        self.parser.add_argument(
             "--s1_lr_decay",
             type=float,
             default=1.0,
@@ -273,19 +296,19 @@ class OfConfig:
         self.parser.add_argument(
             "--s2_min_lr",
             type=float,
-            default=0.00001,
+            default=0.0000001,
             help="Minimum learning rate for step two training",
         )
         self.parser.add_argument(
             "--s2_max_lr",
             type=float,
-            default=0.0001,
+            default=0.00001,
             help="Maximum learning rate for step two training",
         )
         self.parser.add_argument(
             "--s2_max_steps",
             type=int,
-            default=10000,
+            default=11000,
             help="Maximum number of steps to run step two training",
         )
         self.parser.add_argument(
@@ -297,28 +320,28 @@ class OfConfig:
         self.parser.add_argument(
             "--s2_cos_steps",
             type=int,
-            default=15000,
+            default=3000,
             help="Number of steps in a cosine cycle for step two training",
         )
         self.parser.add_argument(
             "--s2_linear_steps",
             type=int,
-            default=45000,
+            default=15000,
             help="Number of steps in a linear cycle for step two training",
         )
         self.parser.add_argument(
             "--s2_lr_decay",
             type=float,
-            default=0.7,
+            default=1.0,
             help="Decay with iteration for step two trainings maximum learning rate",
         )
         self.parser.add_argument(
-            "--min_checkpoint_steps",
+            "--s2_min_checkpoint_steps",
             type=int,
-            default=2000,
+            default=5500,
             help=(
                 "The minimum number of steps for selecting a checkpoint "
-                "in the Omnifold iterations"
+                "in step two training"
             ),
         )
         self.parser.add_argument(

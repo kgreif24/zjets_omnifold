@@ -18,7 +18,7 @@ def test_of_dataset():
     t = f["OmniTree"]
 
     # Load the kinematics and indeces
-    kinematics, ind = du.get_kinematics(t)
+    kinematics, ind, pdgids = du.get_kinematics(t)
 
     # Create dummy weights
     weights = np.ones(len(kinematics))
@@ -35,6 +35,7 @@ def test_of_dataset():
         labels,
         weights,
         obs,
+        pdgids,
         object_indeces=ind,
         max_tracks=20,
         n_jets=2,
@@ -44,6 +45,7 @@ def test_of_dataset():
         labels,
         weights,
         obs,
+        pdgids,
         object_indeces=ind,
         max_tracks=None,
         n_jets=5,

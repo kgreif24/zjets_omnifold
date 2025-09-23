@@ -1,6 +1,10 @@
 
 # Z + jets Omnifold: A package for applying Omnifold to ATLAS data
 
+This package implements the Omnifold algorithm for the specific use case of unfolding $Z(\rightarrow \mu\mu)$ + jets events in the ATLAS experiment's full run 2 dataset.
+Compute resources are assumed to be the perlmutter supercomputer at NERSC.
+Extensions to accommodate other sorts of data and resources certainly possible!
+
 ## Quick start
 
 Assuming you have all of the required software installed (see below), activate your python environment then do the following to run Omnifold:
@@ -16,49 +20,48 @@ cd ..
 python run_omnifold.py --config_path ./cli/my_of_config.yml
 ```
 
-This will run Omnifold interactively with the default settings. Warning this takes awhile! In practice, it's best to run it using slurm. Assuming you have a computing account on Perlmutter, first make a yaml config file as above and modify the `run_of.sh` script. Make sure you modify the last line to point to your config file, versus `default_of_template.yml`. Then just do `sbatch run_of.sh`.
-
-The `run_of.sh` script requires you to set a NERSC project code. We have access to the following two project codes:
-
-* Generic ATLAS: m2616
-* Ben's project: m3246
-
-All of our files are stored in Ben's project space (`$CFS/m3246`) but in general it's best to use the ATLAS code unless there is some limitation.
+This will run Omnifold interactively with the default settings.
+Warning this will take a **very** long time without decent resources.
+A submit script for running the procedure via SLURM on the perlmutter supercomputer is at `run_of.sh`.
+Make sure you set the correct project code and point the script to your config before submitting!
 
 ## Environment setup on Perlmutter
 
-First set up a conda release on Perlmutter. The NERSC documentation has instructions on how to do this. Once you have a base environment, you can build an environment for running Omnifold with the command `conda env create --name envname --file=environment.yml` run from this directory.
-
-This will install all of the software you need save one github repository that we use for learning rate scheduling during tagger training. If you want to run a training, you'll also need to run this command after activating your environment:
-
-```
-pip install 'git+https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup'
-```
+First set up a conda release on Perlmutter.
+The NERSC documentation has instructions on how to do this.
+Once you have a base environment, the recommended environment setup method is to install all remaining software via pip.
+See `requirements.txt`.
+Once these packages are installed, you can run the unfolding procedure.
+Note the C++ fastjet routines require installation of fastjet and ROOT, which are not included in the python environment.
+See the README in the `fastjet` sub-directory for instructions on running this code.
 
 ## I just want to plot things
 
-Fair enough! A repository of the weights derived with Omnifold is available on Perlmutter at `$CFS/m3246/ZjetOmnifold/weights/`. In this directory you'll find one directory per run of Omnifold. Inside these directories are .npz files which store the following information for each iteration and step:
+Fair enough! A repository of the weights derived with Omnifold is available on Perlmutter at `$CFS/m3246/ZjetOmnifold/weights/`. In this directory you'll find one directory per generation of Omnifold results. Inside these directories are .npz files which are the output of `ensemble_weights.py`. These files contain many sets of weights, which can all be applied to the MC test dataset (see below). These weights are:
 
-* `train`: The current weight for each event in the MC training set. This includes fakes and inefficiencies.
-* `test`: As above, but for the MC testing set.
-* `network_train`: The network weights for all events that pass selection in the MC training set. Selection could be either the reco or truth level selections, depending on the step of Omnifold (step 1 == reco, step 2 == truth).
-* `network_test`: As above, but for the MC testing set.
+* Central (name contains tag `-central`) and ensemble (name contains a number) weights for each weight group produced by Omnifold
+* Weight groups will at a minimum contain the nominal results, but may also contain results for a one of the many systematic variations that produce the uncertainties on the final results.
 
-Note we don't store weights for the pseudodata. The parent directory also contains a convenient link `best_weights` which will always point to the best **nominal** weights derived thus far.
+The parent directory also contains a convenient link `best_weights` which will always point to the current SOTA weights.
 
-All of these weights can be used as inputs to the plotting scripts I have developed thus far. For example `run_comp_plots.py` produces plots comparing the result of any step 2 to the truth level pseudodata. MRs improving the number of things we can plot are very welcome!
+These weights can be used as inputs to the plotting routines. For example `run_standalone_plots.py` uses the weights `nominal-ensemble-central` to make plots of the method bias.
+`run_uncert_plots.py` will use all weights in the file to also make plots of systematic uncertainties.
+Running these scripts is the right place to start when analyzing Omnifold results.
 
 ## Omnifold datasets
 
-The most up-to-date datasets for use in Omnifold are listed below. They are all in the location `/eos/user/m/mbsmith/Omnifold_Data/slimmedSamples/TestTrainSplits/syst/sliced/`. They are also copied to `$CFS/m3246/ZjetOmnifold/data/slimmed_files/` for convenience.
+The most up-to-date datasets for use in Omnifold are listed below. They are all in the location `$CFS/m3246/ZjetOmnifold/data/slimmed_files_v4/` on Perlmutter. These are also the defaults in `of_config.py`.
 
 | Dataset | Location |
 |----------|----------|
-|   Train MC   | WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_train_Mar1023.root |
-|   Test MC   |   WithTracks_ZjetOmnifold_May19_MGPy8FxFxRew_syst_test_Mar0723.root |
-|   Pseudodata | WithTracks_ZjetOmnifold_Aug5_PseudoDataSRew_Apr8_1_All.root |
-|   Truth Pseudodata | WithTracks_TruthPseudodata_Mar12_Combined_1_50_Top_shuffled.root |
-|   Pre-train data | WithTracks_ZjetOmnifold_Mar10_Sherpa2211_slim_Pretrain_all_shuffled.root |
+|   Pretrain source   | ZjetOmnifold_May19_MGPy8FxFx_WithTracks_slim_Systematics_Pretrain_shuffled.root |
+|   Pretrain target   | ZjetOmnifold_Mar10_Sherpa2211_WithTracks_slim_Systematics_Pretrain_shuffled.root |
+|   Train MC   | ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Train_shuffled.root |
+|   Test MC   |   ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root |
+|   Pseudodata | Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled.root |
+|   Truth Pseudodata | TruthPseudodata_Sherpa2211DY_Dibo_EW_PowhegPythiaTop_PosWeights_WithTracks_shuffled.root |
+|   Data  | ZjetOmnifold_Nov11_data_WithTracks_slim_Systematics_shuffled.root |
+
 
 Note the pseudodata is not separated into training and testing sets. This is because we do not use the network outputs over the pseudodata, so it is not essential to completely avoid overtraining on the pseudodata. The code does construct a held-out validation set for tracking overtraining, but the pseudodata used in the testing set is the concatenation of the validation and training sets. For this reason the loss values / performance metrics calculated on the testing set should be taken with a grain of salt. This of course has no impact on the performance of Omnifold.
 
@@ -68,38 +71,25 @@ Omnifold has many hyperparameters. All of these, and other options for runnign t
 
 An overview of the important options in the config files is as follows (last updated 22/05/2024):
 
-* debug: This option runs Omnifold only on the muon kinematics with a very simple NN architecture. Useful for testing.
-* num_iterations: Sets the number of iterations to run
-* Data paths: Should be set to the datasets listed above
-* split_seed: This random seed controls how the train / validation sets are created. If continuing a run (see below), make sure this matches what was used previously!
-* max_tracks: The maximum # of tracks to consider per event. Currently all of the data with all of the tracks does not fit in memory :(
-* Max train events: Sets the number of events to include in the training sets for step one / step two
-* wandb: Whether to use weights and biases for logging information about the trainings (see below)
-* project_name: The name of the project this run will be logged under. Can use one project name for many runs of Omnifold
-* group_name: The name of the group this run will be logged under. This should be unique for each run of Omnifold, but really only matters if you are logging to W&B.
-* checkpoint_dir: This is the directory in which all weights, models, and plots will be stored
-* plot_val: If set to true, make reweighting plots using the validation set
-* Network hyperparameters: Everything below this is a hyperparameter to be used for each Omnifold Transformer. I (Kevin) will try to keep these defaults updated as I learn more about what parameters work well.
+* `debug`: This option runs Omnifold only on the muon kinematics with a very simple NN architecture. Useful for testing.
+* `interactive`: Prints progress bars during NN training
+* `s1_pretrain_directory` and `s2_pretrain_directory`: Directories containing the pre-trained checkpoints for step 1 and step 2 trainings. Can leave one or both as `null` to train from scratch.
+* Data paths: Use these fields to point code to the correct ROOT files.
+* `split_seed`: Set this to a positive integer to fix the seeds used to produce the train / val splits in the code. If -1, a random seed will be chosen for each training.
+* `max_tracks`: The maximum # of tracks to consider per event. The default value is 264 to cut out a few very high multiplicity events which exhaust CUDA memory when included in a batch.
+* `syst_kw`: A keyword for activation a given systematic uncertainty. See `./utils/data_utils.py` for more.
+* LR scheduler arguments: The code uses a cosine annealing with warmup learning rate scheduler for all trainings. These settings adjust the LR scheduler for the pretraining, step 1, and step 2 trainings. In practice these are the most important hyper-parameters to tune by far!
+* `wandb`: Whether to use weights and biases for logging information about the trainings
+* `project_name`: The name of the project this run will be logged under. Can use one project name for many runs of Omnifold
+* `group_name`: The name of the group this run will be logged under. If ensembling, the ensemble number will be added on the end of this group name to distinguish different runs of Omnifold within an ensemble.
+* `checkpoint_dir`: This is the directory in which all outputs of Omnifold will be placed. The code will build the repository structure described below within this directory. On perlmutter it's recommended to make this a symlink to a large volume drive, given the NN checkpoints produced can be large.
+* Network hyperparameters: Everything below this is a hyperparameter to be used for each Omnifold Transformer. Default values are what I've found tend to work best on the Z+jets data.
 
 ## Ensembling
 
-We will need to perform a lot of ensembling to get good results from Omnifold. There are two types of ensembling one can perform:
-
-### Sequential Ensembling
-
-In sequential ensembling, N networks are trained to perform each step of Omnifold. The weights used for that step are then some aggregation of the weights produced by all of the networks. Since each network needs to finish training before the next step can begin, this is called sequential ensembling.
-
-At the moment this is not supported in the code!
-
-### Parallel Ensembling
-
-In parallel ensembling, Omnifold is run M times independently. An emsemble is then formed over the weights predicted by each independent run's final step 2. Since each Omnifold run happens independently, there is no need to synchronize them at any point in the process.
-
-The script `run_of.sh` implements this type of ensembling when run via `sbatch`. In particular it creates a job array where each job in the array performs a single run of Omnifold. When logging with W&B, the ensemble is given a name and each run of Omnifold is stored separately in a group with the name `<group_name>_<array_index>`.
-
-## Interactive training on perlmutter
-
-Often it's useful to test new code developments by checking out an interactive compute node on perlmutter. When doing this, you should always only use 1 GPU for training. The reason is that pytorch lightning handles the launching of parallel tasks differently depending on whether it detects some SLURM environment variables. These are not set properly with a simple `salloc` command to get a compute node, so you will find lightning launches 4 network trainings in parallel rather than using 4 GPUs to train 1 network. For details, see https://lightning.ai/docs/pytorch/stable/clouds/cluster_advanced.html#run-on-a-slurm-managed-cluster
+We will need to perform a lot of ensembling to get good results from Omnifold.
+Currently the code only supports parallel ensembling, where many independent runs of Omnifold are run in parallel to each other, and then their results are aggregated only at the end.
+Running an ensemble is as simple as adjusting the job array settings in `run_of.sh` and passing the job array index to the `run_omnifold.py` script.
 
 ## Weights and biases logging
 
@@ -112,9 +102,5 @@ Weights and biases does the following things for you:
 * Logs plots so you can easily visualize the quality of a reweighting and run of Omnifold as a whole
 
 To turn this on, set `wandb: True` in the config file and adjust the project and group names accordingly.
-
-## Code overview
-
-In development. If there is interest in me filling this in from the analysis team I can do so!
 
 

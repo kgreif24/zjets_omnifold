@@ -1,4 +1,4 @@
-""" lightning_module.py - This file defines the LOfTransformer class.
+"""lightning_module.py - This file defines the LOfTransformer class.
 This is a pytorch lightning module for training networks in Omnifold.
 
 Author: Kevin Greif
@@ -160,8 +160,8 @@ class LOfTransformer(L.LightningModule):
         self.save_hyperparameters({"run_id": run_id})
 
     # Forward pass
-    def forward(self, inputs, mask):
-        tracks = inputs[:, :3, :]
+    def forward(self, inputs, mask, glb_features=None):
+        tracks = inputs[:, :4, :]
         if self.debug:
             return self.model(tracks)
         else:

@@ -277,9 +277,14 @@ class LOfData(L.LightningDataModule):
         # -------------------- Load the data ----------------------------
 
         # Get the data from file
-        kinematics, indeces, weights, weights_root, w1_obs = self._load_data_from_file(
-            filename, use_weight_path, start=start, stop=stop
-        )
+        (
+            kinematics,
+            indeces,
+            pdgids,
+            weights,
+            weights_root,
+            w1_obs,
+        ) = self._load_data_from_file(filename, use_weight_path, start=start, stop=stop)
 
         # -------------------- Process weights ----------------------------
 
@@ -321,8 +326,10 @@ class LOfData(L.LightningDataModule):
                 weights,
                 w1_obs,
                 object_indeces=indeces,
+                pdgids=pdgids,
                 n_jets=self.n_jets,
                 max_tracks=self.max_tracks,
+                truth_level=self.use_truth,
             )
         elif filename == "target":
             self.target_kinematics = kinematics
@@ -334,8 +341,10 @@ class LOfData(L.LightningDataModule):
                 weights,
                 w1_obs,
                 object_indeces=indeces,
+                pdgids=pdgids,
                 n_jets=self.n_jets,
                 max_tracks=self.max_tracks,
+                truth_level=self.use_truth,
             )
 
     def _concatenate_datasets(self, piece=0):
@@ -388,9 +397,11 @@ class LOfData(L.LightningDataModule):
         self, which_file="source", weight_path="root", start=None, stop=None
     ):
         """load_data_from_file - This function loads data from a file using uproot,
-        and applies the relevant preprocessing. It returns the kinematics, mask,
-        observables for calculating W1 distances, full and MC weights,
+        and applies the relevant preprocessing. It returns the kinematics, indeces,
+        pdgids, mask, observables for calculating W1 distances, full and MC weights,
         and pass190 filter.
+
+        Note that the kinematics, indeces, and pdgids are returned as awkward arrays
 
         Arguments:
             which_file {str} -- The file to load data from. Can be 'source' or 'target'
@@ -403,8 +414,9 @@ class LOfData(L.LightningDataModule):
                 case stop at the end of the file.
 
         Returns:
-            np.ndarray -- The kinematics data
-            np.ndarray -- The mask data
+            ak.Array -- The kinematics data
+            ak.Array -- The indeces data
+            ak.Array -- The pdgids data
             np.ndarray -- The weight data, for all events, regardless of start/stop.
                 Does not apply the pass190 filter!!
             np.ndarray -- The weights from the ROOT file, used for calculating
@@ -422,7 +434,7 @@ class LOfData(L.LightningDataModule):
 
         # Get kinematics
         # Note systematics are only ever applied to the source data
-        kinematics, indeces = du.get_kinematics(
+        kinematics, indeces, pdgids = du.get_kinematics(
             tree,
             muon_only=self.muon_only,
             get_truth=self.use_truth,
@@ -449,7 +461,7 @@ class LOfData(L.LightningDataModule):
             stop=stop,
         )
 
-        return kinematics, indeces, weights, weights_root, w1_observables
+        return kinematics, indeces, pdgids, weights, weights_root, w1_observables
 
     def _load_weights(self, tree, which_file="source", path=None, test=False):
         """_load_weights - This function implements the logic for loading weights
@@ -492,7 +504,10 @@ class LOfData(L.LightningDataModule):
         # Load weights from the path
         if path is not None:
             weight_file = np.load(path)
-            if test:
+            if "weight" in weight_file.files:
+                # For background sub weights, there is no train / test split
+                net_weights = weight_file["weight"]
+            elif test:
                 net_weights = weight_file["test"]
             else:
                 net_weights = weight_file["train"]

@@ -2,7 +2,7 @@
 data for the training of Omnifold discriminators.
 
 Author: Kevin Greif
-12/18/2023
+Last updated 8/2/2025
 python3
 """
 
@@ -34,10 +34,11 @@ def pad_kinematics(input_array, max_tracks=200, fill=0) -> np.ndarray:
 
 
 def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
-    """get_one_hot - This function produces a one-hot encoding, which says whether
-    each object contained in the kinematics array is a muon, belongs to any of the
-    track jets from 1 to n_jets, or belongs to any other jet. All arrays initialized
-    here will be of type np.int8. This will be cast to torch tensor with type float32.
+    """get_one_hot - This function produces a one-hot encoding, which encodes
+    which of the track jets in a given event the object belongs to.
+    If the object is a muon, all of the one-hot encodings will be 0.
+    There will be n_jets + 1 one-hot encodings, where the last one-hot encoding
+    encodes whether the object belongs to any of the n_jets+1th jets or higher.
 
     Arguments:
     kinematics - numpy array of muon and track kinematics
@@ -49,19 +50,9 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     """
 
     # List for accepting one-hot encodings
-    one_hots = []
+    tj_one_hots = []
 
-    # Assume muons are the first two objects in the kinematics array
-    muon_one_hot = np.concatenate(
-        [
-            np.ones((kinematics.shape[0], 2), dtype=np.int8),
-            np.zeros((kinematics.shape[0], kinematics.shape[2] - 2), dtype=np.int8),
-        ],
-        axis=1,
-    )
-    one_hots.append(muon_one_hot)
-
-    # Loop through track jet indeces
+    # Create the track jet one-hot encodings
     # Remove the singleton 1st dimension from the track_jet_indeces array
     track_jet_indeces = np.squeeze(track_jet_indeces, axis=1)
     for i in range(n_jets):
@@ -71,15 +62,43 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
         tj_one_hot[track_jet_indeces == i] = 1
 
         # Append to one-hot list
-        one_hots.append(tj_one_hot)
+        tj_one_hots.append(tj_one_hot)
 
-    # For any other tracks, do the same as above
+    # For any tracks not yet assigned a track jet, add one extra one-hot encoding
+    # for the underlying event
     other_one_hot = np.zeros((kinematics.shape[0], kinematics.shape[2]), dtype=np.int8)
     other_one_hot[track_jet_indeces >= n_jets] = 1
-    one_hots.append(other_one_hot)
+    tj_one_hots.append(other_one_hot)
 
     # Stack one-hot encodings and return
-    return np.stack(one_hots, axis=1)
+    return np.stack(tj_one_hots, axis=1)
+
+
+def get_masses(pdgids) -> np.ndarray:
+    """get_masses - This function will return the mass of the particle given the
+    pdgid.
+
+    Arguments:
+        pdgids {np.ndarray} -- numpy array of pdgids, shape (n_events, 1, n_tracks)
+
+    Returns:
+        masses {np.ndarray} -- numpy array of masses, shape (n_events, 1, n_tracks)
+    """
+
+    assert np.all(
+        np.isin(pdgids, [13, 211, -999])
+    )
+    masses = np.zeros_like(pdgids, dtype=np.float32)
+    masses[pdgids == 13] = 0.105658
+    masses[pdgids == 211] = 0.13957
+    # masses[pdgids == 321] = 0.493677
+    # masses[pdgids == 2212] = 0.938272
+    # masses[pdgids == 11] = 0.000511
+    # masses[pdgids == 3222] = 1.189
+    # masses[pdgids == 3112] = 1.197
+    # masses[pdgids == 3312] = 1.321
+    # masses[pdgids == 3334] = 1.672
+    return masses
 
 
 def get_kinematics(
@@ -95,7 +114,10 @@ def get_kinematics(
     muon and track kinematics concatenated as a single awkward array.
 
     The function will also return a set of indeces which describe which AK4 track jet
-    in the event a given track corresponds to.
+    in the event a given track corresponds to, and pdgids for the particles.
+    For reco level data, the pdgids will be either 13 (muon) or 211 (charged pion).
+    For truth level data, the they can have the pdgid for common charged hadrons.
+    Note the absolute value of the pdgids is used.
 
     Note this function filters events by the appropriate pass190 branch, so do not
     expect to see exactly the number of events requested by the start and stop
@@ -113,6 +135,7 @@ def get_kinematics(
     Returns:
     (ak.Array) - awkward array of the concatenated muon and track kinematics
     (ak.Array) - awkward array of the track jet indeces
+    (ak.Array) - awkward array of the pdgids
     """
 
     # Set prekey
@@ -154,15 +177,22 @@ def get_kinematics(
     m2_phi = ak.unflatten(
         tree[prekey + "phi_l2"].array(entry_start=start, entry_stop=stop), 1, axis=0
     )
-
     m1_kinematics = ak.concatenate([m1_pt, m1_eta, m1_phi], axis=1)
     m1_kinematics = ak.unflatten(m1_kinematics, 1, axis=1)
     m2_kinematics = ak.concatenate([m2_pt, m2_eta, m2_phi], axis=1)
     m2_kinematics = ak.unflatten(m2_kinematics, 1, axis=1)
     kinematics = ak.concatenate([m1_kinematics, m2_kinematics], axis=2)
 
+    # Set muon pdgids
+    m1_pdgids = 13 * ak.ones_like(m1_pt)
+    m1_pdgids = ak.unflatten(m1_pdgids, 1, axis=1)
+    m2_pdgids = 13 * ak.ones_like(m2_pt)
+    m2_pdgids = ak.unflatten(m2_pdgids, 1, axis=1)
+    pdgids = ak.concatenate([m1_pdgids, m2_pdgids], axis=2)
+
     # Apply filter
     kinematics = kinematics[evt_filter == 1, ...]
+    pdgids = pdgids[evt_filter == 1, ...]
 
     # Track information if requested
     indeces = None
@@ -198,17 +228,22 @@ def get_kinematics(
             **kwargs,
         )
 
+        # Track pdgids
+        track_pdgids = 211 * ak.ones_like(track_pt)
+
         # Apply filter then truncate if necessary
         track_kinematics = track_kinematics[evt_filter == 1, ...]
         indeces = indeces[evt_filter == 1, ...]
+        track_pdgids = track_pdgids[evt_filter == 1, ...]
 
-        # Concatenate muon and track kinematics + indeces
+        # Concatenate muon and track kinematics, indeces, and pdgids
         kinematics = ak.concatenate([kinematics, track_kinematics], axis=2)
-        muon_indeces = -1 * ak.from_numpy(np.ones((len(indeces), 1, 2), dtype=np.int8))
+        muon_indeces = -1 * ak.from_numpy(np.ones((len(indeces), 1, 2), dtype=np.int32))
         indeces = ak.concatenate([muon_indeces, indeces], axis=2)
+        pdgids = ak.concatenate([pdgids, track_pdgids], axis=2)
 
     # Return kinematics and track indeces
-    return kinematics, indeces
+    return kinematics, indeces, pdgids
 
 
 def get_observables(
@@ -254,9 +289,7 @@ def get_observables(
 
     # Loop over requested branches
     for key in key_list:
-        this_var = ak.to_numpy(
-            tree[key].array(entry_start=start, entry_stop=stop)
-        )
+        this_var = ak.to_numpy(tree[key].array(entry_start=start, entry_stop=stop))
         observables.append(this_var)
 
     # Stack requested branches
@@ -343,7 +376,7 @@ def run_systematics(
 
 
 def get_w1_obs(get_truth=False, syst_kw=None):
-    """ get_w1_obs - This function implements the logic for determining which
+    """get_w1_obs - This function implements the logic for determining which
     keys to use for pulling observables for the wasserstein distance calculation.
     The list will depend on the "plots_config.yml" file, as well as whether we want
     truth or reco level data, and whether a systematic is applied.
@@ -421,7 +454,7 @@ def null_collate(batch):
 
 
 def get_jj_info(tree, use_truth=False, start=None, stop=None):
-    """ get_jj_info - This function will return information about the system
+    """get_jj_info - This function will return information about the system
     of the two leading track jets in the event. Specifically it calculates
     the invariant mass, and the rapidity difference. Information is
     returned as a tuple of numpy arrays.
@@ -450,18 +483,18 @@ def get_jj_info(tree, use_truth=False, start=None, stop=None):
 
     px1 = j1[prekey + "pT_trackj1"] * np.cos(j1[prekey + "phi_trackj1"])
     py1 = j1[prekey + "pT_trackj1"] * np.sin(j1[prekey + "phi_trackj1"])
-    mt1 = np.sqrt(j1[prekey + "pT_trackj1"]**2 + j1[prekey + "m_trackj1"]**2)
+    mt1 = np.sqrt(j1[prekey + "pT_trackj1"] ** 2 + j1[prekey + "m_trackj1"] ** 2)
     pz1 = mt1 * np.sinh(j1[prekey + "y_trackj1"])
     E1 = mt1 * np.cosh(j1[prekey + "y_trackj1"])
 
     px2 = j2[prekey + "pT_trackj2"] * np.cos(j2[prekey + "phi_trackj2"])
     py2 = j2[prekey + "pT_trackj2"] * np.sin(j2[prekey + "phi_trackj2"])
-    mt2 = np.sqrt(j2[prekey + "pT_trackj2"]**2 + j2[prekey + "m_trackj2"]**2)
+    mt2 = np.sqrt(j2[prekey + "pT_trackj2"] ** 2 + j2[prekey + "m_trackj2"] ** 2)
     pz2 = mt2 * np.sinh(j2[prekey + "y_trackj2"])
     E2 = mt2 * np.cosh(j2[prekey + "y_trackj2"])
 
     m_jj = np.sqrt(
-        (E1 + E2)**2 - (px1 + px2)**2 - (py1 + py2)**2 - (pz1 + pz2)**2
+        (E1 + E2) ** 2 - (px1 + px2) ** 2 - (py1 + py2) ** 2 - (pz1 + pz2) ** 2
     )
 
     return m_jj, dy_jj

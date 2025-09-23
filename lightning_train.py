@@ -15,6 +15,7 @@ import argparse
 import atexit
 import glob
 import signal
+import numpy as np
 
 import lightning as L
 from lightning.pytorch.plugins.environments import SLURMEnvironment
@@ -94,11 +95,24 @@ class OfTrain:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # If we are running itertaion >= 1, get warm start path
+        # Choose a random model from the directory
         if iteration >= 1:
-            if self.config.pretrain_checkpoint is None:
-                ws_path = f"{root_dir}/pretrain_step_1/best_model.ckpt"
+            glob_path = None
+            if self.step == 1:
+                if self.config.s1_pretrain_directory is None:
+                    ws_path = f"{root_dir}/pretrain_step_{self.step}/best_model.ckpt"
+                else:
+                    glob_path = f"{self.config.s1_pretrain_directory}/*.ckpt"
             else:
-                ws_path = self.config.pretrain_checkpoint
+                if self.config.s2_pretrain_directory is None:
+                    ws_path = f"{root_dir}/pretrain_step_{self.step}/best_model.ckpt"
+                else:
+                    glob_path = f"{self.config.s2_pretrain_directory}/*.ckpt"
+            if glob_path is not None:
+                models = glob.glob(glob_path)
+                if not models:
+                    raise FileNotFoundError(f"No checkpoint files found in {glob_path}")
+                ws_path = str(np.random.choice(models))
             if not os.path.exists(ws_path):
                 raise FileNotFoundError(f"Could not find warm start path {ws_path}. ")
         else:
@@ -107,7 +121,10 @@ class OfTrain:
         # Set minimum and finish steps for checkpointing
         # Set the minimum steps
         if self.iteration > 0 and not (self.config.debug or self.unit_test):
-            self.min_steps = self.config.min_checkpoint_steps
+            if self.step == 1:
+                self.min_steps = self.config.s1_min_checkpoint_steps
+            else:
+                self.min_steps = self.config.s2_min_checkpoint_steps
             self.finish_steps = self.config.checkpoint_finish_steps
         else:
             self.min_steps = 0
@@ -319,7 +336,7 @@ class OfTrain:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
                 source_weight_file = None
-                target_weight_file = None
+                target_weight_file = self.config.top_sub_weights
             # Otherwise use the weights from the previous step two for the source,
             # and weights from the ROOT file for target
             else:
@@ -328,7 +345,7 @@ class OfTrain:
                 source_weight_file = (
                     f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 )
-                target_weight_file = None
+                target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
             use_syst_kw = None
@@ -402,7 +419,7 @@ class OfTrain:
 
     @rank_zero_only
     def cleanup_on_exit(self, natural_exit=False):
-        """ cleanup_on_exit - This function is called in two cases:
+        """cleanup_on_exit - This function is called in two cases:
             1. When training has finished, to make `best_model.ckpt` symlink
             2. When the training process is going to be timed out or preempted,
                to make a symlink if we are past the 'finish_steps' threshold.
@@ -470,9 +487,7 @@ class OfTrain:
             if self._extract_info_from_checkpoint(f)[0] >= self.min_steps
         ]
         if not checkpoint_files:
-            rank_zero_info(
-                f"No checkpoint files found with steps >= {self.min_steps}."
-            )
+            rank_zero_info(f"No checkpoint files found with steps >= {self.min_steps}.")
             return
 
         # Sort checkpoints above min_steps by their wasserstein distance

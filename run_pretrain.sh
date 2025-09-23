@@ -7,11 +7,12 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --gpu-bind=none
 #SBATCH -q regular
-#SBATCH -J part-pretrain
+#SBATCH -J v4-pretrain-step2
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
 #SBATCH -A m3246
 #SBATCH -t 0-04:00:00
+#SBATCH --array=1-10
 
 # Redirect stdout and stderr to output directory separated by job number
 #SBATCH -o ./outfiles/%x-%A-%a.out
@@ -25,10 +26,5 @@ conda activate zfjets
 export WANDB__SERVICE_WAIT=400
 wandb login
 
-# OpenMP settings:
-export OMP_NUM_THREADS=1
-export OMP_PLACES=threads
-export OMP_PROC_BIND=spread
-
 # run the application:
-srun --nodes 4 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python run_pretrain.py --config ./cli/base_ensemble_v3.yml --split_seed 484 --index 1
+srun --nodes 4 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python run_pretrain.py --config ./cli/zjets-v4-pretrain.yml --split_seed 484 --index $SLURM_ARRAY_TASK_ID --step 2

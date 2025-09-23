@@ -10,8 +10,6 @@ Last updated 06/04/2025
 python3
 """
 
-import os
-import subprocess
 import pathlib
 import yaml
 import uproot
@@ -120,7 +118,11 @@ class Plotter:
         # Apply kinematic cuts
         if kinematic_region != 0:
             print("Applying kinematic cuts for region:", kinematic_region)
-            assert self.verbosity < 3, "Cannot apply kinematic cuts for verbosity >= 3"
+            if self.verbosity >= 3:
+                print(
+                    "Verbosity is greater than 3, please ensure fastjet"
+                    " observables are calculated in the limited phase space!"
+                )
             self.apply_kinematic_cuts(kinematic_region)
 
         # Get config from yaml
@@ -143,6 +145,7 @@ class Plotter:
                 self.track_level = True
             if plot["type"] == "fastjet":
                 self.fastjet = True
+                assert self.root_files is not None
 
     def plot(self, source_start, source_end, target, recalculate=False, **kwargs):
         """plot - This function produces the reweighting plots given
@@ -163,33 +166,6 @@ class Plotter:
             dict: Dictionary with the format {plot_name: path_to_file} for
                 each plot produced
         """
-
-        # Calculate fastjet observables if needed
-        if self.fastjet:
-            assert self.root_files is not None
-
-            # Compile the fastjet package
-            make_process = subprocess.run(
-                ["make"], cwd="./fastjet/", capture_output=True
-            )
-            if make_process.returncode != 0:
-                print("Error compiling fastjet package. Please check your setup.")
-                print(make_process.stderr)
-
-            # Run for each root file that does not exist
-            weights = [source_start, source_end, target]
-            for i, (use_weights, file) in enumerate(zip(weights, self.root_files)):
-                if recalculate and pathlib.Path(file).exists():
-                    os.remove(file)
-                if not pathlib.Path(file).exists():
-                    # Need to shift paths of weights and save file up one directory
-                    up_weights = (
-                        pathlib.Path("..") / use_weights
-                        if use_weights.endswith(".npz")
-                        else use_weights
-                    )
-                    up_file = pathlib.Path("..") / file
-                    self._run_fastjet(up_weights, up_file, is_target=(i == 2))
 
         # Get event level weights
         gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
@@ -376,6 +352,7 @@ class Plotter:
         weights=None,
         density=False,
         root_index=0,
+        return_variance=False,
         **kwargs,
     ):
         """_get_histogram - This function computes a histogram for a given
@@ -398,6 +375,10 @@ class Plotter:
                 the histogram
             density (bool): If True, will normalize the histogram to
                 form a probability density function (PDF). Default is False.
+            return_variance (bool): If True, will return the variance of the
+                histogram instead of the histogram itself.
+                Default is False, note this only works for
+                fastjet observables.
             root_index (int): Index of the root file to use for fastjet
                 observables. Default is 0, or the first root file provided.
 
@@ -412,19 +393,21 @@ class Plotter:
         # the histograms using uproot
         if plot_dict["type"] == "fastjet":
 
-            assert self.root_files is not None
             assert root_index < len(self.root_files)
 
             tobject = uproot.open(self.root_files[root_index])[plot_dict["key"]]
             if "TH2" in tobject.classname:
                 hist, binsx, binsy = tobject.to_numpy()
-                return hist, (binsx, binsy)
+                bins = (binsx, binsy)
             else:
                 hist, bins = tobject.to_numpy()
-                return hist, bins
+
+            if return_variance:
+                hist = tobject.variances()
 
         # Else the data is loaded and binned from the trees directly
         else:
+            assert not return_variance
 
             # Get filtered data
             data = self._get_data(plot_dict["key"], **kwargs)
@@ -445,6 +428,7 @@ class Plotter:
 
         # Normalize histogram if desired
         if density:
+            assert not return_variance
             hist = self._normalize_to(hist, val=1.0)
 
         return hist, bins
@@ -618,66 +602,6 @@ class Plotter:
 
         return ax, axr
 
-    def _run_fastjet(
-        self, weights, save_file, syst_names=None, nEns=None, is_target=False
-    ):
-        """_run_fastjet - This function computes fastjet observables for a given
-        data set and weights, and saves them to a root file.
-        Computation is done by launching a subprocess which compiles and executes
-        the C++ code in the fastjet subdirectory.
-
-        Arguments:
-        weights - pathlib.Path or str - The path to the weights file or branch name
-            to use for fastjet computation.
-            This will be passed to the C++ code as an argument.
-        save_file - str - The path to the root file where the fastjet observables
-        syst_names - list of str - List of systematic names to use for
-            fastjet computation
-        nEns - int - Number of ensemble members to use for fastjet computation
-        is_target - bool - If true, use the target data for fastjet computation
-            instead of source.
-
-        No returns
-        """
-
-        # Determine the commands to run based on the index
-        inpath = self.target_path if is_target else self.source_path
-        inpath = str(pathlib.Path("..") / inpath)
-        command = [
-            "./doHisto.out",
-            "--file",
-            inpath,
-            "--weights",
-            str(weights),
-            "--outFile",
-            str(save_file),
-            "--maxEvents",
-            str(self.max_events),
-        ]
-        if self.use_truth:
-            command.append("--truth")
-        if syst_names is not None:
-            command.append("--syst")
-            command.append(",".join(syst_names))
-        if nEns is not None:
-            command.append("--nEns")
-            command.append(str(nEns))
-
-        # Run fastjet computation
-        try:
-            print(f"Calculating fastjet observables with command: {command}")
-            process = subprocess.run(
-                command,
-                cwd="./fastjet/",
-                capture_output=True,
-                check=True,
-                text=True,
-            )
-            print(process.stdout)
-        except subprocess.CalledProcessError as e:
-            print(f"Error running fastjet computation: {e.stderr}")
-            print(f"Return code: {e.returncode}")
-
     def apply_kinematic_cuts(self, region):
         """apply_kinematic_cuts - Applies kinematic cuts to the source_pass190 and
         target_pass190 vectors. Can use this to restrict the plotting to a
@@ -695,60 +619,52 @@ class Plotter:
         """
 
         # Get kinematic region masks
-        source_mask = self.get_kinematic_region(region, is_source=True)
-        target_mask = self.get_kinematic_region(region, is_source=False)
+        source_mask = self.get_kinematic_region(
+            self.source_tree, region, evts=self.source_events, use_truth=self.use_truth
+        )
+        target_mask = self.get_kinematic_region(
+            self.target_tree, region, evts=self.target_events, use_truth=self.use_truth
+        )
 
         # Apply masks to pass190 flags
         self.source_pass190 = np.logical_and(self.source_pass190, source_mask)
         self.target_pass190 = np.logical_and(self.target_pass190, target_mask)
 
-    def get_kinematic_region(self, region, is_source=True):
+    def get_kinematic_region(self, tree, region, evts=99999999, use_truth=True):
         """get_kinematic_region - This function returns a boolean mask for the
-        source or target tree that selects events in the given kinematic region.
+        given tree that selects events in the given kinematic region.
 
         Arguments:
+            tree (uproot.TTree): The tree to which the cuts should be applied.
             region (int): The kinematic region to apply cuts for.
                 0: No cuts, all events are used.
                 1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3: Diboson enhanced: pT_j1 > 32 GeV
-            is_source (bool): If True, return the mask for the source tree,
-                otherwise for the target tree.
+            evts (int): The maximum number of events to pull from the tree.
+            use_truth (bool): If true, use truth information to apply cuts.
 
         Returns:
             np.array: Boolean mask for the events in the given kinematic region.
         """
 
-        evts = self.source_events if is_source else self.target_events
-        get_tree = self.source_tree if is_source else self.target_tree
-        prekey = "truth_" if self.use_truth else ""
+        prekey = "truth_" if use_truth else ""
+        N = tree.num_entries
+        if N > evts:
+            N = evts
 
         if region == 0:
             # No cuts, all events are used
-            return np.ones(
-                self.source_events if is_source else self.target_events, dtype=bool
-            )
+            return np.ones(N, dtype=bool)
         elif region == 1:
-            pT_j2 = ak.to_numpy(
-                get_tree[prekey + "pT_trackj2"].array(
-                    entry_stop=self.source_events if is_source else self.target_events
-                )
-            )
-            pT_ll = ak.to_numpy(
-                get_tree[prekey + "pT_ll"].array(
-                    entry_stop=self.source_events if is_source else self.target_events
-                )
-            )
+            pT_j2 = ak.to_numpy(tree[prekey + "pT_trackj2"].array(entry_stop=N))
+            pT_ll = ak.to_numpy(tree[prekey + "pT_ll"].array(entry_stop=N))
             return np.logical_and(pT_j2 > 50, pT_ll > 350)
         elif region == 2:
-            m_jj, dy_jj = du.get_jj_info(get_tree, use_truth=self.use_truth, stop=evts)
+            m_jj, dy_jj = du.get_jj_info(tree, use_truth=use_truth, stop=N)
             return np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
         elif region == 3:
-            m_j1 = ak.to_numpy(
-                get_tree[prekey + "pT_trackj1"].array(
-                    entry_stop=self.source_events if is_source else self.target_events
-                )
-            )
+            m_j1 = ak.to_numpy(tree[prekey + "pT_trackj1"].array(entry_stop=N))
             return m_j1 > 32
         else:
             raise ValueError(
