@@ -121,7 +121,10 @@ class OfTrain:
         # Set minimum and finish steps for checkpointing
         # Set the minimum steps
         if self.iteration > 0 and not (self.config.debug or self.unit_test):
-            self.min_steps = self.config.min_checkpoint_steps
+            if self.step == 1:
+                self.min_steps = self.config.s1_min_checkpoint_steps
+            else:
+                self.min_steps = self.config.s2_min_checkpoint_steps
             self.finish_steps = self.config.checkpoint_finish_steps
         else:
             self.min_steps = 0
@@ -333,7 +336,7 @@ class OfTrain:
                 source_file = self.config.mc_train_path
                 target_file = self.config.data_path
                 source_weight_file = None
-                target_weight_file = None
+                target_weight_file = self.config.top_sub_weights
             # Otherwise use the weights from the previous step two for the source,
             # and weights from the ROOT file for target
             else:
@@ -342,7 +345,7 @@ class OfTrain:
                 source_weight_file = (
                     f"{weight_dir}/iteration_{self.iteration-1}_step_2.npz"
                 )
-                target_weight_file = None
+                target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
             use_syst_kw = None

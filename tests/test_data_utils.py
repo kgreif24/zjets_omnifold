@@ -70,15 +70,31 @@ def test_get_masses():
     # Test events with 2 muons and 4 tracks
     pdgids = np.array(
         [
-            [[13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999]],
-            [[13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999]],
+            [[13, 211, -999, -999, -999]],
+            [[13, 13, 211, -999, -999]],
         ]
     )
     masses = du.get_masses(pdgids)
     masses_test = ak.Array(
         [
-            [[0.105658, 0.13957, 0.493677, 0.938272, 0.000511, 1.189, 1.197, 1.321, 1.672, 0.0]],
-            [[0.105658, 0.13957, 0.493677, 0.938272, 0.000511, 1.189, 1.197, 1.321, 1.672, 0.0]],
+            [
+                [
+                    0.105658,
+                    0.13957,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+            ],
+            [
+                [
+                    0.105658,
+                    0.105658,
+                    0.13957,
+                    0.0,
+                    0.0,
+                ]
+            ],
         ]
     )
     assert ak.all(ak.isclose(masses, masses_test))
@@ -143,8 +159,8 @@ def test_get_kinematics_truth():
     assert np.all(np.count_nonzero(ind1[:, 0, :] == -1, axis=1) == 2)
     assert np.all(np.count_nonzero(pdgids[:, 0, :] == 13, axis=1) == 2)
 
-    # Assert that the pdgids contain not just 13 and 211
-    assert len(np.unique(ak.to_numpy(ak.flatten(pdgids, axis=None)))) > 2
+    # Assert that the pdgids contain only 13 and 211
+    assert np.all(np.unique(ak.to_numpy(ak.flatten(pdgids, axis=None))) == [13, 211])
 
 
 def test_get_kinematics_syst():

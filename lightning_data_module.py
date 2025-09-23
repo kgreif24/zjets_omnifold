@@ -504,7 +504,10 @@ class LOfData(L.LightningDataModule):
         # Load weights from the path
         if path is not None:
             weight_file = np.load(path)
-            if test:
+            if "weight" in weight_file.files:
+                # For background sub weights, there is no train / test split
+                net_weights = weight_file["weight"]
+            elif test:
                 net_weights = weight_file["test"]
             else:
                 net_weights = weight_file["train"]
