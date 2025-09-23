@@ -43,6 +43,17 @@ def sample_observables():
 
 
 @pytest.fixture
+def sample_pdgids():
+    """Create sample pdgids data for testing."""
+    n_events = 100
+    n_pdgids = 10
+    pdgids = np.random.choice([13, 211, -999], size=(n_events, n_pdgids)).astype(
+        np.int32
+    )
+    return pdgids
+
+
+@pytest.fixture
 def sample_labels():
     """Create sample labels for testing."""
     n_events = 100

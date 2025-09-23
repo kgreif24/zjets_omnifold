@@ -194,15 +194,21 @@ class TestCreateDatasets:
     """Test create_datasets function."""
 
     def test_create_datasets(
-        self, sample_kinematics, sample_indices, sample_observables
+        self, sample_kinematics, sample_indices, sample_observables, sample_pdgids
     ):
         """Test dataset creation with balanced weights."""
         # Create test data
-        pd_data = (sample_kinematics[:50], sample_indices[:50], sample_observables[:50])
+        pd_data = (
+            sample_kinematics[:50],
+            sample_indices[:50],
+            sample_observables[:50],
+            sample_pdgids[:50],
+        )
         top_data = (
             sample_kinematics[50:],
             sample_indices[50:],
             sample_observables[50:],
+            sample_pdgids[50:],
         )
 
         config = TrainingConfig()
@@ -226,14 +232,7 @@ class TestCreateDatasets:
 class TestCreateDataLoaders:
     """Test create_data_loaders function."""
 
-    def test_create_data_loaders(
-        self,
-        sample_kinematics,
-        sample_indices,
-        sample_observables,
-        sample_labels,
-        sample_weights,
-    ):
+    def test_create_data_loaders(self):
         """Test data loader creation with train/test split."""
         # Create a mock combined dataset
         mock_dataset = Mock()

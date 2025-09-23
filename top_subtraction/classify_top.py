@@ -130,8 +130,8 @@ def create_datasets(
     Returns:
         Tuple of (pseudodata dataset, top dataset)
     """
-    pd_kinematics, pd_indices, pd_obs = pd_data
-    top_kinematics, top_indices, top_obs = top_data
+    pd_kinematics, pd_indices, pd_obs, pd_pdgids = pd_data
+    top_kinematics, top_indices, top_obs, top_pdgids = top_data
 
     # Create labels: top is 1, pseudodata is 0
     top_labels = np.ones((len(top_kinematics), 1), dtype=np.float32)
@@ -152,6 +152,7 @@ def create_datasets(
         weights=weight_top,
         object_indeces=top_indices,
         w1_obs=top_obs,
+        pdgids=top_pdgids,
         n_jets=config.n_jets,
         max_tracks=config.max_tracks,
     )
@@ -162,6 +163,7 @@ def create_datasets(
         weights=weight_pd,
         object_indeces=pd_indices,
         w1_obs=pd_obs,
+        pdgids=pd_pdgids,
         n_jets=config.n_jets,
         max_tracks=config.max_tracks,
     )
