@@ -115,7 +115,7 @@ class LOfTransformer(L.LightningModule):
         super().__init__()
         self.criterion = torch.nn.BCEWithLogitsLoss(reduction="none")
         if debug:
-            self.model = DumbNeuralNetwork()
+            self.model = DumbNeuralNetwork(input_dim=8)
         else:
             self.model = OfTransformer(input_dim, **kwargs)
 

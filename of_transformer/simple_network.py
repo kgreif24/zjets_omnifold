@@ -6,11 +6,11 @@ class DumbNeuralNetwork(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(input_dim, 256),
+            nn.Linear(input_dim, 512),
             nn.GELU(),
-            nn.Linear(256, 256),
+            nn.Linear(512, 512),
             nn.GELU(),
-            nn.Linear(256, 1),
+            nn.Linear(512, 1),
         )
 
     def forward(self, x, mask=None):
