@@ -105,14 +105,14 @@ def load_and_filter_data(
 
     # Load observables
     observables = np.stack(
-        du.get_observables(t, ["Ntracks", "HT_tracks", "pT_ll"]), axis=0
+        du.get_observables(t, ["Ntracks", "HT_tracks", "pT_ll"]), axis=1
     )
 
     # Filter pseudodata to exclude top events
     if is_pseudodata:
-        kinematics = kinematics[filtered_is_top == 0]
-        indices = indices[filtered_is_top == 0]
-        observables = observables[filtered_is_top == 0, :]
+        kinematics = kinematics[filtered_is_top == 0, ...]
+        indices = indices[filtered_is_top == 0, ...]
+        observables = observables[filtered_is_top == 0, ...]
 
     return kinematics, indices, observables
 

@@ -28,6 +28,8 @@ from utils.data_utils import get_observables  # noqa: E402
 class SimpleNN(torch.nn.Module):
     def __init__(self, input_dim=3, droprate=0.0):
         super().__init__()
+        if input_dim <= 0:
+            raise ValueError(f"input_dim must be positive, got {input_dim}")
         self.flatten = torch.nn.Flatten()
         self.linear_relu_stack = torch.nn.Sequential(
             torch.nn.Linear(input_dim, 512),
@@ -90,6 +92,9 @@ def predict_weights(model, dataloader):
             x = batch[0]
             y_hat = model(x.to(model.device))
             preds.append(y_hat)
+        if not preds:
+            # Handle empty dataloader case
+            return np.array([])
         preds = np.concatenate([p.detach().cpu().numpy().flatten() for p in preds])
         weights = np.exp(preds)
     print(f"Mean of weights: {np.mean(weights)}")
@@ -97,9 +102,7 @@ def predict_weights(model, dataloader):
 
 
 def bootstrap_sample(data, weights, bootstrap):
-    rng = np.random.default_rng(bootstrap)
-    indices = rng.choice(len(data), size=len(data), replace=True)
-    return data[indices], weights[indices]
+    raise NotImplementedError("Bootstrap sampling is not implemented yet")
 
 
 def replace_exits(data):
@@ -108,7 +111,14 @@ def replace_exits(data):
     of the observable."""
 
     for i in range(data.shape[1]):
-        data[data[:, i] == -99, i] = np.median(data[data[:, i] != -99, i])
+        non_exit_mask = data[:, i] != -99
+        if np.any(non_exit_mask):
+            # Replace exit codes with median of non-exit values
+            median_val = np.median(data[non_exit_mask, i])
+            data[data[:, i] == -99, i] = median_val
+        else:
+            # If all values are exit codes, replace with 0
+            data[data[:, i] == -99, i] = 0.0
     return data
 
 
