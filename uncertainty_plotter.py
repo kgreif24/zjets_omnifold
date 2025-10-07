@@ -58,23 +58,6 @@ class UncertaintyPlotter(plotter.Plotter):
             **kwargs,
         )
 
-        # Get the sherpa tree
-        self.sherpa_path = hv_path
-        self.sherpa_tree = uproot.open(hv_path)["OmniTree"]
-        self.sherpa_events = self.sherpa_tree.num_entries
-        if self.sherpa_events > self.max_events:
-            self.sherpa_events = self.max_events
-        self.sherpa_pass190 = ak.to_numpy(
-            self.sherpa_tree["truth_pass190"].array(entry_stop=self.sherpa_events)
-        )
-
-        # Get the data tree
-        self.data_path = data_path
-        self.data_tree = uproot.open(data_path)["OmniTree"]
-        self.data_events = self.data_tree.num_entries
-        if self.data_events > self.max_events:
-            self.data_events = self.max_events
-
         # Systematic uncertainty settings
         self.active_systs = {
             "nn-init": {
@@ -83,9 +66,15 @@ class UncertaintyPlotter(plotter.Plotter):
                 "plot_ratio": False,
                 "stochastic": True,
             },
-            "track-eff": {
+            "track_eff": {
                 "name": "Track eff.",
                 "color": "purple",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
+            "jet-track-eff": {
+                "name": "Jet track eff.",
+                "color": "pink",
                 "plot_ratio": False,
                 "stochastic": False,
             },
@@ -95,21 +84,43 @@ class UncertaintyPlotter(plotter.Plotter):
                 "plot_ratio": False,
                 "stochastic": True,
             },
-            "hidden-variable": {
+            "hv": {
                 "name": "Hidden variable",
                 "color": "orange",
                 "plot_ratio": False,
                 "stochastic": False,
-                "tree": self.sherpa_tree,
             },
+            # "dd": {
+            #     "name": "Data driven",
+            #     "color": "brown",
+            #     "plot_ratio": False,
+            #     "stochastic": False,
+            # },
             "data-stat": {
                 "name": "Data stat",
                 "color": "aqua",
                 "plot_ratio": False,
                 "stochastic": True,
-                "tree": self.data_tree,
             },
         }
+
+        # Get the sherpa tree
+        if "hv" in self.active_systs.keys():
+            self.sherpa_path = hv_path
+            self.sherpa_tree = uproot.open(hv_path)["OmniTree"]
+            self.sherpa_events = self.sherpa_tree.num_entries
+            if self.sherpa_events > self.max_events:
+                self.sherpa_events = self.max_events
+            self.sherpa_pass190 = ak.to_numpy(
+                self.sherpa_tree["truth_pass190"].array(entry_stop=self.sherpa_events)
+            )
+
+        # Get the data tree
+        self.data_path = data_path
+        self.data_tree = uproot.open(data_path)["OmniTree"]
+        self.data_events = self.data_tree.num_entries
+        if self.data_events > self.max_events:
+            self.data_events = self.max_events
 
         # Verify that we have the correct number of root files
         # if there are fastjet observables
@@ -169,7 +180,7 @@ class UncertaintyPlotter(plotter.Plotter):
         weights_file = np.load(of_weights)
 
         # Get central weights, nominal ensemble weights, and systematic weights
-        central_weights = weights_file["nominal-ensemble-central"]
+        central_weights = weights_file["nominal-central"]
         nraw_events = len(central_weights)
         central_weights = central_weights[: self.max_events]
         central_weights = central_weights[self.source_pass190 == 1]
@@ -189,7 +200,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 continue
             systematic_weights[syst] = weights_file[syst + "-central"]
             systematic_weights[syst] = systematic_weights[syst][: self.max_events]
-            if syst == "hidden-variable":
+            if syst == "hv":
                 systematic_weights[syst] = systematic_weights[syst][
                     self.sherpa_pass190 == 1
                 ]
@@ -201,21 +212,24 @@ class UncertaintyPlotter(plotter.Plotter):
         # Multiply by source weights
         source = self._get_weights("weight_mc", is_target=False)
         source = source[self.source_pass190 == 1]
-        source_sherpa = ak.to_numpy(
-            self.sherpa_tree["weight_mc"].array(entry_stop=self.sherpa_events)
-        )
-        source_sherpa = source_sherpa[self.sherpa_pass190 == 1]
         central_weights *= source
         ensemble_weights *= np.expand_dims(source, axis=1)
         for syst in systematic_weights:
-            if syst == "hidden-variable":
+            if syst == "hv":
+                source_sherpa = ak.to_numpy(
+                    self.sherpa_tree["weight_mc"].array(entry_stop=self.sherpa_events)
+                )
+                source_sherpa = source_sherpa[self.sherpa_pass190 == 1]
                 systematic_weights[syst] *= source_sherpa
             else:
                 systematic_weights[syst] *= source
 
-        # Get target weights
+        # Get target weights, both nominal and data driven
+        # Note the data driven weights are actually for the source data!
         target = self._get_weights("weight_mc", is_target=True)
         target = target[self.target_pass190 == 1]
+        target_dd = self._get_weights("target_dd", is_target=False)
+        target_dd = target_dd[self.source_pass190 == 1]
 
         # If we have track level observables, need to repeat the weights
         # for each track in the event
@@ -223,6 +237,7 @@ class UncertaintyPlotter(plotter.Plotter):
             print("Calculating track level weights!")
             central_weights_trk = self._get_track_weights(central_weights)
             target_trk = self._get_track_weights(target, is_target=True)
+            target_dd_trk = self._get_track_weights(target_dd, is_target=False)
             ensemble_weights_trk = np.zeros(
                 (len(central_weights_trk), ensemble_weights.shape[1])
             )
@@ -242,7 +257,7 @@ class UncertaintyPlotter(plotter.Plotter):
             # Get histograms
             nominal_plot = plot.copy()
             if nominal_plot["type"] == "fastjet":
-                nominal_plot["key"] = "nominal-ensemble-" + nominal_plot["key"]
+                nominal_plot["key"] = "nominal-" + nominal_plot["key"]
             source_hist, bins = self._get_histogram(
                 nominal_plot,
                 weights=(
@@ -287,9 +302,7 @@ class UncertaintyPlotter(plotter.Plotter):
                     member_weights = use_nominal_weights[:, i]
                     member_plot = plot.copy()
                     if member_plot["type"] == "fastjet":
-                        member_plot["key"] = (
-                            "nominal-ensemble-" + str(i) + "-" + plot["key"]
-                        )
+                        member_plot["key"] = "nominal-" + str(i) + "-" + plot["key"]
                     member_hist, _ = self._get_histogram(
                         member_plot,
                         weights=member_weights,
@@ -302,32 +315,51 @@ class UncertaintyPlotter(plotter.Plotter):
                 self.active_systs["nn-init"].update({"var": nn_init_var})
 
             # Systematic uncertainties
-            use_syst_weights = (
-                systematic_weights_trk
-                if plot["type"] == "track"
-                else systematic_weights
-            )
+            if plot["type"] == "track":
+                use_syst_weights = systematic_weights_trk
+                use_dd_weights = target_dd_trk
+            else:
+                use_syst_weights = systematic_weights
+                use_dd_weights = target_dd
+
             for key, wgts in use_syst_weights.items():
                 syst_plot = plot.copy()
                 if syst_plot["type"] == "fastjet":
                     syst_plot["key"] = key + "-" + plot["key"]
-                if key == "hidden-variable":
+                if key == "hv":
+                    hv_plot = syst_plot.copy()
                     syst_hist, _ = self._get_sherpa_histogram(
+                        hv_plot,
+                        weights=wgts,
+                    )
+                    estimate_hist = source_hist
+                elif key == "dd":
+                    syst_hist, _ = self._get_histogram(
                         syst_plot,
                         weights=wgts,
+                    )
+                    target_plot = plot.copy()  # Make sure you don't copy "syst_plot"
+                    if target_plot["type"] == "fastjet":
+                        target_plot["key"] = "target_dd-" + plot["key"]
+                    estimate_hist, _ = self._get_histogram(
+                        target_plot,
+                        weights=use_dd_weights,
+                        # Note the data driven weights are actually for the source data!
+                        is_target=False,
                     )
                 else:
                     syst_hist, _ = self._get_histogram(
                         syst_plot,
                         weights=wgts,
                     )
-                norm_factor = np.sum(source_hist) / np.sum(syst_hist)
+                    estimate_hist = source_hist
+                norm_factor = np.sum(estimate_hist) / np.sum(syst_hist)
                 syst_hist *= norm_factor
                 # If we are plotting the ratio, add this systematic histogram
                 # to the dictionary to pass into the build plot function
                 if self.active_systs[key]["plot_ratio"]:
-                    self.active_systs[key]["hist"] = syst_hist
-                syst_var = np.abs(syst_hist - source_hist) ** 2
+                    self.active_systs[key]["ratio"] = syst_hist / estimate_hist
+                syst_var = np.abs(syst_hist - estimate_hist) ** 2
                 self.active_systs[key].update({"var": syst_var})
 
             # Make and save plot
@@ -383,6 +415,8 @@ class UncertaintyPlotter(plotter.Plotter):
             hist (np.array): Array of histogram values.
             bins (np.array): Array of bin edges.
         """
+
+        assert "hv" in self.active_systs.keys()
 
         # If the observable is computed using fastjet, we need to load the data
         # histogram from the correct ROOT file
@@ -592,7 +626,7 @@ class UncertaintyPlotter(plotter.Plotter):
             if syst_ratio["plot_ratio"]:
                 rax.plot(
                     bin_centers,
-                    syst_ratio["hist"] / norm_target_hist,
+                    syst_ratio["ratio"],
                     ".",
                     color=syst_ratio["color"],
                 )
@@ -822,12 +856,15 @@ class UncertaintyPlotter(plotter.Plotter):
         if plot["log_xscale"]:
             ax.set_xscale("log")
         ax.set_xlabel(plot["xlabel"])
-        ax.set_ylabel("Uncertainty")
-        ax.set_title("Uncertainty Budget")
+        ax.set_ylabel("Uncertainty budget")
         if plot["symlog_xscale"]:
-            ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=4)
+            ax.legend(
+                loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=4, fontsize=8
+            )
         else:
-            ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4)
+            ax.legend(
+                loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4, fontsize=8
+            )
 
         # Finalize layout
         fig.tight_layout()

@@ -147,7 +147,14 @@ class Plotter:
                 self.fastjet = True
                 assert self.root_files is not None
 
-    def plot(self, source_start, source_end, target, recalculate=False, **kwargs):
+    def plot(
+        self,
+        source_start,
+        source_end,
+        target,
+        recalculate=False,
+        **kwargs,
+    ):
         """plot - This function produces the reweighting plots given
         vectors of weights for the source and target data, and saves
         them to the proper directory. It returns a dictionary with the format
@@ -168,7 +175,9 @@ class Plotter:
         """
 
         # Get event level weights
-        gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
+        gw_kwargs = {
+            k: v for k, v in kwargs.items() if k in ["use_train", "array_name"]
+        }
         source_start = self._get_weights(source_start, **gw_kwargs)
         source_end = self._get_weights(source_end, **gw_kwargs)
         target = self._get_weights(target, is_target=True, **gw_kwargs)
@@ -309,7 +318,9 @@ class Plotter:
         """
 
         # Get event level weights
-        gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
+        gw_kwargs = {
+            k: v for k, v in kwargs.items() if k in ["use_train", "array_name"]
+        }
         source_start = self._get_weights(source_start, **gw_kwargs)
         source_end = self._get_weights(source_end, **gw_kwargs)
         target = self._get_weights(target, is_target=True, **gw_kwargs)
@@ -447,12 +458,14 @@ class Plotter:
             return hist
         return hist / np.sum(hist) * val
 
-    def _get_weights(self, weights, is_target=False, use_train=False):
+    def _get_weights(
+        self, weights, is_target=False, use_train=False, array_name="nominal-central"
+    ):
         """_get_weights - This function gets a set of weights for use in
         plotting. The weights argument can be a string, either pointing to
         weights stored as a .npz file, or a branch name in the tree. It
-        can also be a numpy array, in which case the function simply
-        handles the truncation to the number of events used in plotting.
+        can also be a numpy array, in which case the function on handles
+        the truncation to the number of events used in plotting.
 
         Note if the weights argument points to a .npz file, the weights
         are multiplied by the correct weights in the ROOT tree. If
@@ -466,6 +479,9 @@ class Plotter:
                 true to pull from target tree
             use_train (bool): Flag to use training weights if
                 weights is a .npz file.
+            array_name (str): Name of the array stored in the .npz file
+                to use for the source_end weights.
+                Defaults to "nominal-central".
 
         Returns:
             weights (np.array): Array of weights
@@ -494,9 +510,11 @@ class Plotter:
 
             # Load weights from file
             weights = np.load(weights)
-            if "nominal-ensemble-central" in weights.files:
+            if array_name in weights.files:
                 assert not use_train
-                weights = weights["nominal-ensemble-central"]
+                print(f"Using array {array_name} from {weights.files}")
+                weights = weights[array_name]
+                print(f"First few weights: {weights[:5]}")
             elif use_train:
                 weights = weights["train"]
             else:
