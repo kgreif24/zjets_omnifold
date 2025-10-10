@@ -112,15 +112,8 @@ class Plotter:
         if self.target_events > max_events:
             self.target_events = max_events
 
-        # Apply kinematic cuts
-        if kinematic_region != 0:
-            print("Applying kinematic cuts for region:", kinematic_region)
-            if self.verbosity >= 3:
-                print(
-                    "Verbosity is greater than 3, please ensure fastjet"
-                    " observables are calculated in the limited phase space!"
-                )
-            self.apply_kinematic_cuts(kinematic_region)
+        # Store kinematic region for later application
+        self._kinematic_region = kinematic_region
 
         # Get config from yaml
         with open("./utils/plots_config.yml", "r") as stream:
@@ -143,6 +136,9 @@ class Plotter:
             if plot["type"] == "fastjet":
                 self.fastjet = True
                 assert self.root_files is not None
+
+        # Note: kinematic cuts will be applied in plot() and wasserstein_distance()
+        # methods
 
     def plot(
         self,
@@ -170,6 +166,9 @@ class Plotter:
             dict: Dictionary with the format {plot_name: path_to_file} for
                 each plot produced
         """
+
+        # Ensure kinematic cuts are applied if needed
+        self._ensure_kinematic_cuts_applied()
 
         # Get event level weights
         gw_kwargs = {
@@ -315,6 +314,9 @@ class Plotter:
             tuple (float, float): Tuple of wasserstein distances to target for
                 source_start and source_end distributions
         """
+
+        # Ensure kinematic cuts are applied if needed
+        self._ensure_kinematic_cuts_applied()
 
         # Get event level weights
         gw_kwargs = {
@@ -515,6 +517,7 @@ class Plotter:
         tree,
         key,
         pass190_flags,
+        use_truth=False,
         max_events=None,
     ):
         """Extract data loading logic to avoid duplication.
@@ -526,6 +529,7 @@ class Plotter:
             tree (uproot.TTree): The tree to load data from
             key (str): The key to load data for
             pass190_flags (np.array): Boolean array for event filtering
+            use_truth (bool): If true, use truth level data instead of reco level data
             max_events (int, optional): Maximum number of events to load
 
         Returns:
@@ -535,7 +539,7 @@ class Plotter:
             max_events = tree.num_entries
 
         # Add truth prefix if needed
-        if self.use_truth:
+        if use_truth:
             key = "truth_" + key
 
         # Load data
@@ -718,6 +722,7 @@ class Plotter:
             tree,
             key,
             pass190_flags,
+            use_truth=self.use_truth,
             max_events=max_events,
         )
 
@@ -738,6 +743,20 @@ class Plotter:
         ax = fig.add_subplot(this_grid[0, 0])
 
         return ax, axr
+
+    def _ensure_kinematic_cuts_applied(self):
+        """Ensure kinematic cuts are applied if needed. This method is idempotent.
+        Should be called before any plotting or analysis methods.
+        """
+        if self._kinematic_region != 0 and not hasattr(self, "_kinematic_cuts_applied"):
+            print("Applying kinematic cuts for region:", self._kinematic_region)
+            if self.verbosity >= 3:
+                print(
+                    "Verbosity is greater than 3, please ensure fastjet"
+                    " observables are calculated in the limited phase space!"
+                )
+            self.apply_kinematic_cuts(self._kinematic_region)
+            self._kinematic_cuts_applied = True
 
     def apply_kinematic_cuts(self, region):
         """apply_kinematic_cuts - Applies kinematic cuts to the cached pass190 flags.

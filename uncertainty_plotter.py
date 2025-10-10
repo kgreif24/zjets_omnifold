@@ -32,7 +32,7 @@ class UncertaintyPlotter(plotter.Plotter):
         hv_path,
         data_path,
         store,
-        root_files,
+        root_files=None,
         target2_path=None,
         data_comparison_mode=False,
         **kwargs,
@@ -189,6 +189,8 @@ class UncertaintyPlotter(plotter.Plotter):
             ]
         )
 
+        # Note: kinematic cuts will be applied in plot() method when needed
+
     def plot(self, of_weights, color="blue", **kwargs):
         """plot - Override of the base class plot method. Here we will build
         uncertainty plots comparing truth pseudodata to re-weighted truth
@@ -205,6 +207,9 @@ class UncertaintyPlotter(plotter.Plotter):
             dict: Dictionary with the format {plot_name: path_to_file} for
                 each plot produced
         """
+
+        # Ensure kinematic cuts are applied if needed
+        self._ensure_kinematic_cuts_applied()
 
         # Load weights from numpy file
         weights_file = np.load(of_weights)
@@ -476,7 +481,6 @@ class UncertaintyPlotter(plotter.Plotter):
                 plot_dict["key"],
                 self._get_cached_pass190_flags("sherpa"),
                 use_truth=True,
-                kinematic_region=self.kinematic_region,
                 max_events=self.sherpa_events,
             )
 
@@ -565,6 +569,7 @@ class UncertaintyPlotter(plotter.Plotter):
             self.target2_tree,
             key,
             self._get_cached_pass190_flags("target2"),
+            use_truth=True,
             max_events=self.target2_events,
         )
 
@@ -596,6 +601,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 self.data_tree,
                 plot_dict["key"],
                 self._get_cached_pass190_flags("data"),
+                use_truth=False,
                 max_events=self.data_events,
             )
 
@@ -1275,58 +1281,62 @@ class UncertaintyPlotter(plotter.Plotter):
         self._pass190_cache[tree_type] = flags
         return flags
 
-    def apply_kinematic_cuts(self, region):
-        """apply_kinematic_cuts - Override of the base class method to apply
-        kinematic cuts to all cached trees including additional trees in
-        UncertaintyPlotter (sherpa, data, and optionally target2).
-
-        Args:
-            region (int): The kinematic region to apply cuts for.
-                0: No cuts, all events are used.
-                1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
-                2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
-                3: Diboson enhanced: pT_j1 > 32 GeV
-
-        Returns:
-            None
+    def _ensure_kinematic_cuts_applied(self):
+        """Override to apply kinematic cuts to all trees including additional ones
+        in UncertaintyPlotter (sherpa, data, and optionally target2).
+        This method is idempotent.
         """
-        # First call the parent method to handle source and target trees
-        super().apply_kinematic_cuts(region)
+        if self._kinematic_region != 0 and not hasattr(self, "_kinematic_cuts_applied"):
+            print("Applying kinematic cuts for region:", self._kinematic_region)
+            if self.verbosity >= 3:
+                print(
+                    "Verbosity is greater than 3, please ensure fastjet"
+                    " observables are calculated in the limited phase space!"
+                )
 
-        # Apply kinematic cuts to sherpa tree
-        if "hv" in self.active_systs:
-            sherpa_mask = self.get_kinematic_region(
-                self.sherpa_tree,
-                region,
-                evts=self.sherpa_events,
-                use_truth=self.use_truth,
-            )
-            sherpa_pass190 = self._get_cached_pass190_flags("sherpa")
-            self._pass190_cache["sherpa"] = np.logical_and(sherpa_pass190, sherpa_mask)
+            # First call the parent method to handle source and target trees
+            super().apply_kinematic_cuts(self._kinematic_region)
 
-        # Apply kinematic cuts to data tree
-        # Note: data doesn't have pass190, so we just apply the kinematic mask directly
-        data_mask = self.get_kinematic_region(
-            self.data_tree,
-            region,
-            evts=self.data_events,
-            use_truth=False,  # Data has no truth
-        )
-        # For data, we store the combined mask (since there's no pass190 to combine with)
-        self._pass190_cache["data"] = data_mask
+            # Apply kinematic cuts to sherpa tree
+            if "hv" in self.active_systs:
+                sherpa_mask = self.get_kinematic_region(
+                    self.sherpa_tree,
+                    self._kinematic_region,
+                    evts=self.sherpa_events,
+                    use_truth=self.use_truth,
+                )
+                sherpa_pass190 = self._get_cached_pass190_flags("sherpa")
+                self._pass190_cache["sherpa"] = np.logical_and(
+                    sherpa_pass190, sherpa_mask
+                )
 
-        # Apply kinematic cuts to target2 tree if in dual target mode
-        if self.dual_target_mode:
-            target2_mask = self.get_kinematic_region(
-                self.target2_tree,
-                region,
-                evts=self.target2_events,
-                use_truth=self.use_truth,
+            # Apply kinematic cuts to data tree
+            # Note: data doesn't have pass190, so we just apply the kinematic mask
+            # directly
+            data_mask = self.get_kinematic_region(
+                self.data_tree,
+                self._kinematic_region,
+                evts=self.data_events,
+                use_truth=False,  # Data has no truth
             )
-            target2_pass190 = self._get_cached_pass190_flags("target2")
-            self._pass190_cache["target2"] = np.logical_and(
-                target2_pass190, target2_mask
-            )
+            # For data, we store the combined mask (no pass190 to combine with)
+            self._pass190_cache["data"] = data_mask
+
+            # Apply kinematic cuts to target2 tree if in dual target mode
+            if self.dual_target_mode:
+                target2_mask = self.get_kinematic_region(
+                    self.target2_tree,
+                    self._kinematic_region,
+                    evts=self.target2_events,
+                    use_truth=self.use_truth,
+                )
+                target2_pass190 = self._get_cached_pass190_flags("target2")
+                self._pass190_cache["target2"] = np.logical_and(
+                    target2_pass190, target2_mask
+                )
+
+            # Mark as applied to make this method idempotent
+            self._kinematic_cuts_applied = True
 
     def _get_cached_track_data(self, tree_type="source"):
         """Override to handle additional tree types."""
