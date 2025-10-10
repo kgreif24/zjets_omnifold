@@ -93,7 +93,6 @@ args = parser.parse_args()
 
 # Load indices for unshuffling MC test events
 indices_nominal = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices.npy")
-indices_dd = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices_dd.npy")
 
 # Define the names of the various run groups in a campaign
 assert len(args.iterations) == len(
@@ -105,23 +104,23 @@ print(f"Pulling weights for groups {args.group_names} at iterations {args.iterat
 for gn, it in zip(args.group_names, args.iterations):
 
     if args.use_data:
-        gn = f"{gn}-data"
-    print(f"Pulling weights for {gn}")
+        pull_gn = f"{gn}-data"
+    else:
+        pull_gn = gn
+    print(f"Pulling weights for {pull_gn}")
     # Set the indices to use
-    if gn == "dd":
-        use_indices = indices_dd
-    elif gn == "hv":
+    if gn == "hv":
         use_indices = None
     else:
         use_indices = indices_nominal
     pulled_weights = pull_weights(
         args.campaign_path,
-        gn,
+        pull_gn,
         it,
         indices=use_indices,
         max_ens=args.max_ens,
     )
-    print(f"Got {len(pulled_weights)} weights for group {gn}")
+    print(f"Got {len(pulled_weights)} weights for group {pull_gn}")
 
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)

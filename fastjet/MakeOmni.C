@@ -10,8 +10,10 @@
 #include "cnpy.h"
 #include <memory>
 #include <string>
+#include "indicators/progress_bar.hpp"
 using namespace fastjet;
 using namespace std;
+using namespace indicators;
 
 float MakeOmni::GetMassFromPID(int pdgId) {
    int absPdgId = TMath::Abs(pdgId);
@@ -59,7 +61,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
    // Load the needed weights
    for (const auto& weight_name : weightBranchNames) {
-      if (weight_name != "weight" && weight_name != "weight_mc") {
+      if (weight_name != "weight" && weight_name != "weight_mc" && weight_name != "target_dd") {
          central_weights.push_back(LoadWeights(weightFilename, weight_name + "-central"));
       } else {
          central_weights.push_back(vector<float>());
@@ -74,10 +76,10 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    // Jet definitions to consider
    JetDefinition jetdef_kt(kt_algorithm, 0.4);
    JetDefinition jetdef_r04(antikt_algorithm, 0.4);
-   JetDefinition jetdef_r06(antikt_algorithm, 0.6);
+   // JetDefinition jetdef_r06(antikt_algorithm, 0.6);
    JetDefinition jetdef_r10(antikt_algorithm, 1.0);
    JetDefinition jetdef_ca04(cambridge_algorithm, 0.4);
-   JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
+   // JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
 
 
    // ----------------------- Loop over events -----------------------
@@ -89,12 +91,36 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    }
 
    Long64_t nbytes = 0, nb = 0;
+   
+   // Initialize progress bar with ETA
+   ProgressBar bar{
+      option::BarWidth{50},
+      option::Start{"["},
+      option::Fill{"="},
+      option::Lead{">"},
+      option::Remainder{" "},
+      option::End{"]"},
+      option::PostfixText{"Processing Events"},
+      option::ForegroundColor{Color::green},
+      option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+      option::ShowElapsedTime{true},
+      option::ShowRemainingTime{true}
+   };
+   
+   // Set the total number of events for ETA calculation
+   bar.set_option(option::MaxProgress{nentries});
+   
    for (Long64_t jentry=0; jentry<nentries;jentry++) {
       Long64_t ientry = LoadTree(jentry);
       if (ientry < 0) break;
       nb = fChain->GetEntry(jentry);   nbytes += nb;
 
-      if (jentry%10000==0) cout << " Entry #" << jentry << endl;
+      // Update progress bar every 100 events for better performance
+      if (jentry % 100 == 0) {
+         bar.set_option(option::PostfixText{"Processing Events: " + to_string(jentry) + "/" + to_string(nentries)});
+         // Update progress for ETA calculation
+         bar.set_progress(static_cast<size_t>(jentry));
+      }
 
       // Filter on pass 190 flag here
       if (pass190 == 0) {
@@ -120,8 +146,10 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          TLorentzVector constit_tlv;
          // Which track 3 vectors to use depend on whether we are processing truth or reco
          // Truth files use double precision while reco files use float precision
-         // float constit_mass = GetMassFromPID(pdgId_tracks[i]);
          float constit_mass = 0.13957;
+         if (isTruth) {
+            constit_mass = GetMassFromPID(pdgId_tracks[i]);
+         }
          constit_tlv.SetPtEtaPhiM(pT_tracks[i], eta_tracks[i], phi_tracks[i], constit_mass);
          PseudoJet constit_pj;
          constit_pj.reset_PtYPhiM(constit_tlv.Pt(), constit_tlv.Rapidity(), constit_tlv.Phi(), constit_tlv.M());
@@ -129,18 +157,18 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       }
 
       // Build anti-kt jets w/ R=0.4, 0.6, 1.0 and CA
-      ClusterSequence cs_seq_kt(particles, jetdef_kt);
+      // ClusterSequence cs_seq_kt(particles, jetdef_kt);
       ClusterSequence cs_seq_r04(particles, jetdef_r04);
-      ClusterSequence cs_seq_r06(particles, jetdef_r06);
+      // ClusterSequence cs_seq_r06(particles, jetdef_r06);
       ClusterSequence cs_seq_r10(particles, jetdef_r10);
       ClusterSequence cs_seq_ca04(particles, jetdef_ca04);
-      ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
-      vector<PseudoJet> KT_jets = sorted_by_pt(cs_seq_kt.inclusive_jets());
+      // ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
+      // vector<PseudoJet> KT_jets = sorted_by_pt(cs_seq_kt.inclusive_jets());
       vector<PseudoJet> R04_jets = sorted_by_pt(cs_seq_r04.inclusive_jets());
-      vector<PseudoJet> R06_jets = sorted_by_pt(cs_seq_r06.inclusive_jets());
+      // vector<PseudoJet> R06_jets = sorted_by_pt(cs_seq_r06.inclusive_jets());
       vector<PseudoJet> R10_jets = sorted_by_pt(cs_seq_r10.inclusive_jets());
       vector<PseudoJet> CA04_jets = sorted_by_pt(cs_seq_ca04.inclusive_jets());
-      vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
+      // vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
 
       // Calculate mjj, dyjj for R04 jets
       double R04_mjj, R04_dyjj;
@@ -175,34 +203,34 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          continue;
       }
 
-      // Get Lund variables 
-      vector<double> R04_lundz;
-      vector<double> R04_lundkt;
-      vector<double> R04_lundDr;
-      if (R04_jets.size() > 0) {
-         processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
-      }
+      // // Get Lund variables 
+      // vector<double> R04_lundz;
+      // vector<double> R04_lundkt;
+      // vector<double> R04_lundDr;
+      // if (R04_jets.size() > 0) {
+      //    processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
+      // }
 
-      vector<double> R06_lundz;
-      vector<double> R06_lundkt;
-      vector<double> R06_lundDr;
-      if (R06_jets.size() > 0) {
-         processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
-      }
+      // vector<double> R06_lundz;
+      // vector<double> R06_lundkt;
+      // vector<double> R06_lundDr;
+      // if (R06_jets.size() > 0) {
+      //    processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
+      // }
 
-      vector<double> R10_lundz;
-      vector<double> R10_lundkt;
-      vector<double> R10_lundDr;
-      if (R10_jets.size() > 0) {
-         processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
-      }
+      // vector<double> R10_lundz;
+      // vector<double> R10_lundkt;
+      // vector<double> R10_lundDr;
+      // if (R10_jets.size() > 0) {
+      //    processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
+      // }
 
-      vector<double> CA04_lundz;
-      vector<double> CA04_lundkt;
-      vector<double> CA04_lundDr;
-      if (CA04_jets.size() > 0) {
-         processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
-      }
+      // vector<double> CA04_lundz;
+      // vector<double> CA04_lundkt;
+      // vector<double> CA04_lundDr;
+      // if (CA04_jets.size() > 0) {
+      //    processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
+      // }
 
       // Get EEC variables in jets
       double R04_Q2 = 0.0;
@@ -212,12 +240,12 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          R04_Q2 = GetEEC(R04_jets[0].constituents(), R04_esum, R04_z);
       }
 
-      double R06_Q2 = 0.0;
-      vector<double> R06_esum;
-      vector<double> R06_z;
-      if (R06_jets.size() > 0) {
-         R06_Q2 = GetEEC(R06_jets[0].constituents(), R06_esum, R06_z);
-      }
+      // double R06_Q2 = 0.0;
+      // vector<double> R06_esum;
+      // vector<double> R06_z;
+      // if (R06_jets.size() > 0) {
+      //    R06_Q2 = GetEEC(R06_jets[0].constituents(), R06_esum, R06_z);
+      // }
 
       double R10_Q2 = 0.0;
       vector<double> R10_esum;
@@ -226,24 +254,24 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          R10_Q2 = GetEEC(R10_jets[0].constituents(), R10_esum, R10_z);
       }
 
-      double CA04_Q2 = 0.0;
-      vector<double> CA04_esum;
-      vector<double> CA04_z;
-      if (CA04_jets.size() > 0) {
-         CA04_Q2 = GetEEC(CA04_jets[0].constituents(), CA04_esum, CA04_z);
-      }
+      // double CA04_Q2 = 0.0;
+      // vector<double> CA04_esum;
+      // vector<double> CA04_z;
+      // if (CA04_jets.size() > 0) {
+      //    CA04_Q2 = GetEEC(CA04_jets[0].constituents(), CA04_esum, CA04_z);
+      // }
 
-      // Get event level EEC variables
-      double EEC_Q2;
-      vector<double> EEC_esum;
-      vector<double> EEC_z;
-      EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
+      // // Get event level EEC variables
+      // double EEC_Q2;
+      // vector<double> EEC_esum;
+      // vector<double> EEC_z;
+      // EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
 
-      // Get TEEC variables
-      double ETransTotal;
-      vector<double> etrans;
-      vector<double> tau;
-      ETransTotal = GetTEEC(particles, zboson, etrans, tau);
+      // // Get TEEC variables
+      // double ETransTotal;
+      // vector<double> etrans;
+      // vector<double> tau;
+      // ETransTotal = GetTEEC(particles, zboson, etrans, tau);
 
       // -------------------- Fill Histograms --------------------
       // Note we are filling with values only from leading jet for now
@@ -258,6 +286,8 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             use_weight = weight;
          } else if (weightBranchNames[i] == "weight_mc") {
             use_weight = weight_mc;
+         } else if (weightBranchNames[i] == "target_dd") {
+            use_weight = target_dd;
          } else if (i < centralHistoGroups.size()) {
             use_weight = central_weights[i][jentry] * weight_mc;
          } else {
@@ -272,11 +302,11 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             histoGroup = ensHistoGroups[i - centralHistoGroups.size()];
          }
 
-         // KT R=0.4 jets
-         if (KT_jets.size() > 0) {
-            histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
-            histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
-         }
+         // // KT R=0.4 jets
+         // if (KT_jets.size() > 0) {
+         //    histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
+         //    histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
+         // }
 
          // R=0.4 jets
          if (R04_jets.size() > 0) {
@@ -294,14 +324,14 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          histoGroup.hmjj_R04->Fill(R04_mjj, use_weight);
          histoGroup.hdyjj_R04->Fill(R04_dyjj, use_weight);
          FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
-         FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
+         // FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
-         // R=0.6 jets
-         if (R06_jets.size() > 0) {
-            histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
-         }
-         FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
-         FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
+         // // R=0.6 jets
+         // if (R06_jets.size() > 0) {
+         //    histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
+         // }
+         // FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
+         // FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
 
          // R=1.0 jets
          if (R10_jets.size() > 0) {
@@ -309,37 +339,42 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
          }
          FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
-         FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
+         // FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
 
          // CA R=0.4 jets
          if (CA04_jets.size() > 0) {
             histoGroup.hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
          }
-         FillEEC(histoGroup.hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
+         // FillEEC(histoGroup.hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
          histoGroup.hmjj_CA04->Fill(CA04_mjj, use_weight);
          histoGroup.hdRjj_CA04->Fill(CA04_dRjj, use_weight);
          histoGroup.hdyjj_CA04->Fill(CA04_dyjj, use_weight);
          histoGroup.hdphijj_CA04->Fill(CA04_dphijj, use_weight);
 
-         // CA R=0.6 jets
-         if (CA06_jets.size() > 0) {
-            histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
-            histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
-         }
+         // // CA R=0.6 jets
+         // if (CA06_jets.size() > 0) {
+         //    histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
+         //    histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
+         // }
 
-         // Event-level EEC
-         FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
-         FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
-         FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
-         FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
-         FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
+         // // Event-level EEC
+         // FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         // FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         // FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
+         // FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         // FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
+         // FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
+         // FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
+         // FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
 
       }
 
    }
+   
+   // Complete the progress bar
+   bar.set_option(option::PostfixText{"Processing Events: " + to_string(nentries) + "/" + to_string(nentries) + " - Complete!"});
+   bar.set_progress(static_cast<size_t>(nentries));
+   std::cout << std::endl;
 
    std::cout << " === create output ROOT file === " << std::endl;
    TFile foutput(saveName, "recreate");
