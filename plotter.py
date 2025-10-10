@@ -515,8 +515,6 @@ class Plotter:
         tree,
         key,
         pass190_flags,
-        use_truth=None,
-        kinematic_region=None,
         max_events=None,
     ):
         """Extract data loading logic to avoid duplication.
@@ -528,35 +526,22 @@ class Plotter:
             tree (uproot.TTree): The tree to load data from
             key (str): The key to load data for
             pass190_flags (np.array): Boolean array for event filtering
-            use_truth (bool, optional): Whether to use truth information
-            kinematic_region (int, optional): Kinematic region for additional cuts
             max_events (int, optional): Maximum number of events to load
 
         Returns:
             np.array: Filtered data as numpy array
         """
-        if use_truth is None:
-            use_truth = self.use_truth
-        if kinematic_region is None:
-            kinematic_region = self.kinematic_region
         if max_events is None:
             max_events = tree.num_entries
 
         # Add truth prefix if needed
-        if use_truth:
+        if self.use_truth:
             key = "truth_" + key
 
         # Load data
         data = tree[key].array(entry_stop=max_events)
 
-        # Apply kinematic cuts if specified
-        if kinematic_region != 0:
-            cuts = self.get_kinematic_region(
-                tree, kinematic_region, evts=max_events, use_truth=use_truth
-            )
-            data = data[cuts == 1]
-
-        # Apply pass190 filter
+        # Apply pass190 filter (should already include kinematic cuts)
         data = data[pass190_flags == 1]
 
         return ak.to_numpy(ak.flatten(data, axis=None))
@@ -733,8 +718,6 @@ class Plotter:
             tree,
             key,
             pass190_flags,
-            use_truth=self.use_truth,
-            kinematic_region=self.kinematic_region,
             max_events=max_events,
         )
 
