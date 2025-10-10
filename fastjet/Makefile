@@ -1,7 +1,7 @@
 
 RFLAGS = `root-config --cflags --libs` -lz
 FJFLAGS = `fastjet-config --cxxflags --libs --plugins`
-CFLAGS = -g -O3 -Wall -Wextra -Wpedantic -fopenmp
+CFLAGS = -g -O3 -Wall -Wextra -Wpedantic -fopenmp -I./indicators/include
 
 # Object directory
 OBJDIR = obj

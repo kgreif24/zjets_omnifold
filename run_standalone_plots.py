@@ -48,6 +48,12 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
+    "--end_weights_array_name",
+    type=str,
+    default="nominal-central",
+    help="The name of the array stored in the .npz file to use for the end weights",
+)
+parser.add_argument(
     "--target_weights",
     type=str,
     help=(
@@ -74,6 +80,10 @@ parser.add_argument(
     help="If true, will calculate the wasserstein distances",
 )
 parser.add_argument(
+    "--ibu_bins", action="store_true",
+    help="If true, will use IBU bins",
+)
+parser.add_argument(
     "--cut_region", type=int, default=0,
     choices=[0, 1, 2, 3],
     help="Select a kinematic region to restrict to",
@@ -91,6 +101,7 @@ plotter = plotter.Plotter(
     use_pdf=args.pdf,
     max_events=args.max_events,
     root_files=args.root_files,
+    ibu_bins=args.ibu_bins,
     kinematic_region=args.cut_region,
 )
 
@@ -99,6 +110,7 @@ plot_dict = plotter.plot(
     args.start_weights,
     args.end_weights,
     args.target_weights,
+    array_name=args.end_weights_array_name,
     use_train=args.train,
 )
 
@@ -110,6 +122,7 @@ if args.calc_w1:
         args.start_weights,
         args.end_weights,
         args.target_weights,
+        array_name=args.end_weights_array_name,
         use_train=args.train,
     )
     print(f"Start Wasserstein distance: {start_dist}")

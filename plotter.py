@@ -98,6 +98,12 @@ class Plotter:
         self.ibu_bins = ibu_bins
         self.kinematic_region = kinematic_region
 
+        # Initialize ROOT file caching
+        self._root_file_cache = {}
+        self._root_object_cache = {}
+        self._pass190_cache = {}
+        self._track_data_cache = {}
+
         # Find number of events to use in plotting
         self.source_events = self.source_tree.num_entries
         if self.source_events > max_events:
@@ -106,24 +112,8 @@ class Plotter:
         if self.target_events > max_events:
             self.target_events = max_events
 
-        # Get appropriate pass190 flags, note we do not truncate
-        pull_key = "truth_pass190" if use_truth else "pass190"
-        self.source_pass190 = ak.to_numpy(
-            self.source_tree[pull_key].array(entry_stop=self.source_events)
-        )
-        self.target_pass190 = ak.to_numpy(
-            self.target_tree[pull_key].array(entry_stop=self.target_events)
-        )
-
-        # Apply kinematic cuts
-        if kinematic_region != 0:
-            print("Applying kinematic cuts for region:", kinematic_region)
-            if self.verbosity >= 3:
-                print(
-                    "Verbosity is greater than 3, please ensure fastjet"
-                    " observables are calculated in the limited phase space!"
-                )
-            self.apply_kinematic_cuts(kinematic_region)
+        # Store kinematic region for later application
+        self._kinematic_region = kinematic_region
 
         # Get config from yaml
         with open("./utils/plots_config.yml", "r") as stream:
@@ -147,7 +137,17 @@ class Plotter:
                 self.fastjet = True
                 assert self.root_files is not None
 
-    def plot(self, source_start, source_end, target, recalculate=False, **kwargs):
+        # Note: kinematic cuts will be applied in plot() and wasserstein_distance()
+        # methods
+
+    def plot(
+        self,
+        source_start,
+        source_end,
+        target,
+        recalculate=False,
+        **kwargs,
+    ):
         """plot - This function produces the reweighting plots given
         vectors of weights for the source and target data, and saves
         them to the proper directory. It returns a dictionary with the format
@@ -167,23 +167,30 @@ class Plotter:
                 each plot produced
         """
 
+        # Ensure kinematic cuts are applied if needed
+        self._ensure_kinematic_cuts_applied()
+
         # Get event level weights
-        gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
+        gw_kwargs = {
+            k: v for k, v in kwargs.items() if k in ["use_train", "array_name"]
+        }
         source_start = self._get_weights(source_start, **gw_kwargs)
         source_end = self._get_weights(source_end, **gw_kwargs)
         target = self._get_weights(target, is_target=True, **gw_kwargs)
 
         # Filter weights by pass190 flags
-        source_start = source_start[self.source_pass190 == 1]
-        source_end = source_end[self.source_pass190 == 1]
-        target = target[self.target_pass190 == 1]
+        source_pass190 = self._get_cached_pass190_flags("source")
+        target_pass190 = self._get_cached_pass190_flags("target")
+        source_start = source_start[source_pass190 == 1]
+        source_end = source_end[source_pass190 == 1]
+        target = target[target_pass190 == 1]
 
         # If we have track level observables, need to repeat the weights
         # for each track in the event
         if self.track_level:
             source_start_trk = self._get_track_weights(source_start)
             source_end_trk = self._get_track_weights(source_end)
-            target_trk = self._get_track_weights(target, is_target=True)
+            target_trk = self._get_track_weights(target, tree_type="target")
 
         # Loop through plots and make histograms
         return_dict = {}
@@ -308,16 +315,23 @@ class Plotter:
                 source_start and source_end distributions
         """
 
+        # Ensure kinematic cuts are applied if needed
+        self._ensure_kinematic_cuts_applied()
+
         # Get event level weights
-        gw_kwargs = {k: v for k, v in kwargs.items() if k == "use_train"}
+        gw_kwargs = {
+            k: v for k, v in kwargs.items() if k in ["use_train", "array_name"]
+        }
         source_start = self._get_weights(source_start, **gw_kwargs)
         source_end = self._get_weights(source_end, **gw_kwargs)
         target = self._get_weights(target, is_target=True, **gw_kwargs)
 
         # Filter weights by pass190 flags
-        source_start = source_start[self.source_pass190 == 1]
-        source_end = source_end[self.source_pass190 == 1]
-        target = target[self.target_pass190 == 1]
+        source_pass190 = self._get_cached_pass190_flags("source")
+        target_pass190 = self._get_cached_pass190_flags("target")
+        source_start = source_start[source_pass190 == 1]
+        source_end = source_end[source_pass190 == 1]
+        target = target[target_pass190 == 1]
 
         # Get data and labels for W1 calculation
         w1_keys = du.get_w1_obs()
@@ -392,10 +406,7 @@ class Plotter:
         # If the observable is computed using fastjet, we need to load
         # the histograms using uproot
         if plot_dict["type"] == "fastjet":
-
-            assert root_index < len(self.root_files)
-
-            tobject = uproot.open(self.root_files[root_index])[plot_dict["key"]]
+            tobject = self._get_cached_root_object(root_index, plot_dict["key"])
             if "TH2" in tobject.classname:
                 hist, binsx, binsy = tobject.to_numpy()
                 bins = (binsx, binsy)
@@ -412,19 +423,10 @@ class Plotter:
             # Get filtered data
             data = self._get_data(plot_dict["key"], **kwargs)
 
-            # Make histogram
-            if self.ibu_bins:
-                bins = np.array(plot_dict["ibubins"])
-                if self.kinematic_region != 0 and "region_bins" in plot_dict:
-                    if str(self.kinematic_region) in plot_dict["region_bins"]:
-                        bins = np.array(
-                            plot_dict["region_bins"][str(self.kinematic_region)]
-                        )
-            else:
-                bins = np.linspace(
-                    plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
-                )
-            hist, bins = np.histogram(data, bins=bins, weights=weights, density=False)
+            # Create histogram using shared method
+            hist, bins = self._create_histogram_from_data(
+                data, plot_dict, weights=weights, density=False
+            )
 
         # Normalize histogram if desired
         if density:
@@ -447,12 +449,154 @@ class Plotter:
             return hist
         return hist / np.sum(hist) * val
 
-    def _get_weights(self, weights, is_target=False, use_train=False):
+    def _get_cached_root_object(self, root_index, key):
+        """Get a cached ROOT object to avoid repeated file opening.
+
+        This method provides a unified interface for loading and caching ROOT file
+        objects. It caches both the opened ROOT files and the specific objects
+        within those files to minimize I/O operations.
+
+        Arguments:
+            root_index (int): Index of the root file in self.root_files
+            key (str): Name of the object within the ROOT file
+
+        Returns:
+            uproot.TObject: The requested ROOT object
+        """
+        # Create cache key for the specific object
+        cache_key = (root_index, key)
+
+        # Return cached object if available
+        if cache_key in self._root_object_cache:
+            return self._root_object_cache[cache_key]
+
+        # Ensure we have a valid root_index
+        if self.root_files is None or root_index >= len(self.root_files):
+            max_files = len(self.root_files) if self.root_files else 0
+            raise IndexError(f"Invalid root_index {root_index}. Must be < {max_files}")
+
+        # Open and cache the ROOT file if not already cached
+        if root_index not in self._root_file_cache:
+            self._root_file_cache[root_index] = uproot.open(self.root_files[root_index])
+
+        # Get the specific object from the file and cache it
+        root_file = self._root_file_cache[root_index]
+        root_object = root_file[key]
+        self._root_object_cache[cache_key] = root_object
+
+        return root_object
+
+    def _get_bins_for_plot(self, plot_dict):
+        """Extract bin calculation logic to avoid duplication.
+
+        This method handles the common bin calculation logic used by both
+        plotter classes, including IBU bins and kinematic region-specific bins.
+
+        Arguments:
+            plot_dict (dict): Dictionary containing plot configuration
+
+        Returns:
+            np.array: Array of bin edges
+        """
+        if self.ibu_bins:
+            bins = np.array(plot_dict["ibubins"])
+            if (
+                self.kinematic_region != 0
+                and "region_bins" in plot_dict
+                and str(self.kinematic_region) in plot_dict["region_bins"]
+            ):
+                bins = np.array(plot_dict["region_bins"][str(self.kinematic_region)])
+        else:
+            bins = np.linspace(
+                plot_dict["binlow"], plot_dict["binhigh"], plot_dict["nbins"]
+            )
+        return bins
+
+    def _get_filtered_data(
+        self,
+        tree,
+        key,
+        pass190_flags,
+        use_truth=False,
+        max_events=None,
+    ):
+        """Extract data loading logic to avoid duplication.
+
+        This method handles the common data loading and filtering logic used
+        by both plotter classes.
+
+        Arguments:
+            tree (uproot.TTree): The tree to load data from
+            key (str): The key to load data for
+            pass190_flags (np.array): Boolean array for event filtering
+            use_truth (bool): If true, use truth level data instead of reco level data
+            max_events (int, optional): Maximum number of events to load
+
+        Returns:
+            np.array: Filtered data as numpy array
+        """
+        if max_events is None:
+            max_events = tree.num_entries
+
+        # Add truth prefix if needed
+        if use_truth:
+            key = "truth_" + key
+
+        # Load data
+        data = tree[key].array(entry_stop=max_events)
+
+        # Apply pass190 filter (should already include kinematic cuts)
+        data = data[pass190_flags == 1]
+
+        return ak.to_numpy(ak.flatten(data, axis=None))
+
+    def _create_histogram_from_data(self, data, plot_dict, weights=None, density=False):
+        """Create histogram from data using common binning logic.
+
+        Arguments:
+            data (np.array): Data to histogram
+            plot_dict (dict): Plot configuration dictionary
+            weights (np.array, optional): Weights for histogram
+            density (bool): Whether to normalize to density
+
+        Returns:
+            tuple: (histogram, bins)
+        """
+        bins = self._get_bins_for_plot(plot_dict)
+        hist, bins = np.histogram(data, bins=bins, weights=weights, density=False)
+
+        if density:
+            hist = self._normalize_to(hist, val=1.0)
+
+        return hist, bins
+
+    def _cleanup_root_cache(self):
+        """Clean up cached ROOT files to free resources.
+
+        This method should be called when the Plotter object is no longer needed
+        to properly close ROOT files and free memory.
+        """
+        for root_file in self._root_file_cache.values():
+            if hasattr(root_file, "close"):
+                root_file.close()
+        self._root_file_cache.clear()
+        self._root_object_cache.clear()
+
+    def __del__(self):
+        """Destructor to ensure ROOT files are properly closed."""
+        if hasattr(self, "_root_file_cache"):
+            self._cleanup_root_cache()
+            self._pass190_cache.clear()
+            self._track_data_cache.clear()
+
+    def _get_weights(
+        self, weights, is_target=False, use_train=False, array_name="nominal-central"
+    ):
         """_get_weights - This function gets a set of weights for use in
         plotting. The weights argument can be a string, either pointing to
         weights stored as a .npz file, or a branch name in the tree. It
-        can also be a numpy array, in which case the function simply
-        handles the truncation to the number of events used in plotting.
+        can also be a numpy array, in which case the function on handles
+        the truncation to the number of events used in plotting.
 
         Note if the weights argument points to a .npz file, the weights
         are multiplied by the correct weights in the ROOT tree. If
@@ -466,6 +610,9 @@ class Plotter:
                 true to pull from target tree
             use_train (bool): Flag to use training weights if
                 weights is a .npz file.
+            array_name (str): Name of the array stored in the .npz file
+                to use for the source_end weights.
+                Defaults to "nominal-central".
 
         Returns:
             weights (np.array): Array of weights
@@ -494,9 +641,11 @@ class Plotter:
 
             # Load weights from file
             weights = np.load(weights)
-            if "nominal-ensemble-central" in weights.files:
+            if array_name in weights.files:
                 assert not use_train
-                weights = weights["nominal-ensemble-central"]
+                print(f"Using array {array_name} from {weights.files}")
+                weights = weights[array_name]
+                print(f"First few weights: {weights[:5]}")
             elif use_train:
                 weights = weights["train"]
             else:
@@ -523,7 +672,7 @@ class Plotter:
 
         return weights
 
-    def _get_track_weights(self, weights, is_target=False):
+    def _get_track_weights(self, weights, tree_type="source"):
         """_get_track_weights - This function broadcasts a set of weights
         such that its shape matches track level observables, where an event
         weight is repeated for each track in a given event.
@@ -532,29 +681,18 @@ class Plotter:
 
         Args:
             weights (np.array): Array of weights to broadcast
-            is_target (bool): Flag to use target data as broadcasting template
+            tree_type (str): Type of tree to use for track data
 
         Returns:
             weights (np.array): Array of weights broadcasted to track level
         """
 
-        # Truncate pass190 flags to number of events used in plotting
-        source_pass190 = self.source_pass190[: self.source_events]
-        target_pass190 = self.target_pass190[: self.target_events]
-
-        # Get track pTs to serve as template
-        pull_key = "truth_pT_tracks" if self.use_truth else "pT_tracks"
-        if is_target:
-            track_data = self.target_tree[pull_key].array(entry_stop=self.target_events)
-            track_data = track_data[target_pass190 == 1]
-        else:
-            track_data = self.source_tree[pull_key].array(entry_stop=self.source_events)
-            track_data = track_data[source_pass190 == 1]
+        track_data = self._get_cached_track_data(tree_type)
 
         # Broadcast weights
-        weights, track_data = ak.broadcast_arrays(ak.from_numpy(weights), track_data)
+        weights_ak = ak.broadcast_arrays(ak.from_numpy(weights), track_data)[0]
 
-        return ak.to_numpy(ak.flatten(weights, axis=None))
+        return ak.to_numpy(ak.flatten(weights_ak, axis=None))
 
     def _get_data(self, key, is_target=False):
         """_get_data - This function gets the data for a given key
@@ -569,20 +707,24 @@ class Plotter:
             is_target (bool): If true, pull from the target tree instead of source
 
         Returns:
-            (ak.Array): The data as an awkward array
+            (np.array): The data as a numpy array
         """
-
-        if self.use_truth:
-            key = "truth_" + key
-
         if is_target:
-            data = self.target_tree[key].array(entry_stop=self.target_events)
-            data = data[self.target_pass190 == 1]
+            tree = self.target_tree
+            pass190_flags = self._get_cached_pass190_flags("target")
+            max_events = self.target_events
         else:
-            data = self.source_tree[key].array(entry_stop=self.source_events)
-            data = data[self.source_pass190 == 1]
+            tree = self.source_tree
+            pass190_flags = self._get_cached_pass190_flags("source")
+            max_events = self.source_events
 
-        return ak.to_numpy(ak.flatten(data, axis=None))
+        return self._get_filtered_data(
+            tree,
+            key,
+            pass190_flags,
+            use_truth=self.use_truth,
+            max_events=max_events,
+        )
 
     def _add_ratios(self, fig):
         """_add_ratios - This function adds ratio pads to a given matplotlib figure.
@@ -602,10 +744,23 @@ class Plotter:
 
         return ax, axr
 
+    def _ensure_kinematic_cuts_applied(self):
+        """Ensure kinematic cuts are applied if needed. This method is idempotent.
+        Should be called before any plotting or analysis methods.
+        """
+        if self._kinematic_region != 0 and not hasattr(self, "_kinematic_cuts_applied"):
+            print("Applying kinematic cuts for region:", self._kinematic_region)
+            if self.verbosity >= 3:
+                print(
+                    "Verbosity is greater than 3, please ensure fastjet"
+                    " observables are calculated in the limited phase space!"
+                )
+            self.apply_kinematic_cuts(self._kinematic_region)
+            self._kinematic_cuts_applied = True
+
     def apply_kinematic_cuts(self, region):
-        """apply_kinematic_cuts - Applies kinematic cuts to the source_pass190 and
-        target_pass190 vectors. Can use this to restrict the plotting to a
-        specific phase space.
+        """apply_kinematic_cuts - Applies kinematic cuts to the cached pass190 flags.
+        Can use this to restrict the plotting to a specific phase space.
 
         Args:
             region (int): The kinematic region to apply cuts for.
@@ -626,9 +781,11 @@ class Plotter:
             self.target_tree, region, evts=self.target_events, use_truth=self.use_truth
         )
 
-        # Apply masks to pass190 flags
-        self.source_pass190 = np.logical_and(self.source_pass190, source_mask)
-        self.target_pass190 = np.logical_and(self.target_pass190, target_mask)
+        # Apply masks to cached pass190 flags
+        source_pass190 = self._get_cached_pass190_flags("source")
+        target_pass190 = self._get_cached_pass190_flags("target")
+        self._pass190_cache["source"] = np.logical_and(source_pass190, source_mask)
+        self._pass190_cache["target"] = np.logical_and(target_pass190, target_mask)
 
     def get_kinematic_region(self, tree, region, evts=99999999, use_truth=True):
         """get_kinematic_region - This function returns a boolean mask for the
@@ -670,3 +827,49 @@ class Plotter:
             raise ValueError(
                 f"Invalid kinematic region {region}. Must be one of 0, 1, 2, or 3."
             )
+
+    def _get_cached_pass190_flags(self, tree_type="source"):
+        """Cache and return pass190 flags for the given tree type."""
+        if tree_type in self._pass190_cache:
+            return self._pass190_cache[tree_type]
+
+        if tree_type == "source":
+            tree = self.source_tree
+            max_events = self.source_events
+        elif tree_type == "target":
+            tree = self.target_tree
+            max_events = self.target_events
+        else:
+            raise ValueError(f"Unknown tree_type: {tree_type}")
+
+        pull_key = "truth_pass190" if self.use_truth else "pass190"
+        flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
+
+        self._pass190_cache[tree_type] = flags
+        return flags
+
+    def _get_cached_track_data(self, tree_type="source"):
+        """Cache and return track data for weight broadcasting"""
+        cache_key = tree_type
+        if cache_key in self._track_data_cache:
+            return self._track_data_cache[cache_key]
+
+        pull_key = "truth_pT_tracks" if self.use_truth else "pT_tracks"
+
+        if tree_type == "source":
+            tree = self.source_tree
+            max_events = self.source_events
+            pass190 = self._get_cached_pass190_flags("source")
+        elif tree_type == "target":
+            tree = self.target_tree
+            max_events = self.target_events
+            pass190 = self._get_cached_pass190_flags("target")
+        else:
+            raise ValueError(f"Unknown tree_type: {tree_type}")
+
+        track_data = tree[pull_key].array(entry_stop=max_events)
+        track_data = track_data[pass190 == 1]
+
+        # Cache the original structure (not flattened) for proper broadcasting
+        self._track_data_cache[cache_key] = track_data
+        return track_data

@@ -1,8 +1,12 @@
 """run_uncert_plots.py - This script will use the UncertaintyPlotter class
 to generate uncertainty plots for the final result of Omnifold.
 
+Supports both standard pseudodata vs target comparison and new data comparison
+mode for comparing data measurements to truth-level generators. Also supports
+dual target mode for comparing against two truth-level generators.
+
 Author: Kevin Greif
-Last updated 06/06/2025
+Last updated 10/10/2025
 python3
 """
 
@@ -10,9 +14,11 @@ import argparse
 import uncertainty_plotter
 
 parser = argparse.ArgumentParser(description="Run plotting functions")
-parser.add_argument("--f1", type=str, help="The path to file 1")
-parser.add_argument("--f2", type=str, help="The path to file 2")
-parser.add_argument("--hv", type=str, help="The path to the sherpa file")
+parser.add_argument("--mc", type=str, help="The path to MC root file")
+parser.add_argument(
+    "--target", type=str, help="The path to target, either truth pseuodata or truth gen"
+)
+parser.add_argument("--hv", type=str, help="The path to the sherpa MC file")
 parser.add_argument("--data", type=str, help="The path to the data file")
 parser.add_argument(
     "--root_files",
@@ -21,7 +27,8 @@ parser.add_argument(
     default=None,
     help=(
         "If plotting observables that must be computed with fastjet"
-        ", provide the path to the root files in order (end, target)"
+        ", provide the path to the root files in order (mc, target, hv, data)"
+        ". If using --target2, add target2 as the 5th file."
     ),
 )
 parser.add_argument(
@@ -57,19 +64,42 @@ parser.add_argument(
     choices=[0, 1, 2, 3],
     help="Select a kinematic region to restrict to",
 )
+parser.add_argument(
+    "--target2",
+    type=str,
+    default=None,
+    help="Path to second target file for dual truth-level generator comparison",
+)
+parser.add_argument(
+    "--data_comparison_mode",
+    action="store_true",
+    help=(
+        "Enable data comparison mode (compares data to truth generators, "
+        "removes method bias)"
+    ),
+)
 args = parser.parse_args()
+
+# Validate arguments
+if args.target2 is not None and args.root_files is not None:
+    if len(args.root_files) != 5:
+        print("Warning: When using --target2, you should provide 5 root files:")
+        print("  [mc, target, hv, data, target2]")
+        print(f"  You provided {len(args.root_files)} files.")
 
 # Build the plotter and run
 plotter = uncertainty_plotter.UncertaintyPlotter(
-    args.f1,
-    args.f2,
+    args.mc,
+    args.target,
     args.hv,
     args.data,
     args.store,
+    root_files=args.root_files,
+    target2_path=args.target2,
+    data_comparison_mode=args.data_comparison_mode,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,
-    root_files=args.root_files,
     ibu_bins=True,
     kinematic_region=args.cut_region,
 )

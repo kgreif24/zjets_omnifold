@@ -46,6 +46,7 @@ public :
    Int_t           pass190;
    Int_t           truth_pass190;
    Float_t         weight_mc;
+   Float_t         target_dd;
    Int_t           pass190_syst_ID_Up;
    Int_t           pass190_syst_ID_Down;
    Int_t           pass190_syst_MS_Up;
@@ -94,14 +95,15 @@ public :
    Double_t        phi_tracks[309];   //[nphi_tracks]
    Int_t           ntrackJetIndex_tracks;
    Double_t           trackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
-   // Int_t           npdgId_tracks;
-   // Int_t           pdgId_tracks[309];   //[npdgId_tracks]
+   Int_t           npdgId_tracks;
+   Long_t           pdgId_tracks[309];   //[npdgId_tracks]
 
    // List of branches
    TBranch        *b_weight;   //!
    TBranch        *b_pass190;   //!
    TBranch        *b_truth_pass190;   //!
    TBranch        *b_weight_mc;   //!
+   TBranch        *b_target_dd;   //!
    TBranch        *b_pass190_syst_ID_Up;   //!
    TBranch        *b_pass190_syst_ID_Down;   //!
    TBranch        *b_pass190_syst_MS_Up;   //!
@@ -150,8 +152,8 @@ public :
    TBranch        *b_phi_tracks;   //!
    TBranch        *b_ntrackJetIndex_tracks;   //!
    TBranch        *b_trackJetIndex_tracks;   //!
-   // TBranch        *b_npdgId_tracks;   //!
-   // TBranch        *b_pdgId_tracks;   //!
+   TBranch        *b_npdgId_tracks;   //!
+   TBranch        *b_pdgId_tracks;   //!
 
    MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int kinematic_region = 0);
    virtual ~MakeOmni();
@@ -187,7 +189,7 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
       if (weight_name != "weight" && weight_name != "weight_mc") {
          centralHistoGroups.push_back(HistoGroup(weight_name + "-", kinematicRegion));
       } else {
-         centralHistoGroups.push_back(HistoGroup("nominal-ensemble-", kinematicRegion));
+         centralHistoGroups.push_back(HistoGroup("nominal-", kinematicRegion));
       }
    }
 
@@ -245,6 +247,7 @@ void MakeOmni::Init(TTree *tree)
    // Set branch addresses that are used for both truth and reco data
    fChain->SetBranchAddress("weight", &weight, &b_weight);
    fChain->SetBranchAddress("weight_mc", &weight_mc, &b_weight_mc);
+   fChain->SetBranchAddress("target_dd", &target_dd, &b_target_dd);
    fChain->SetBranchAddress("EventNumber", &EventNumber, &b_EventNumber);
    fChain->SetBranchAddress("RunNumber", &RunNumber, &b_RunNumber);
 
@@ -285,8 +288,8 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("ntruth_eta_tracks", &neta_tracks, &b_neta_tracks);
       fChain->SetBranchAddress("ntruth_phi_tracks", &nphi_tracks, &b_nphi_tracks);
       fChain->SetBranchAddress("ntruth_trackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
-      // fChain->SetBranchAddress("ntruth_pdgId_tracks", &npdgId_tracks, &b_npdgId_tracks);
-      // fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks, &b_pdgId_tracks);
+      fChain->SetBranchAddress("ntruth_pdgId_tracks", &npdgId_tracks, &b_npdgId_tracks);
+      fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks, &b_pdgId_tracks);
    } else {
       fChain->SetBranchAddress("pass190", &pass190, &b_pass190);
       fChain->SetBranchAddress("pT_ll", &pT_ll, &b_pT_ll);

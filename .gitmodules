@@ -1,0 +1,3 @@
+[submodule "fastjet/indicators"]
+	path = fastjet/indicators
+	url = https://github.com/p-ranav/indicators.git

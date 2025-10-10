@@ -15,6 +15,7 @@ dataloc
 fastjet/obj
 *.out
 .vscode
+.cursor
 fastjet/out
 fastjet/copies
 experiments
