@@ -85,7 +85,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 "plot_ratio": False,
                 "stochastic": True,
             },
-            "track-eff" if data_comparison_mode else "track_eff": {
+            "track-eff": {
                 "name": "Track eff.",
                 "color": "purple",
                 "plot_ratio": False,
@@ -109,12 +109,12 @@ class UncertaintyPlotter(plotter.Plotter):
                 "plot_ratio": False,
                 "stochastic": False,
             },
-            # "dd": {
-            #     "name": "Data driven",
-            #     "color": "brown",
-            #     "plot_ratio": False,
-            #     "stochastic": False,
-            # },
+            "dd": {
+                "name": "Data driven",
+                "color": "brown",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
             "data-stat": {
                 "name": "Data stat",
                 "color": "aqua",
@@ -190,6 +190,17 @@ class UncertaintyPlotter(plotter.Plotter):
         )
 
         # Note: kinematic cuts will be applied in plot() method when needed
+
+        # Define uncertainty merging groups
+        self.uncertainty_groups = {
+            "Tracking": ["track-eff", "jet-track-eff"],
+            "Unfolding": ["dd", "hv"],
+            # Add more groups as needed
+            # "detector": ["track-eff", "jet-track-eff", "other-detector-syst"],
+        }
+
+        # Control whether to hide individual uncertainties when merging
+        self.hide_individual_uncertainties = True
 
     def plot(self, of_weights, color="blue", **kwargs):
         """plot - Override of the base class plot method. Here we will build
@@ -406,6 +417,10 @@ class UncertaintyPlotter(plotter.Plotter):
                 syst_var = np.abs(syst_hist - estimate_hist) ** 2
                 self.active_systs[key].update({"var": syst_var})
 
+            # Apply uncertainty merging after all individual uncertainties
+            # are calculated
+            self._apply_uncertainty_merging()
+
             # Make and save plot
             if type(bins) is tuple:
                 fig = self._build_2d_uncert_plots(
@@ -445,6 +460,9 @@ class UncertaintyPlotter(plotter.Plotter):
                 budget_fig.savefig(budget_store_name, dpi=300)
                 plt.close(budget_fig)
                 return_dict[plot["key"] + "_uncert_budget"] = budget_store_name
+
+            # Clean up merged uncertainties after each plot
+            self._remove_merged_uncertainties()
 
         return return_dict
 
@@ -1062,6 +1080,93 @@ class UncertaintyPlotter(plotter.Plotter):
             fig.subplots_adjust(bottom=0.2)
 
         return fig
+
+    def _merge_uncertainties(self, group_name, individual_uncertainties):
+        """Merge multiple uncertainties in quadrature.
+
+        Arguments:
+            group_name (str): Name for the merged uncertainty group
+            individual_uncertainties (list): List of uncertainty names to merge
+
+        Returns:
+            dict: Dictionary containing the merged uncertainty information
+        """
+        if not individual_uncertainties:
+            return None
+
+        # Check that all uncertainties exist and have variance data
+        available_uncertainties = []
+        for uncert_name in individual_uncertainties:
+            if (
+                uncert_name in self.active_systs
+                and "var" in self.active_systs[uncert_name]
+            ):
+                available_uncertainties.append(uncert_name)
+
+        if not available_uncertainties:
+            return None
+
+        # Merge variances in quadrature
+        merged_var = np.sum(
+            [self.active_systs[uncert]["var"] for uncert in available_uncertainties],
+            axis=0,
+        )
+
+        # Create merged uncertainty entry
+        merged_uncertainty = {
+            "name": group_name.title(),
+            # Use color of first uncertainty
+            "color": self.active_systs[available_uncertainties[0]]["color"],
+            "plot_ratio": False,  # Default to not plotting ratio
+            "stochastic": False,  # Merged uncertainties are typically not stochastic
+            "var": merged_var,
+            # Keep track of what was merged
+            "merged_from": available_uncertainties,
+        }
+
+        return merged_uncertainty
+
+    def _apply_uncertainty_merging(self):
+        """Apply uncertainty merging based on self.uncertainty_groups.
+        This method creates merged uncertainties and temporarily adds them to
+        active_systs. Individual uncertainties that are grouped are hidden.
+        """
+        self._merged_uncertainties = {}
+        self._hidden_uncertainties = {}  # Store hidden uncertainties for restoration
+
+        for group_name, individual_uncertainties in self.uncertainty_groups.items():
+            merged_uncert = self._merge_uncertainties(
+                group_name, individual_uncertainties
+            )
+            if merged_uncert is not None:
+                self._merged_uncertainties[group_name] = merged_uncert
+                # Temporarily add to active_systs for plotting
+                self.active_systs[group_name] = merged_uncert
+
+                # Hide individual uncertainties that are being grouped (if enabled)
+                if self.hide_individual_uncertainties:
+                    for uncert_name in individual_uncertainties:
+                        if uncert_name in self.active_systs:
+                            # Store the original uncertainty for restoration
+                            self._hidden_uncertainties[uncert_name] = (
+                                self.active_systs[uncert_name]
+                            )
+                            # Remove from active_systs to hide it
+                            del self.active_systs[uncert_name]
+
+    def _remove_merged_uncertainties(self):
+        """Remove merged uncertainties from active_systs after plotting and restore
+        hidden individual uncertainties.
+        """
+        # Remove merged uncertainties
+        for group_name in self._merged_uncertainties.keys():
+            if group_name in self.active_systs:
+                del self.active_systs[group_name]
+
+        # Restore hidden individual uncertainties (if any were hidden)
+        if hasattr(self, '_hidden_uncertainties'):
+            for uncert_name, uncert_data in self._hidden_uncertainties.items():
+                self.active_systs[uncert_name] = uncert_data
 
     def _transform_to_symlog(self, x):
         """_transform_to_symlog - Transform a linear scale to a symmetric log scale.
