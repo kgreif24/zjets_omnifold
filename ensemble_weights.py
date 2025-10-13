@@ -103,7 +103,7 @@ print(f"Pulling weights for groups {args.group_names} at iterations {args.iterat
 
 for gn, it in zip(args.group_names, args.iterations):
 
-    if args.use_data:
+    if args.use_data and gn != "dd":
         pull_gn = f"{gn}-data"
     else:
         pull_gn = gn
