@@ -81,7 +81,7 @@ class UncertaintyPlotter(plotter.Plotter):
         self.active_systs = {
             "nn-init": {
                 "name": "NN Init",
-                "color": "blue",
+                "color": "aqua",
                 "plot_ratio": False,
                 "stochastic": True,
             },
@@ -111,13 +111,13 @@ class UncertaintyPlotter(plotter.Plotter):
             },
             "dd": {
                 "name": "Data driven",
-                "color": "brown",
+                "color": "red",
                 "plot_ratio": False,
                 "stochastic": False,
             },
             "data-stat": {
                 "name": "Data stat",
-                "color": "aqua",
+                "color": "blue",
                 "plot_ratio": False,
                 "stochastic": True,
             },
