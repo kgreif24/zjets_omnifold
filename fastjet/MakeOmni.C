@@ -79,7 +79,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    // JetDefinition jetdef_r06(antikt_algorithm, 0.6);
    JetDefinition jetdef_r10(antikt_algorithm, 1.0);
    JetDefinition jetdef_ca04(cambridge_algorithm, 0.4);
-   // JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
+   JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
 
 
    // ----------------------- Loop over events -----------------------
@@ -162,13 +162,13 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       // ClusterSequence cs_seq_r06(particles, jetdef_r06);
       ClusterSequence cs_seq_r10(particles, jetdef_r10);
       ClusterSequence cs_seq_ca04(particles, jetdef_ca04);
-      // ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
+      ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
       // vector<PseudoJet> KT_jets = sorted_by_pt(cs_seq_kt.inclusive_jets());
       vector<PseudoJet> R04_jets = sorted_by_pt(cs_seq_r04.inclusive_jets());
       // vector<PseudoJet> R06_jets = sorted_by_pt(cs_seq_r06.inclusive_jets());
       vector<PseudoJet> R10_jets = sorted_by_pt(cs_seq_r10.inclusive_jets());
       vector<PseudoJet> CA04_jets = sorted_by_pt(cs_seq_ca04.inclusive_jets());
-      // vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
+      vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
 
       // Calculate mjj, dyjj for R04 jets
       double R04_mjj, R04_dyjj;
@@ -261,17 +261,17 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       //    CA04_Q2 = GetEEC(CA04_jets[0].constituents(), CA04_esum, CA04_z);
       // }
 
-      // // Get event level EEC variables
-      // double EEC_Q2;
-      // vector<double> EEC_esum;
-      // vector<double> EEC_z;
-      // EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
+      // Get event level EEC variables
+      double EEC_Q2;
+      vector<double> EEC_esum;
+      vector<double> EEC_z;
+      EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
 
-      // // Get TEEC variables
-      // double ETransTotal;
-      // vector<double> etrans;
-      // vector<double> tau;
-      // ETransTotal = GetTEEC(particles, zboson, etrans, tau);
+      // Get TEEC variables
+      double ETransTotal;
+      vector<double> etrans;
+      vector<double> tau;
+      ETransTotal = GetTEEC(particles, zboson, etrans, tau);
 
       // -------------------- Fill Histograms --------------------
       // Note we are filling with values only from leading jet for now
@@ -335,7 +335,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
          // R=1.0 jets
          if (R10_jets.size() > 0) {
-            histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
+            // histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
             histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
          }
          FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
@@ -351,21 +351,21 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          histoGroup.hdyjj_CA04->Fill(CA04_dyjj, use_weight);
          histoGroup.hdphijj_CA04->Fill(CA04_dphijj, use_weight);
 
-         // // CA R=0.6 jets
-         // if (CA06_jets.size() > 0) {
-         //    histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
-         //    histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
-         // }
+         // CA R=0.6 jets
+         if (CA06_jets.size() > 0) {
+            // histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
+            histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
+         }
 
-         // // Event-level EEC
-         // FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         // FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         // FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
-         // FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         // FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
-         // FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
-         // FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
-         // FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
+         // Event-level EEC
+         FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
+         FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
+         FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
+         FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
+         FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
+         FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
 
       }
 
