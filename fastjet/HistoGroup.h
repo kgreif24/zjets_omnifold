@@ -51,7 +51,7 @@ class HistoGroup {
         // shared_ptr<TH2D> hLund_plane_R06;
 
         // R=1.0 jets
-        shared_ptr<TH1D> hm1_R10;
+        // shared_ptr<TH1D> hm1_R10;
         shared_ptr<TH1D> hpT_R10;
         shared_ptr<TH1D> hEEC_R10;
         // shared_ptr<TH1D> hLund_z_R10;
@@ -68,21 +68,21 @@ class HistoGroup {
 
         // // CA R=0.6 jets
         // shared_ptr<TH1D> hm1_CA06;
-        // shared_ptr<TH1D> hpT_CA06;
+        shared_ptr<TH1D> hpT_CA06;
 
         // // KT R=0.4 jets
         // shared_ptr<TH1D> hm1_KT04;
         // shared_ptr<TH1D> hpT_KT04;
 
-        // // Event-level histograms
-        // shared_ptr<TH1D> hTEEC_collinear;
-        // shared_ptr<TH1D> hTEEC_full_nolog;
-        // shared_ptr<TH1D> hTEEC_b2b;
-        // shared_ptr<TH1D> hTEEC_full;
-        // shared_ptr<TH1D> hTEEC_z_collinear;
-        // shared_ptr<TH1D> hTEEC_z_full_nolog;
-        // shared_ptr<TH1D> hTEEC_z_b2b;
-        // shared_ptr<TH1D> hTEEC_z_full;
+        // Event-level histograms
+        shared_ptr<TH1D> hTEEC_collinear;
+        shared_ptr<TH1D> hTEEC_full_nolog;
+        shared_ptr<TH1D> hTEEC_b2b;
+        shared_ptr<TH1D> hTEEC_full;
+        shared_ptr<TH1D> hTEEC_z_collinear;
+        shared_ptr<TH1D> hTEEC_z_full_nolog;
+        shared_ptr<TH1D> hTEEC_z_b2b;
+        shared_ptr<TH1D> hTEEC_z_full;
 
 };
 
