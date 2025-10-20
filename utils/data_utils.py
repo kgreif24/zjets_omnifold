@@ -85,9 +85,7 @@ def get_masses(pdgids) -> np.ndarray:
         masses {np.ndarray} -- numpy array of masses, shape (n_events, 1, n_tracks)
     """
 
-    assert np.all(
-        np.isin(pdgids, [13, 211, -999])
-    )
+    assert np.all(np.isin(pdgids, [13, 211, -999]))
     masses = np.zeros_like(pdgids, dtype=np.float32)
     masses[pdgids == 13] = 0.105658
     masses[pdgids == 211] = 0.13957
@@ -108,6 +106,7 @@ def get_kinematics(
     start=None,
     stop=None,
     passBoth=False,
+    syst_kw=None,
     **kwargs,
 ):
     """get_kinematics - This function will accept an uproot TTree object, and return the
@@ -130,6 +129,12 @@ def get_kinematics(
     start - starting event index, optional
     stop - stopping event index, optional
     passBoth - If true, require events pass both reco and truth selection
+    syst_kw - keyword argument for the systematic to apply. options:
+        None: nominal
+        "track_eff": apply track efficiency systematic
+        "jet_track_eff": apply jet track efficiency systematic
+        "track_fake": apply track fake systematic
+        "track_scale": apply track scale systematic
     **kwargs - keyword arguments for systematics to apply to track kinematics
 
     Returns:
@@ -199,13 +204,21 @@ def get_kinematics(
     if not muon_only:
 
         # Pull info, note taking log of track pT values here
-        track_pt = np.log(
-            ak.unflatten(
-                tree[prekey + "pT_tracks"].array(entry_start=start, entry_stop=stop),
-                1,
-                axis=0,
+        if syst_kw == "track_scale":
+            assert not get_truth, "Cannot run track scale systematic on truth data"
+            track_pt = np.log(ak.unflatten(tree["syst_correctedpT_tracks"].array(
+                entry_start=start, entry_stop=stop
+            ), 1, axis=0))
+        else:
+            track_pt = np.log(
+                ak.unflatten(
+                    tree[prekey + "pT_tracks"].array(
+                        entry_start=start, entry_stop=stop
+                    ),
+                    1,
+                    axis=0,
+                )
             )
-        )
         track_eta = ak.unflatten(
             tree[prekey + "eta_tracks"].array(entry_start=start, entry_stop=stop),
             1,
@@ -348,17 +361,29 @@ def run_systematics(
         indices = tree["syst_JetTrackFilter_trackJetIndex"].array(
             entry_start=start, entry_stop=stop
         )
+    elif syst_kw == "track_fake":
+        indices = tree["syst_Fake_trackJetIndex"].array(
+            entry_start=start, entry_stop=stop
+        )
+    elif syst_kw == "track_scale":
+        indices = tree["syst_correctedpT_trackJetIndex"].array(
+            entry_start=start, entry_stop=stop
+        )
     else:
         raise ValueError(f"Systematic {syst_kw} not recognized!")
     indices = ak.unflatten(indices, 1, axis=0)
 
-    # Else we are running some systematic.
-    # To start we will only implement track efficiency
-    # Load track filter for efficiency systematics
-    if syst_kw == "track_eff":
+    # If we are running track scale systematic, just return the indices and track
+    # kinematics since we should have loaded the corrected pT values already
+    if syst_kw == "track_scale":
+        return indices, track_kinematics
+    # Else we are running some other systematic that requires a track filter
+    elif syst_kw == "track_eff":
         key = "syst_passTrackTruthFilter_tracks"
     elif syst_kw == "jet_track_eff":
         key = "syst_passJetTrackFilter_tracks"
+    elif syst_kw == "track_fake":
+        key = "syst_passTrackFake_tracks"
     else:
         raise ValueError(f"Systematic {syst_kw} not recognized!")
     track_filter = tree[key].array(entry_start=start, entry_stop=stop)

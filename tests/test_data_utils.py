@@ -179,6 +179,12 @@ def test_get_kinematics_syst():
     trackeff_kinematics, trackeff_indices, _ = du.get_kinematics(t, syst_kw="track_eff")
     assert len(trackeff_kinematics) == np.sum(p190)
 
+    # Get track scale kinematics
+    trackscale_kinematics, trackscale_indices, _ = du.get_kinematics(
+        t, syst_kw="track_scale"
+    )
+    assert len(trackscale_kinematics) == np.sum(p190)
+
     # Count tracks and assert track efficiency varied data has fewer
     nominal_count = ak.to_numpy(ak.count(nominal_kinematics[:, 0, :], axis=1))
     trackeff_count = ak.to_numpy(ak.count(trackeff_kinematics[:, 0, :], axis=1))
@@ -188,6 +194,11 @@ def test_get_kinematics_syst():
     nominal_ht = ak.to_numpy(np.sum(np.exp(nominal_kinematics[:, 0, :]), axis=1))
     trackeff_ht = ak.to_numpy(np.sum(np.exp(trackeff_kinematics[:, 0, :]), axis=1))
     assert np.all(nominal_ht >= trackeff_ht)
+
+    # Ensure that the track scale pT is different from the nominal pT
+    nominal_pt = nominal_kinematics[:, 0, :]
+    trackscale_pt = trackscale_kinematics[:, 0, :]
+    assert ak.any(nominal_pt != trackscale_pt)
 
 
 def test_get_observables():
@@ -214,7 +225,9 @@ def test_get_observables_syst():
     # Get obserable keys
     nominal_keys = du.get_w1_obs()
     trackeff_keys = du.get_w1_obs(syst_kw="track_eff")
+    trackscale_keys = du.get_w1_obs(syst_kw="track_scale")
     assert len(nominal_keys) == len(trackeff_keys)
+    assert len(nominal_keys) == len(trackscale_keys)
 
     # Filter out 3 keys
     nominal_3keys = ["Ntracks", "HT_tracks", "pT_ll"]

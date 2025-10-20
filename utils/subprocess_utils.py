@@ -8,7 +8,6 @@ import psutil
 import selectors
 import subprocess
 import sys
-import gc
 
 import torch
 import torch.distributed as dist
@@ -58,11 +57,6 @@ def capture_subprocess_output(subprocess_args):
     buf.close()
 
     return (return_code, output)
-
-
-def cleanup_resources():
-    torch.cuda.empty_cache()
-    gc.collect()
 
 
 # Function to set CPU affinity for each worker
