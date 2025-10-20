@@ -24,37 +24,23 @@ A high-performance, parallelized C++ application for generating histograms from 
 
 ## Installation
 
-### Prerequisites
-Ensure you have the following environment variables set:
-```bash
-# ROOT environment
-source /path/to/root/bin/thisroot.sh
+It is easiest and recommended to install all of the sofware using a LCG release from CVMFS.
+On lxplus this is trivial:
 
-# FastJet environment  
-export PATH=/path/to/fastjet/bin:$PATH
-export LD_LIBRARY_PATH=/path/to/fastjet/lib:$LD_LIBRARY_PATH
-
-# Conda environment (if using)
-conda activate zfjets
+```
+setupATLAS
+lsetup "views LCG_108 x86_64-el9-gcc15-opt"
 ```
 
-### Compilation
-```bash
-# Clone or navigate to the fastjet directory
-cd fastjet/
+The code can then be compiled with a simple `make` command.
+On perlmutter, there are no LCG releases for SUSE linux so you need to run using an image and shifter.
+See the NERSC documentation for more details but the following recipe should work fine:
 
-# Compile the code
-make
-
-# The executable will be created as doHisto.out
 ```
-
-### Compilation Options
-The Makefile supports the following compiler flags:
-- `-g`: Debug symbols
-- `-O3`: Maximum optimization
-- `-Wall -Wextra -Wpedantic`: Strict warnings
-- `-fopenmp`: OpenMP parallelization support
+shifter --module=cvmfs --image=registry.cern.ch/atlasadc/atlas-grid-almalinux9:latest /bin/bash
+setupATLAS
+lsetup "views LCG_108 x86_64-el9-gcc15-opt"
+```
 
 ## Usage
 
@@ -110,7 +96,6 @@ The Makefile supports the following compiler flags:
 
 ## Parallel Processing
 
-### Thread Control
 The application uses OpenMP for parallel processing. Control the number of threads using:
 
 ```bash
@@ -120,11 +105,7 @@ export OMP_NUM_THREADS=8
 # Run the analysis
 ./doHisto.out [options]
 ```
-
-### Performance Optimization
-- **Memory Usage**: Higher thread counts require more memory for thread-local histograms
-- **Load Balancing**: Uses dynamic scheduling for optimal work distribution
-- **Thread Safety**: All ROOT tree access is handled sequentially to avoid race conditions
+On perlmutter I find using 50 threads is a good balance.
 
 ## Input Data Format
 
@@ -239,7 +220,7 @@ output.root
 ## Performance Considerations
 
 ### Memory Usage
-- **Base Memory**: ~100-200 MB for histogram storage
+- **Base Memory**: For a small ROOT file, e.g. the reco level data, the memory usage is manageable. For a large ROOT file, e.g. the truth pseudodata, the memory required is large but fits easily into RAM on a perlmutter CPU node. For running on lxplus, memory constraints might be an issue.
 - **Per Thread**: Additional ~50-100 MB for thread-local histograms
 - **Event Data**: ~1-2 MB per 1000 events (stored in memory during processing)
 
@@ -264,13 +245,9 @@ output.root
 - **Cause**: Missing dependencies or incorrect ROOT/FastJet setup
 - **Solution**: Check environment variables and library paths
 
-#### Memory Issues
-- **Cause**: Too many threads or large event datasets
-- **Solution**: Reduce `OMP_NUM_THREADS` or process data in smaller chunks
-
 ### Debug Mode
-For debugging, run with single thread:
+For debugging, run with single thread and with few events:
 ```bash
 export OMP_NUM_THREADS=1
-./doHisto.out [options]
+./doHisto.out --maxEvents 1000 [options]
 ```
