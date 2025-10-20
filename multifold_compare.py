@@ -52,13 +52,9 @@ multifold = pd.read_hdf(
     "/pscratch/sd/k/kgreif/multifold/data/multifold.h5"
     # f"/pscratch/sd/k/kgreif/multifold/{key}/multifold.h5"
 )
-hv = pd.read_hdf(
-    f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_sherpa.h5"
-)
+hv = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_sherpa.h5")
 if not args.data:
-    target = pd.read_hdf(
-        "/pscratch/sd/k/kgreif/multifold/pseudodata/target.h5"
-    )
+    target = pd.read_hdf("/pscratch/sd/k/kgreif/multifold/pseudodata/target.h5")
 else:
     mc_preds = np.load(
         "/pscratch/sd/k/kgreif/multifold/data/mc_preds.npy",
@@ -115,9 +111,13 @@ for obs_dict in plots:
 
     # Calculate the histograms
     source_hist, _ = np.histogram(
-        multifold[obs_dict["key"]], bins=bins, weights=central_weights,
+        multifold[obs_dict["key"]],
+        bins=bins,
+        weights=central_weights,
     )
-    source_density, _ = np.histogram(multifold[obs_dict["key"]], bins=bins, weights=central_weights, density=True)
+    source_density, _ = np.histogram(
+        multifold[obs_dict["key"]], bins=bins, weights=central_weights, density=True
+    )
     source_density *= np.sum(central_weights)
     mc_var, _ = np.histogram(
         multifold[obs_dict["key"]], bins=bins, weights=central_weights**2
@@ -136,7 +136,9 @@ for obs_dict in plots:
 
     # Calculate the uncertainties
     tracking = calculate_uncertainty(multifold, key, bins, track_systs)
-    nn_init = calculate_stat_uncertainty(multifold, key, bins, ensemble_systs) / np.sqrt(len(ensemble_systs))
+    nn_init = calculate_stat_uncertainty(
+        multifold, key, bins, ensemble_systs
+    ) / np.sqrt(len(ensemble_systs))
     hidden_variable = np.sqrt((hv_hist - source_hist) ** 2) / source_hist
     data_driven = np.sqrt((dd_hist - dd_target_hist) ** 2) / dd_target_hist
     data_stat = calculate_stat_uncertainty(multifold, key, bins, data_stat_systs)
