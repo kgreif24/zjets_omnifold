@@ -447,8 +447,9 @@ plots:
     binhigh: 150
     ibubins: 
       - 0.0
-      - 5.0
-      - 10.0
+      - 2.5
+      - 7.0
+      - 12.0
       - 20.0
       - 40.0
     region_bins:
@@ -819,26 +820,36 @@ plots:
   #   multifold: false
   #   ibu: false
 
-  # hpT_R06:
-  #   <<: *default_plot
-  #   key: "hpT_R06"
-  #   xlabel: '$p_{T,j1}$ Anti-kt R=0.6 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hm1_R06:
+    <<: *default_plot
+    key: "hm1_R06"
+    xlabel: "$m_{j1}$ Anti-kt R=0.6 [GeV]"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hEEC_R06:
-  #   <<: *default_plot
-  #   key: "hEEC_R06"
-  #   xlabel: '$EEC_{j1}$ Anti-kt R=0.6 [GeV]'
-  #   log_xscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hpT_R06:
+    <<: *default_plot
+    key: "hpT_R06"
+    xlabel: '$p_{T,j1}$ Anti-kt R=0.6 [GeV]'
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
+
+  hEEC_R06:
+    <<: *default_plot
+    key: "hEEC_R06"
+    xlabel: '$EEC_{j1}$ Anti-kt R=0.6 [GeV]'
+    log_xscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
   # hLund_z_R06:
   #   <<: *default_plot
@@ -911,6 +922,16 @@ plots:
   #   multifold: false
   #   ibu: false
 
+  hm1_CA04:
+    <<: *default_plot
+    key: "hm1_CA04"
+    xlabel: "$m_{j1}$ Cambridge/Aachen R=0.4 [GeV]"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
+
   hpT_CA04:
     <<: *default_plot
     key: "hpT_CA04"
@@ -961,56 +982,56 @@ plots:
     multifold: false
     ibu: false
 
-  # hEEC_CA04:
-  #   <<: *default_plot
-  #   key: "hEEC_CA04"
-  #   xlabel: '$EEC_{j1}$ Cambridge/Aachen R=0.4 [GeV]'
-  #   log_xscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hEEC_CA04:
+    <<: *default_plot
+    key: "hEEC_CA04"
+    xlabel: '$EEC_{j1}$ Cambridge/Aachen R=0.4 [GeV]'
+    log_xscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hm1_CA06:
-  #   <<: *default_plot
-  #   key: "hm1_CA06"
-  #   xlabel: "$m_{j1}$ Cambridge/Aachen R=0.6 [GeV]"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hm1_CA06:
+    <<: *default_plot
+    key: "hm1_CA06"
+    xlabel: "$m_{j1}$ Cambridge/Aachen R=0.6 [GeV]"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hpT_CA06:
-  #   <<: *default_plot
-  #   key: "hpT_CA06"
-  #   xlabel: '$p_{T,j1}$ Cambridge/Aachen R=0.6 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hpT_CA06:
+    <<: *default_plot
+    key: "hpT_CA06"
+    xlabel: '$p_{T,j1}$ Cambridge/Aachen R=0.6 [GeV]'
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hm1_kt04:
-  #   <<: *default_plot
-  #   key: "hm1_KT04"
-  #   xlabel: "$m_{j1}$ k_t R=0.4 [GeV]"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hm1_kt04:
+    <<: *default_plot
+    key: "hm1_KT04"
+    xlabel: "$m_{j1}$ k_t R=0.4 [GeV]"
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hpT_KT04:
-  #   <<: *default_plot
-  #   key: "hpT_KT04"
-  #   xlabel: '$p_{T,j1}$ k_t R=0.4 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hpT_KT04:
+    <<: *default_plot
+    key: "hpT_KT04"
+    xlabel: '$p_{T,j1}$ k_t R=0.4 [GeV]'
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
   # hLund_plane_R04:
   #   <<: *default_plot
@@ -1048,106 +1069,106 @@ plots:
   #   multifold: false
   #   ibu: false
 
-  # hTEEC_collinear:
-  #   <<: *default_plot
-  #   key: "hTEEC_collinear"
-  #   xlabel: '$z$'
-  #   ylabel: '$TEEC$'
-  #   log_xscale: true
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_collinear:
+    <<: *default_plot
+    key: "hTEEC_collinear"
+    xlabel: '$z$'
+    ylabel: '$TEEC$'
+    log_xscale: true
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_full_nolog:
-  #   <<: *default_plot
-  #   key: "hTEEC_full_nolog"
-  #   xlabel: '$z$'
-  #   ylabel: '$TEEC$'
-  #   log_xscale: false
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_full_nolog:
+    <<: *default_plot
+    key: "hTEEC_full_nolog"
+    xlabel: '$z$'
+    ylabel: '$TEEC$'
+    log_xscale: false
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_b2b:
-  #   <<: *default_plot
-  #   key: "hTEEC_b2b"
-  #   xlabel: '$1-z$'
-  #   ylabel: '$TEEC$'
-  #   log_xscale: true
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_b2b:
+    <<: *default_plot
+    key: "hTEEC_b2b"
+    xlabel: '$1-z$'
+    ylabel: '$TEEC$'
+    log_xscale: true
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_full:
-  #   <<: *default_plot
-  #   key: "hTEEC_full"
-  #   xlabel: '$z$'
-  #   ylabel: '$TEEC$'
-  #   symlog_xscale: true
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_full:
+    <<: *default_plot
+    key: "hTEEC_full"
+    xlabel: '$z$'
+    ylabel: '$TEEC$'
+    symlog_xscale: true
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_z_collinear:
-  #   <<: *default_plot
-  #   key: "hTEEC_z_collinear"
-  #   xlabel: '$1-\tau$'
-  #   ylabel: '$TEEC_z$'
-  #   log_xscale: true
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_z_collinear:
+    <<: *default_plot
+    key: "hTEEC_z_collinear"
+    xlabel: '$1-\tau$'
+    ylabel: '$TEEC_z$'
+    log_xscale: true
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_z_full_nolog:
-  #   <<: *default_plot
-  #   key: "hTEEC_z_full_nolog"
-  #   xlabel: '$\tau$'
-  #   ylabel: '$TEEC_z$'
-  #   log_xscale: false
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_z_full_nolog:
+    <<: *default_plot
+    key: "hTEEC_z_full_nolog"
+    xlabel: '$\tau$'
+    ylabel: '$TEEC_z$'
+    log_xscale: false
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_z_b2b:
-  #   <<: *default_plot
-  #   key: "hTEEC_z_b2b"
-  #   xlabel: '$\tau$'
-  #   ylabel: '$TEEC_z$'
-  #   log_xscale: true
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_z_b2b:
+    <<: *default_plot
+    key: "hTEEC_z_b2b"
+    xlabel: '$\tau$'
+    ylabel: '$TEEC_z$'
+    log_xscale: true
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false
 
-  # hTEEC_z_full:
-  #   <<: *default_plot
-  #   key: "hTEEC_z_full"
-  #   xlabel: '$\tau$'
-  #   ylabel: '$TEEC_z$'
-  #   symlog_xscale: true
-  #   log_yscale: true
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
+  hTEEC_z_full:
+    <<: *default_plot
+    key: "hTEEC_z_full"
+    xlabel: '$\tau$'
+    ylabel: '$TEEC_z$'
+    symlog_xscale: true
+    log_yscale: true
+    verbosity_level: 3
+    w1_eval: false
+    type: "fastjet"
+    multifold: false
+    ibu: false

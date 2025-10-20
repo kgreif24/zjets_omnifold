@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include "indicators/progress_bar.hpp"
+#include <omp.h>
 using namespace fastjet;
 using namespace std;
 using namespace indicators;
@@ -76,10 +77,10 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    // Jet definitions to consider
    JetDefinition jetdef_kt(kt_algorithm, 0.4);
    JetDefinition jetdef_r04(antikt_algorithm, 0.4);
-   // JetDefinition jetdef_r06(antikt_algorithm, 0.6);
+   JetDefinition jetdef_r06(antikt_algorithm, 0.6);
    JetDefinition jetdef_r10(antikt_algorithm, 1.0);
    JetDefinition jetdef_ca04(cambridge_algorithm, 0.4);
-   // JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
+   JetDefinition jetdef_ca06(cambridge_algorithm, 0.6);
 
 
    // ----------------------- Loop over events -----------------------
@@ -110,270 +111,380 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    // Set the total number of events for ETA calculation
    bar.set_option(option::MaxProgress{nentries});
    
+   // Create thread-local histogram groups for parallel processing
+   int num_threads = omp_get_max_threads();
+   vector<vector<HistoGroup>> thread_central_histos(num_threads);
+   vector<vector<HistoGroup>> thread_ens_histos(num_threads);
+   
+   // Initialize thread-local histogram groups
+   for (int t = 0; t < num_threads; ++t) {
+      for (const auto& weight_name : weightBranchNames) {
+         if (weight_name != "weight" && weight_name != "weight_mc") {
+            thread_central_histos[t].push_back(HistoGroup(weight_name + "-", kinematicRegion));
+         } else {
+            thread_central_histos[t].push_back(HistoGroup("nominal-", kinematicRegion));
+         }
+      }
+      
+      for (int i = 0; i < nEns; ++i) {
+         thread_ens_histos[t].push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-", kinematicRegion));
+      }
+   }
+   
+   // Pre-load all events sequentially (ROOT trees are not thread-safe)
+   std::cout << " === pre-loading events === " << std::endl;
+   vector<Long64_t> valid_entries;
+   
+   // Create a structure to hold event data
+   struct EventData {
+      Long64_t entry;
+      // Store all the variables we need for processing
+      Float_t weight, weight_mc, target_dd;
+      Int_t pass190;
+      Float_t pT_ll, pT_l1, pT_l2, eta_l1, eta_l2, phi_l1, phi_l2, y_ll;
+      Float_t pT_trackj1, y_trackj1, phi_trackj1, m_trackj1;
+      Float_t pT_trackj2, y_trackj2, phi_trackj2, m_trackj2;
+      Int_t Ntracks, npT_tracks;
+      vector<Double_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
+      vector<Long_t> pdgId_tracks_vec;
+   };
+   
+   vector<EventData> event_data;
+   
    for (Long64_t jentry=0; jentry<nentries;jentry++) {
       Long64_t ientry = LoadTree(jentry);
-      if (ientry < 0) break;
+      if (ientry < 0) continue;
       nb = fChain->GetEntry(jentry);   nbytes += nb;
-
-      // Update progress bar every 100 events for better performance
-      if (jentry % 100 == 0) {
-         bar.set_option(option::PostfixText{"Processing Events: " + to_string(jentry) + "/" + to_string(nentries)});
-         // Update progress for ETA calculation
+      
+      // Store the event data
+      EventData evt;
+      evt.entry = jentry;
+      evt.weight = weight;
+      evt.weight_mc = weight_mc;
+      evt.target_dd = target_dd;
+      evt.pass190 = pass190;
+      evt.pT_ll = pT_ll;
+      evt.pT_l1 = pT_l1;
+      evt.pT_l2 = pT_l2;
+      evt.eta_l1 = eta_l1;
+      evt.eta_l2 = eta_l2;
+      evt.phi_l1 = phi_l1;
+      evt.phi_l2 = phi_l2;
+      evt.y_ll = y_ll;
+      evt.pT_trackj1 = pT_trackj1;
+      evt.y_trackj1 = y_trackj1;
+      evt.phi_trackj1 = phi_trackj1;
+      evt.m_trackj1 = m_trackj1;
+      evt.pT_trackj2 = pT_trackj2;
+      evt.y_trackj2 = y_trackj2;
+      evt.phi_trackj2 = phi_trackj2;
+      evt.m_trackj2 = m_trackj2;
+      evt.Ntracks = Ntracks;
+      evt.npT_tracks = npT_tracks;
+      
+      // Copy track arrays
+      evt.pT_tracks_vec.assign(pT_tracks, pT_tracks + npT_tracks);
+      evt.eta_tracks_vec.assign(eta_tracks, eta_tracks + npT_tracks);
+      evt.phi_tracks_vec.assign(phi_tracks, phi_tracks + npT_tracks);
+      if (isTruth) {
+         evt.pdgId_tracks_vec.assign(pdgId_tracks, pdgId_tracks + npT_tracks);
+      }
+      
+      event_data.push_back(evt);
+      
+      // Update progress bar for loading
+      if (jentry % 1000 == 0) {
+         bar.set_option(option::PostfixText{"Loading Events: " + to_string(jentry) + "/" + to_string(nentries)});
          bar.set_progress(static_cast<size_t>(jentry));
       }
+   }
+   
+   std::cout << " === processing " << event_data.size() << " valid events in parallel === " << std::endl;
+   
+   // Parallel event processing loop
+   #pragma omp parallel
+   {
+      int thread_id = omp_get_thread_num();
+      
+      #pragma omp for schedule(dynamic, 100)
+      for (size_t idx=0; idx<event_data.size(); idx++) {
+         const EventData& evt = event_data[idx];
+         Long64_t jentry = evt.entry;
 
-      // Filter on pass 190 flag here
-      if (pass190 == 0) {
-         continue;
-      }
-
-      // Skip events that have no tracks stored
-      if (Ntracks == 0) {
-         continue;
-      }
-
-      // Create PseudoJet object of the ll system (Z-boson)
-      TLorentzVector m1_tlv, m2_tlv;
-      m1_tlv.SetPtEtaPhiM(pT_l1, eta_l1, phi_l1, 0.10566);
-      m2_tlv.SetPtEtaPhiM(pT_l2, eta_l2, phi_l2, 0.10566);
-      TLorentzVector zboson_tlv = m1_tlv + m2_tlv;
-      PseudoJet zboson;
-      zboson.reset_PtYPhiM(zboson_tlv.Pt(), zboson_tlv.Rapidity(), zboson_tlv.Phi(), zboson_tlv.M());
-
-      // Create vector of PseudoJets from all tracks in event
-      vector<PseudoJet> particles;
-      for (int i=0; i<npT_tracks; i++){ 
-         TLorentzVector constit_tlv;
-         // Which track 3 vectors to use depend on whether we are processing truth or reco
-         // Truth files use double precision while reco files use float precision
-         float constit_mass = 0.13957;
-         if (isTruth) {
-            constit_mass = GetMassFromPID(pdgId_tracks[i]);
-         }
-         constit_tlv.SetPtEtaPhiM(pT_tracks[i], eta_tracks[i], phi_tracks[i], constit_mass);
-         PseudoJet constit_pj;
-         constit_pj.reset_PtYPhiM(constit_tlv.Pt(), constit_tlv.Rapidity(), constit_tlv.Phi(), constit_tlv.M());
-         particles.push_back(constit_pj);
-      }
-
-      // Build anti-kt jets w/ R=0.4, 0.6, 1.0 and CA
-      // ClusterSequence cs_seq_kt(particles, jetdef_kt);
-      ClusterSequence cs_seq_r04(particles, jetdef_r04);
-      // ClusterSequence cs_seq_r06(particles, jetdef_r06);
-      ClusterSequence cs_seq_r10(particles, jetdef_r10);
-      ClusterSequence cs_seq_ca04(particles, jetdef_ca04);
-      // ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
-      // vector<PseudoJet> KT_jets = sorted_by_pt(cs_seq_kt.inclusive_jets());
-      vector<PseudoJet> R04_jets = sorted_by_pt(cs_seq_r04.inclusive_jets());
-      // vector<PseudoJet> R06_jets = sorted_by_pt(cs_seq_r06.inclusive_jets());
-      vector<PseudoJet> R10_jets = sorted_by_pt(cs_seq_r10.inclusive_jets());
-      vector<PseudoJet> CA04_jets = sorted_by_pt(cs_seq_ca04.inclusive_jets());
-      // vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
-
-      // Calculate mjj, dyjj for R04 jets
-      double R04_mjj, R04_dyjj;
-      if (R04_jets.size() > 1) {
-         R04_mjj = (R04_jets[0] + R04_jets[1]).m();
-         R04_dyjj = TMath::Abs(R04_jets[0].rap() - R04_jets[1].rap());
-      } else {
-         R04_mjj = -999;
-         R04_dyjj = -999;
-      }
-
-      // Calculate mjj, dRjj, dyjj for CA04 jets
-      double CA04_mjj, CA04_dRjj, CA04_dyjj, CA04_dphijj;
-      if (CA04_jets.size() > 1) {
-         CA04_mjj = (CA04_jets[0] + CA04_jets[1]).m();
-         CA04_dRjj = CA04_jets[0].delta_R(CA04_jets[1]);
-         CA04_dyjj = TMath::Abs(CA04_jets[0].rap() - CA04_jets[1].rap());
-         CA04_dphijj = (CA04_jets[0].rapidity() > CA04_jets[1].rapidity()) ? CA04_jets[0].delta_phi_to(CA04_jets[1]) : CA04_jets[1].delta_phi_to(CA04_jets[0]);
-      } else {
-         CA04_mjj = -999;
-         CA04_dRjj = -999;
-         CA04_dyjj = -999;
-         CA04_dphijj = -999;
-      }
-
-      // Apply kinematic region cuts here
-      if (kinematicRegion == 1 && (pT_trackj2 < 50 || pT_ll < 350)) {
-         continue;
-      } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2)) {
-         continue;
-      } else if (kinematicRegion == 3 && m_trackj1 < 32) {
-         continue;
-      }
-
-      // // Get Lund variables 
-      // vector<double> R04_lundz;
-      // vector<double> R04_lundkt;
-      // vector<double> R04_lundDr;
-      // if (R04_jets.size() > 0) {
-      //    processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
-      // }
-
-      // vector<double> R06_lundz;
-      // vector<double> R06_lundkt;
-      // vector<double> R06_lundDr;
-      // if (R06_jets.size() > 0) {
-      //    processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
-      // }
-
-      // vector<double> R10_lundz;
-      // vector<double> R10_lundkt;
-      // vector<double> R10_lundDr;
-      // if (R10_jets.size() > 0) {
-      //    processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
-      // }
-
-      // vector<double> CA04_lundz;
-      // vector<double> CA04_lundkt;
-      // vector<double> CA04_lundDr;
-      // if (CA04_jets.size() > 0) {
-      //    processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
-      // }
-
-      // Get EEC variables in jets
-      double R04_Q2 = 0.0;
-      vector<double> R04_esum;
-      vector<double> R04_z;
-      if (R04_jets.size() > 0) {
-         R04_Q2 = GetEEC(R04_jets[0].constituents(), R04_esum, R04_z);
-      }
-
-      // double R06_Q2 = 0.0;
-      // vector<double> R06_esum;
-      // vector<double> R06_z;
-      // if (R06_jets.size() > 0) {
-      //    R06_Q2 = GetEEC(R06_jets[0].constituents(), R06_esum, R06_z);
-      // }
-
-      double R10_Q2 = 0.0;
-      vector<double> R10_esum;
-      vector<double> R10_z;
-      if (R10_jets.size() > 0) {
-         R10_Q2 = GetEEC(R10_jets[0].constituents(), R10_esum, R10_z);
-      }
-
-      // double CA04_Q2 = 0.0;
-      // vector<double> CA04_esum;
-      // vector<double> CA04_z;
-      // if (CA04_jets.size() > 0) {
-      //    CA04_Q2 = GetEEC(CA04_jets[0].constituents(), CA04_esum, CA04_z);
-      // }
-
-      // // Get event level EEC variables
-      // double EEC_Q2;
-      // vector<double> EEC_esum;
-      // vector<double> EEC_z;
-      // EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
-
-      // // Get TEEC variables
-      // double ETransTotal;
-      // vector<double> etrans;
-      // vector<double> tau;
-      // ETransTotal = GetTEEC(particles, zboson, etrans, tau);
-
-      // -------------------- Fill Histograms --------------------
-      // Note we are filling with values only from leading jet for now
-      // Can also use the FillEEC function for the TEEC
-
-      // Loop through all groups
-      for (unsigned int i = 0; i < centralHistoGroups.size() + ensHistoGroups.size(); ++i) {
-
-         // Get weight
-         float use_weight;
-         if (weightBranchNames[i] == "weight") {
-            use_weight = weight;
-         } else if (weightBranchNames[i] == "weight_mc") {
-            use_weight = weight_mc;
-         } else if (weightBranchNames[i] == "target_dd") {
-            use_weight = target_dd;
-         } else if (i < centralHistoGroups.size()) {
-            use_weight = central_weights[i][jentry] * weight_mc;
-         } else {
-            use_weight = ens_weights[i - centralHistoGroups.size()][jentry] * weight_mc;
+         // Update progress bar every 100 events for better performance (thread-safe)
+         if (idx % 100 == 0) {
+            #pragma omp critical
+            {
+               bar.set_option(option::PostfixText{"Processing Events: " + to_string(idx) + "/" + to_string(event_data.size())});
+               // Update progress for ETA calculation
+               bar.set_progress(static_cast<size_t>(idx));
+            }
          }
 
-         // Get histogram group
-         HistoGroup histoGroup;
-         if (i < centralHistoGroups.size()) {
-            histoGroup = centralHistoGroups[i];
-         } else {
-            histoGroup = ensHistoGroups[i - centralHistoGroups.size()];
+         // Filter on pass 190 flag here
+         if (evt.pass190 == 0) {
+            continue;
          }
 
-         // // KT R=0.4 jets
-         // if (KT_jets.size() > 0) {
-         //    histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
-         //    histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
-         // }
-
-         // R=0.4 jets
-         if (R04_jets.size() > 0) {
-            histoGroup.hm1_R04->Fill(R04_jets[0].m(), use_weight);
+         // Skip events that have no tracks stored
+         if (evt.Ntracks == 0) {
+            continue;
          }
+
+         // Create PseudoJet object of the ll system (Z-boson)
+         TLorentzVector m1_tlv, m2_tlv;
+         m1_tlv.SetPtEtaPhiM(evt.pT_l1, evt.eta_l1, evt.phi_l1, 0.10566);
+         m2_tlv.SetPtEtaPhiM(evt.pT_l2, evt.eta_l2, evt.phi_l2, 0.10566);
+         TLorentzVector zboson_tlv = m1_tlv + m2_tlv;
+         PseudoJet zboson;
+         zboson.reset_PtYPhiM(zboson_tlv.Pt(), zboson_tlv.Rapidity(), zboson_tlv.Phi(), zboson_tlv.M());
+
+         // Create vector of PseudoJets from all tracks in event
+         vector<PseudoJet> particles;
+         for (int i=0; i<evt.npT_tracks; i++){ 
+            TLorentzVector constit_tlv;
+            // Which track 3 vectors to use depend on whether we are processing truth or reco
+            // Truth files use double precision while reco files use float precision
+            float constit_mass = 0.13957;
+            if (isTruth) {
+               constit_mass = GetMassFromPID(evt.pdgId_tracks_vec[i]);
+            }
+            constit_tlv.SetPtEtaPhiM(evt.pT_tracks_vec[i], evt.eta_tracks_vec[i], evt.phi_tracks_vec[i], constit_mass);
+            PseudoJet constit_pj;
+            constit_pj.reset_PtYPhiM(constit_tlv.Pt(), constit_tlv.Rapidity(), constit_tlv.Phi(), constit_tlv.M());
+            particles.push_back(constit_pj);
+         }
+
+         // Build anti-kt jets w/ R=0.4, 0.6, 1.0 and CA
+         ClusterSequence cs_seq_kt(particles, jetdef_kt);
+         ClusterSequence cs_seq_r04(particles, jetdef_r04);
+         ClusterSequence cs_seq_r06(particles, jetdef_r06);
+         ClusterSequence cs_seq_r10(particles, jetdef_r10);
+         ClusterSequence cs_seq_ca04(particles, jetdef_ca04);
+         ClusterSequence cs_seq_ca06(particles, jetdef_ca06);
+         vector<PseudoJet> KT_jets = sorted_by_pt(cs_seq_kt.inclusive_jets());
+         vector<PseudoJet> R04_jets = sorted_by_pt(cs_seq_r04.inclusive_jets());
+         vector<PseudoJet> R06_jets = sorted_by_pt(cs_seq_r06.inclusive_jets());
+         vector<PseudoJet> R10_jets = sorted_by_pt(cs_seq_r10.inclusive_jets());
+         vector<PseudoJet> CA04_jets = sorted_by_pt(cs_seq_ca04.inclusive_jets());
+         vector<PseudoJet> CA06_jets = sorted_by_pt(cs_seq_ca06.inclusive_jets());
+
+         // Calculate mjj, dyjj for R04 jets
+         double R04_mjj, R04_dyjj;
          if (R04_jets.size() > 1) {
-            histoGroup.hm2_R04->Fill(R04_jets[1].m(), use_weight);
+            R04_mjj = (R04_jets[0] + R04_jets[1]).m();
+            R04_dyjj = TMath::Abs(R04_jets[0].rap() - R04_jets[1].rap());
+         } else {
+            R04_mjj = -999;
+            R04_dyjj = -999;
          }
-         if (R04_jets.size() > 2) {
-            histoGroup.hm3_R04->Fill(R04_jets[2].m(), use_weight);
-         }
-         if (R04_jets.size() > 3) {
-            histoGroup.hm4_R04->Fill(R04_jets[3].m(), use_weight);
-         }
-         histoGroup.hmjj_R04->Fill(R04_mjj, use_weight);
-         histoGroup.hdyjj_R04->Fill(R04_dyjj, use_weight);
-         FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
-         // FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
-         // // R=0.6 jets
+         // Calculate mjj, dRjj, dyjj for CA04 jets
+         double CA04_mjj, CA04_dRjj, CA04_dyjj, CA04_dphijj;
+         if (CA04_jets.size() > 1) {
+            CA04_mjj = (CA04_jets[0] + CA04_jets[1]).m();
+            CA04_dRjj = CA04_jets[0].delta_R(CA04_jets[1]);
+            CA04_dyjj = TMath::Abs(CA04_jets[0].rap() - CA04_jets[1].rap());
+            CA04_dphijj = (CA04_jets[0].rapidity() > CA04_jets[1].rapidity()) ? CA04_jets[0].delta_phi_to(CA04_jets[1]) : CA04_jets[1].delta_phi_to(CA04_jets[0]);
+         } else {
+            CA04_mjj = -999;
+            CA04_dRjj = -999;
+            CA04_dyjj = -999;
+            CA04_dphijj = -999;
+         }
+
+         // Apply kinematic region cuts here
+         if (kinematicRegion == 1 && (evt.pT_trackj2 < 50 || evt.pT_ll < 350)) {
+            continue;
+         } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2)) {
+            continue;
+         } else if (kinematicRegion == 3 && evt.m_trackj1 < 32) {
+            continue;
+         }
+
+         // // Get Lund variables 
+         // vector<double> R04_lundz;
+         // vector<double> R04_lundkt;
+         // vector<double> R04_lundDr;
+         // if (R04_jets.size() > 0) {
+         //    processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
+         // }
+
+         // vector<double> R06_lundz;
+         // vector<double> R06_lundkt;
+         // vector<double> R06_lundDr;
          // if (R06_jets.size() > 0) {
-         //    histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
+         //    processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
          // }
-         // FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
-         // FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
 
-         // R=1.0 jets
+         // vector<double> R10_lundz;
+         // vector<double> R10_lundkt;
+         // vector<double> R10_lundDr;
+         // if (R10_jets.size() > 0) {
+         //    processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
+         // }
+
+         // vector<double> CA04_lundz;
+         // vector<double> CA04_lundkt;
+         // vector<double> CA04_lundDr;
+         // if (CA04_jets.size() > 0) {
+         //    processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
+         // }
+
+         // Get EEC variables in jets
+         double R04_Q2 = 0.0;
+         vector<double> R04_esum;
+         vector<double> R04_z;
+         if (R04_jets.size() > 0) {
+            R04_Q2 = GetEEC(R04_jets[0].constituents(), R04_esum, R04_z);
+         }
+
+         double R06_Q2 = 0.0;
+         vector<double> R06_esum;
+         vector<double> R06_z;
+         if (R06_jets.size() > 0) {
+            R06_Q2 = GetEEC(R06_jets[0].constituents(), R06_esum, R06_z);
+         }
+
+         double R10_Q2 = 0.0;
+         vector<double> R10_esum;
+         vector<double> R10_z;
          if (R10_jets.size() > 0) {
-            histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
-            histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
+            R10_Q2 = GetEEC(R10_jets[0].constituents(), R10_esum, R10_z);
          }
-         FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
-         // FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
 
-         // CA R=0.4 jets
+         double CA04_Q2 = 0.0;
+         vector<double> CA04_esum;
+         vector<double> CA04_z;
          if (CA04_jets.size() > 0) {
-            histoGroup.hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
+            CA04_Q2 = GetEEC(CA04_jets[0].constituents(), CA04_esum, CA04_z);
          }
-         // FillEEC(histoGroup.hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
-         histoGroup.hmjj_CA04->Fill(CA04_mjj, use_weight);
-         histoGroup.hdRjj_CA04->Fill(CA04_dRjj, use_weight);
-         histoGroup.hdyjj_CA04->Fill(CA04_dyjj, use_weight);
-         histoGroup.hdphijj_CA04->Fill(CA04_dphijj, use_weight);
 
-         // // CA R=0.6 jets
-         // if (CA06_jets.size() > 0) {
-         //    histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
-         //    histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
-         // }
+         // Get event level EEC variables
+         double EEC_Q2;
+         vector<double> EEC_esum;
+         vector<double> EEC_z;
+         EEC_Q2 = GetEEC(particles, EEC_esum, EEC_z);
 
-         // // Event-level EEC
-         // FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         // FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         // FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
-         // FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
-         // FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
-         // FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
-         // FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
-         // FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
+         // Get TEEC variables
+         double ETransTotal;
+         vector<double> etrans;
+         vector<double> tau;
+         ETransTotal = GetTEEC(particles, zboson, etrans, tau);
 
+         // -------------------- Fill Histograms --------------------
+         // Note we are filling with values only from leading jet for now
+         // Can also use the FillEEC function for the TEEC
+
+         // Loop through all groups
+         for (unsigned int i = 0; i < centralHistoGroups.size() + ensHistoGroups.size(); ++i) {
+
+            // Get weight
+            float use_weight;
+            if (weightBranchNames[i] == "weight") {
+               use_weight = evt.weight;
+            } else if (weightBranchNames[i] == "weight_mc") {
+               use_weight = evt.weight_mc;
+            } else if (weightBranchNames[i] == "target_dd") {
+               use_weight = evt.target_dd;
+            } else if (i < centralHistoGroups.size()) {
+               use_weight = central_weights[i][jentry] * evt.weight_mc;
+            } else {
+               use_weight = ens_weights[i - centralHistoGroups.size()][jentry] * evt.weight_mc;
+            }
+
+            // Get thread-local histogram group
+            HistoGroup& histoGroup = (i < centralHistoGroups.size()) ? 
+               thread_central_histos[thread_id][i] : 
+               thread_ens_histos[thread_id][i - centralHistoGroups.size()];
+
+            // // KT R=0.4 jets
+            if (KT_jets.size() > 0) {
+               histoGroup.hm1_KT04->Fill(KT_jets[0].m(), use_weight);
+               histoGroup.hpT_KT04->Fill(KT_jets[0].pt(), use_weight);
+            }
+
+            // R=0.4 jets
+            if (R04_jets.size() > 0) {
+               histoGroup.hm1_R04->Fill(R04_jets[0].m(), use_weight);
+            }
+            if (R04_jets.size() > 1) {
+               histoGroup.hm2_R04->Fill(R04_jets[1].m(), use_weight);
+            }
+            if (R04_jets.size() > 2) {
+               histoGroup.hm3_R04->Fill(R04_jets[2].m(), use_weight);
+            }
+            if (R04_jets.size() > 3) {
+               histoGroup.hm4_R04->Fill(R04_jets[3].m(), use_weight);
+            }
+            histoGroup.hmjj_R04->Fill(R04_mjj, use_weight);
+            histoGroup.hdyjj_R04->Fill(R04_dyjj, use_weight);
+            FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
+            // FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
+
+            // // R=0.6 jets
+            if (R06_jets.size() > 0) {
+               histoGroup.hm1_R06->Fill(R06_jets[0].m(), use_weight);
+               histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
+            }
+            FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
+            // FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
+
+            // R=1.0 jets
+            if (R10_jets.size() > 0) {
+               histoGroup.hm1_R10->Fill(R10_jets[0].m(), use_weight);
+               histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
+            }
+            FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
+            // FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
+
+            // CA R=0.4 jets
+            if (CA04_jets.size() > 0) {
+               histoGroup.hm1_CA04->Fill(CA04_jets[0].m(), use_weight);
+               histoGroup.hpT_CA04->Fill(CA04_jets[0].pt(), use_weight);
+            }
+            FillEEC(histoGroup.hEEC_CA04, CA04_esum, CA04_z, CA04_Q2, use_weight);
+            histoGroup.hmjj_CA04->Fill(CA04_mjj, use_weight);
+            histoGroup.hdRjj_CA04->Fill(CA04_dRjj, use_weight);
+            histoGroup.hdyjj_CA04->Fill(CA04_dyjj, use_weight);
+            histoGroup.hdphijj_CA04->Fill(CA04_dphijj, use_weight);
+
+            // CA R=0.6 jets
+            if (CA06_jets.size() > 0) {
+               histoGroup.hm1_CA06->Fill(CA06_jets[0].m(), use_weight);
+               histoGroup.hpT_CA06->Fill(CA06_jets[0].pt(), use_weight);
+            }
+
+            // Event-level EEC
+            FillEEC(histoGroup.hTEEC_collinear, EEC_esum, EEC_z, EEC_Q2, use_weight);
+            FillEEC(histoGroup.hTEEC_full_nolog, EEC_esum, EEC_z, EEC_Q2, use_weight);
+            FillEEC(histoGroup.hTEEC_b2b, EEC_esum, EEC_z, EEC_Q2, use_weight, true);
+            FillEEC(histoGroup.hTEEC_full, EEC_esum, EEC_z, EEC_Q2, use_weight);
+            FillEEC(histoGroup.hTEEC_z_collinear, etrans, tau, ETransTotal, use_weight, true);
+            FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
+            FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
+            FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
+
+         }
+
+      } // End of parallel region
+
+   } // End of OpenMP parallel block
+   
+   // Merge thread-local histograms into main histogram groups
+   std::cout << " === merging thread-local histograms === " << std::endl;
+   for (int t = 0; t < num_threads; ++t) {
+      for (unsigned int i = 0; i < centralHistoGroups.size(); ++i) {
+         centralHistoGroups[i].MergeHistos(thread_central_histos[t][i]);
       }
-
+      for (unsigned int i = 0; i < ensHistoGroups.size(); ++i) {
+         ensHistoGroups[i].MergeHistos(thread_ens_histos[t][i]);
+      }
    }
    
    // Complete the progress bar
-   bar.set_option(option::PostfixText{"Processing Events: " + to_string(nentries) + "/" + to_string(nentries) + " - Complete!"});
-   bar.set_progress(static_cast<size_t>(nentries));
+   bar.set_option(option::PostfixText{"Processing Events: " + to_string(event_data.size()) + "/" + to_string(event_data.size()) + " - Complete!"});
+   bar.set_progress(static_cast<size_t>(event_data.size()));
    std::cout << std::endl;
 
    std::cout << " === create output ROOT file === " << std::endl;

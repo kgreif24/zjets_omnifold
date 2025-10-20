@@ -4,10 +4,11 @@ It will generate a plot for each of the 24 multifold observables,
 in the style of the omnifold plots.
 
 Author: Kevin Greif
-Last updated 06/26/2025
+Last updated 10/16/2025
 python3
 """
 
+import argparse
 import yaml
 import numpy as np
 import pandas as pd
@@ -41,16 +42,26 @@ def calculate_stat_uncertainty(df, observable, bins, bs_vars):
         return final_stat
 
 
+parser = argparse.ArgumentParser(description="Run plotting functions")
+parser.add_argument("--data", action="store_true", help="If true, will plot data")
+args = parser.parse_args()
+
 # Load the multifold data
+key = "data" if args.data else "pseudodata"
 multifold = pd.read_hdf(
-    "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/pseudodata/multifold.h5"
+    "/pscratch/sd/k/kgreif/multifold/data/multifold.h5"
+    # f"/pscratch/sd/k/kgreif/multifold/{key}/multifold.h5"
 )
-target = pd.read_hdf(
-    "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/pseudodata/target.h5"
-)
-hv = pd.read_hdf(
-    "/global/cfs/cdirs/m3246/ZjetOmnifold/data/multifold/pseudodata/multifold_sherpa.h5"
-)
+hv = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_sherpa.h5")
+if not args.data:
+    target = pd.read_hdf("/pscratch/sd/k/kgreif/multifold/pseudodata/target.h5")
+else:
+    mc_preds = np.load(
+        "/pscratch/sd/k/kgreif/multifold/data/mc_preds.npy",
+        allow_pickle=True,
+    )
+    # Create a mapping from observable names to mc_preds indices
+    mc_preds_mapping = {item["file_label"]: i for i, item in enumerate(mc_preds)}
 
 # Load plotting config
 with open("./utils/plots_config.yml", "r") as stream:
@@ -63,11 +74,12 @@ plots = [
 
 # Load the relevant weights
 central_weights = multifold["weights_nominal"]
-target_weights = target["weight_mc"]
 sherpa_weights = hv["weights_nominal"]
+if not args.data:
+    target_weights = target["weight_mc"]
 
 # Set the relevant systs
-track_systs = ["weights_trackEffMain"]
+track_systs = ["weights_trackEffMain", "weights_trackEffJet"]
 data_stat_systs = [
     col for col in multifold.keys() if col.startswith("weights_bootstrap_data")
 ]
@@ -79,62 +91,142 @@ for obs_dict in plots:
     key = obs_dict["key"]
     print("Plotting observable", key)
 
-    # Calculate all histograms
+    # Calculate the bins
     bins = np.array(obs_dict["ibubins"])
+
+    # For data mode, check if binning matches mc_preds and use mc_preds bins
+    if args.data and key in mc_preds_mapping:
+        mc_preds_bins = mc_preds[mc_preds_mapping[key]]["bins"]
+        if not np.array_equal(bins, mc_preds_bins):
+            print(f"WARNING: Binning mismatch for {key} in data mode!")
+            print(f"  Config bins: {bins}")
+            print(f"  mc_preds bins: {mc_preds_bins}")
+            print("  Using mc_preds bins for data comparison")
+            bins = mc_preds_bins
+
+    # Get bin properties
     bin_centers = (bins[1:] + bins[:-1]) / 2
+    bin_errors = (bins[1:] - bins[:-1]) / 2
+    bin_widths = bins[1:] - bins[:-1]
+
+    # Calculate the histograms
     source_hist, _ = np.histogram(
-        multifold[obs_dict["key"]], bins=bins, weights=central_weights
+        multifold[obs_dict["key"]],
+        bins=bins,
+        weights=central_weights,
     )
+    source_density, _ = np.histogram(
+        multifold[obs_dict["key"]], bins=bins, weights=central_weights, density=True
+    )
+    source_density *= np.sum(central_weights)
     mc_var, _ = np.histogram(
         multifold[obs_dict["key"]], bins=bins, weights=central_weights**2
     )
-    target_hist, _ = np.histogram(
-        target[obs_dict["key"]], bins=bins, weights=target_weights
-    )
     hv_hist, _ = np.histogram(hv[obs_dict["key"]], bins=bins, weights=sherpa_weights)
+    dd_hist, _ = np.histogram(
+        multifold[obs_dict["key"]], bins=bins, weights=multifold["weights_dd"]
+    )
+    dd_target_hist, _ = np.histogram(
+        multifold[obs_dict["key"]], bins=bins, weights=multifold["target_dd"]
+    )
+    if not args.data:
+        target_hist, _ = np.histogram(
+            target[obs_dict["key"]], bins=bins, weights=target_weights
+        )
 
     # Calculate the uncertainties
-    track_eff = calculate_uncertainty(multifold, key, bins, track_systs)
-    nn_init = calculate_stat_uncertainty(multifold, key, bins, ensemble_systs)
+    tracking = calculate_uncertainty(multifold, key, bins, track_systs)
+    nn_init = calculate_stat_uncertainty(
+        multifold, key, bins, ensemble_systs
+    ) / np.sqrt(len(ensemble_systs))
     hidden_variable = np.sqrt((hv_hist - source_hist) ** 2) / source_hist
+    data_driven = np.sqrt((dd_hist - dd_target_hist) ** 2) / dd_target_hist
     data_stat = calculate_stat_uncertainty(multifold, key, bins, data_stat_systs)
     mc_stat = np.sqrt(mc_var) / source_hist
-    mbias = np.abs(source_hist - target_hist) / target_hist
+
+    if not args.data:
+        # In pseudodata mode: calculate bias between unfolded data and truth
+        mbias = np.abs(source_hist - target_hist) / target_hist
+    else:
+        # In data mode: no bias calculation since we're comparing to generators
+        mbias = np.zeros_like(source_hist)
+
+    # Calculate merged uncertainties
+    unfolding_uncert = np.sqrt(hidden_variable**2 + data_driven**2)
 
     # Calculate the total uncertainty
     total_uncert = np.sqrt(
-        track_eff**2 + nn_init**2 + data_stat**2 + mc_stat**2 + hidden_variable**2
+        tracking**2 + nn_init**2 + data_stat**2 + mc_stat**2 + unfolding_uncert**2
     )
 
     # Calculate the ratio and uncertainty on the ratio
-    ratio = source_hist / target_hist
-    rel_total_uncert = total_uncert / target_hist
+    if not args.data:
+        # In pseudodata mode: ratio of data to target (original behavior)
+        ratio = source_hist / target_hist
+        ratio_uncert = total_uncert * ratio
 
     # Make density plot
-    plot_target_hist = np.append(target_hist, target_hist[-1])
     fig1, (ax, rax) = plt.subplots(
         2,
         1,
         figsize=(6, 4.8),
         sharex=True,
-        gridspec_kw={"height_ratios": [2, 1]},
+        gridspec_kw={"height_ratios": [2, 1], "hspace": 0},
     )
-    fig1.subplots_adjust(hspace=0, top=0.95)
-    ax.plot(
-        bins,
-        plot_target_hist,
-        "--",
-        label="Target",
-        color="black",
-        drawstyle="steps-post",
-    )
+
+    if args.data:
+        # Define the luminosity for the MG and Sherpa generators
+        lumi = 138.96  # fb^-1
+        # In data mode: show both generators
+        counts_mg = mc_preds[mc_preds_mapping[key]]["mgfxfx_counts"]
+        density_mg = counts_mg / lumi / bin_widths
+        error_mg = mc_preds[mc_preds_mapping[key]]["mgfxfx_err"] / counts_mg
+        ax.errorbar(
+            bin_centers,
+            density_mg,
+            xerr=bin_errors,
+            yerr=density_mg * error_mg,
+            fmt="+",
+            label="MGFxFx",
+            color="aqua",
+            linewidth=2,
+        )
+        # Add Sherpa generator
+        if key in mc_preds_mapping:
+            counts_sherpa = mc_preds[mc_preds_mapping[key]]["sherpa_counts"]
+            density_sherpa = counts_sherpa / lumi / bin_widths
+            error_sherpa = mc_preds[mc_preds_mapping[key]]["sherpa_err"] / counts_sherpa
+            ax.errorbar(
+                bin_centers,
+                density_sherpa,
+                xerr=bin_errors,
+                yerr=density_sherpa * error_sherpa,
+                fmt="+",
+                label="Sherpa",
+                color="purple",
+                linewidth=2,
+            )
+    else:
+        # In pseudodata mode: show target
+        plot_target_hist = np.append(target_hist, target_hist[-1])
+        ax.plot(
+            bins,
+            plot_target_hist,
+            "--",
+            label="Target",
+            color="black",
+            drawstyle="steps-post",
+        )
+
     ax.errorbar(
         bin_centers,
-        source_hist,
-        yerr=total_uncert,
-        fmt="o",
+        source_density,
+        yerr=total_uncert * source_density,
+        xerr=bin_errors,
+        fmt="o" if args.data else "+",
         label="Multifold",
         color="green",
+        linewidth=2,
     )
     if not obs_dict["linear_yscale"]:
         ax.set_yscale("log")
@@ -142,56 +234,90 @@ for obs_dict in plots:
         ax.set_xscale("log")
     ax.tick_params(axis="x", direction="in", top=True)
     ax.set_ylabel("Counts")
-    ax.legend()
+    ax.legend(frameon=False)
     rax.axhline(1, color="black", linestyle="--")
-    rax.errorbar(
-        bin_centers,
-        ratio,
-        yerr=rel_total_uncert,
-        fmt="o",
-        label="Multifold",
-        color="green",
-    )
+
+    if args.data:
+        # In data mode: show ratios of both generators to data
+        mg_ratio = density_mg / source_density
+        mg_ratio_uncert = mg_ratio * error_mg
+        rax.errorbar(
+            bin_centers,
+            mg_ratio,
+            xerr=bin_errors,
+            yerr=mg_ratio_uncert,
+            fmt="+",
+            label="MG5aMC@NLO/Data",
+            color="aqua",
+            linewidth=2,
+        )
+        # Add Sherpa ratio
+        if key in mc_preds_mapping:
+            sherpa_ratio = density_sherpa / source_density
+            sherpa_ratio_uncert = sherpa_ratio * error_sherpa
+            rax.errorbar(
+                bin_centers,
+                sherpa_ratio,
+                yerr=sherpa_ratio_uncert,
+                xerr=bin_errors,
+                fmt="+",
+                label="Sherpa/Data",
+                color="purple",
+                linewidth=2,
+            )
+        rax.set_ylabel("Generator/Data")
+    else:
+        # In pseudodata mode: show ratio of data to target
+        rax.errorbar(
+            bin_centers,
+            ratio,
+            xerr=bin_errors,
+            yerr=ratio_uncert,
+            fmt="+",
+            label="Multifold",
+            color="green",
+            linewidth=2,
+        )
+        rax.set_ylabel("Ratio to target")
+
     rax.set_ylim(0.5, 1.5)
     rax.set_yticks([0.5, 1.0, 1.5])
-    rax.set_ylabel("Ratio to target")
     rax.set_xlabel(obs_dict["xlabel"])
     rax.tick_params(axis="x", direction="in", top=True)
     fig1.tight_layout()
-    fig1.savefig(f"./plot_storage/multifold/{key}.pdf")
+    fig1.savefig(f"./plot_storage/multifold/{'data' if args.data else 'pd'}/{key}.pdf")
     plt.close()
 
     # Make uncertainty budget plot
-    plot_total_uncert = np.append(total_uncert, total_uncert[-1])
     plot_systs = {
         "nn-init": {
             "name": "NN Init",
-            "color": "blue",
+            "color": "aqua",
             "vals": np.append(nn_init, nn_init[-1]),
         },
-        "track-eff": {
-            "name": "Track eff.",
+        "tracking": {
+            "name": "Tracking",
             "color": "purple",
-            "vals": np.append(track_eff, track_eff[-1]),
+            "vals": np.append(tracking, tracking[-1]),
         },
         "mc-stat": {
             "name": "MC stat",
             "color": "green",
             "vals": np.append(mc_stat, mc_stat[-1]),
         },
-        "hidden-variable": {
-            "name": "Hidden variable",
-            "color": "orange",
-            "vals": np.append(hidden_variable, hidden_variable[-1]),
+        "unfolding": {
+            "name": "Unfolding",
+            "color": "red",
+            "vals": np.append(unfolding_uncert, unfolding_uncert[-1]),
         },
         "data-stat": {
             "name": "Data stat",
-            "color": "aqua",
+            "color": "blue",
             "vals": np.append(data_stat, data_stat[-1]),
         },
         "mbias": {
             "name": "Bias",
-            "color": "red",
+            "color": "gray",
             "vals": np.append(mbias, mbias[-1]),
         },
     }
@@ -200,7 +326,7 @@ for obs_dict in plots:
     ax = fig.add_subplot(111)
     ax.plot(
         bins,
-        plot_total_uncert,
+        np.append(total_uncert, total_uncert[-1]),
         "--",
         color="black",
         label="Total unc.",
@@ -208,22 +334,32 @@ for obs_dict in plots:
         linewidth=2,
     )
     for plot_dict in plot_systs.values():
-        ax.plot(
-            bins,
-            plot_dict["vals"],
-            "-",
-            color=plot_dict["color"],
-            label=plot_dict["name"],
-            drawstyle="steps-post",
-        )
         if plot_dict["name"] == "Bias":
             ax.fill_between(
-                bins, 0, plot_dict["vals"], step="post", color="gray", alpha=0.3
+                bins,
+                0,
+                plot_dict["vals"],
+                step="post",
+                color="gray",
+                alpha=0.3,
+                label="Method bias",
+            )
+        else:
+            ax.plot(
+                bins,
+                plot_dict["vals"],
+                "-",
+                color=plot_dict["color"],
+                label=plot_dict["name"],
+                drawstyle="steps-post",
             )
     ax.set_ylabel("Uncertainty")
     ax.set_xlabel(obs_dict["xlabel"])
     # ax.set_ylim(0, 1)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4)
     fig.tight_layout()
-    fig.savefig(f"./plot_storage/multifold/{key}_uncert_budget.pdf")
+    fig.savefig(
+        f"./plot_storage/multifold/{'data' if args.data else 'pd'}"
+        f"/{key}_uncert_budget.pdf"
+    )
     plt.close()

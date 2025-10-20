@@ -96,8 +96,9 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
     // hLund_dR_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
     // hLund_plane_R04 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 11, 0.5, 6));
 
-    // hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
-    // hEEC_R06 = make_shared<TH1D>(TH1D("", "", nbins, ak6_edges));
+    hm1_R06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hEEC_R06 = make_shared<TH1D>(TH1D("", "", nbins, ak6_edges));
     // hLund_z_R06 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
     // hLund_dR_R06 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
     // hLund_plane_R06 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
@@ -109,27 +110,28 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
     // hLund_dR_R10 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
     // hLund_plane_R10 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
 
+    hm1_CA04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
     hpT_CA04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
-    // hEEC_CA04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
+    hEEC_CA04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
     hmjj_CA04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
     hdRjj_CA04 = make_shared<TH1D>(TH1D("", "", dRjj_nbins, dRjj_edges));
     hdyjj_CA04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
     hdphijj_CA04 = make_shared<TH1D>(TH1D("", "", 10, dphijj_edges));
 
-    // hm1_CA06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    // hpT_CA06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_CA06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    hpT_CA06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
 
-    // hm1_KT04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    // hpT_KT04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_KT04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    hpT_KT04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
 
-    // hTEEC_collinear = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
-    // hTEEC_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
-    // hTEEC_b2b = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
-    // hTEEC_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
-    // hTEEC_z_collinear = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
-    // hTEEC_z_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
-    // hTEEC_z_b2b = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
-    // hTEEC_z_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
+    hTEEC_collinear = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
+    hTEEC_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
+    hTEEC_b2b = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
+    hTEEC_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
+    hTEEC_z_collinear = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
+    hTEEC_z_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
+    hTEEC_z_b2b = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
+    hTEEC_z_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
 
 }
 
@@ -152,8 +154,9 @@ void HistoGroup::WriteHistos(TFile& foutput) {
     // hLund_dR_R04->Write((name + "hLund_dR_R04").c_str());
     // hLund_plane_R04->Write((name + "hLund_plane_R04").c_str());
 
-    // hpT_R06->Write((name + "hpT_R06").c_str());
-    // hEEC_R06->Write((name + "hEEC_R06").c_str());
+    hm1_R06->Write((name + "hm1_R06").c_str());
+    hpT_R06->Write((name + "hpT_R06").c_str());
+    hEEC_R06->Write((name + "hEEC_R06").c_str());
     // hLund_z_R06->Write((name + "hLund_z_R06").c_str());
     // hLund_dR_R06->Write((name + "hLund_dR_R06").c_str());
     // hLund_plane_R06->Write((name + "hLund_plane_R06").c_str());
@@ -165,26 +168,69 @@ void HistoGroup::WriteHistos(TFile& foutput) {
     // hLund_dR_R10->Write((name + "hLund_dR_R10").c_str());
     // hLund_plane_R10->Write((name + "hLund_plane_R10").c_str());
 
+    hm1_CA04->Write((name + "hm1_CA04").c_str());
     hpT_CA04->Write((name + "hpT_CA04").c_str());
-    // hEEC_CA04->Write((name + "hEEC_CA04").c_str());
+    hEEC_CA04->Write((name + "hEEC_CA04").c_str());
     hmjj_CA04->Write((name + "hmjj_CA04").c_str());
     hdRjj_CA04->Write((name + "hdRjj_CA04").c_str());
     hdyjj_CA04->Write((name + "hdyjj_CA04").c_str());
     hdphijj_CA04->Write((name + "hdphijj_CA04").c_str());
 
-    // hm1_CA06->Write((name + "hm1_CA06").c_str());
-    // hpT_CA06->Write((name + "hpT_CA06").c_str());
+    hm1_CA06->Write((name + "hm1_CA06").c_str());
+    hpT_CA06->Write((name + "hpT_CA06").c_str());
 
-    // hm1_KT04->Write((name + "hm1_KT04").c_str());
-    // hpT_KT04->Write((name + "hpT_KT04").c_str());
+    hm1_KT04->Write((name + "hm1_KT04").c_str());
+    hpT_KT04->Write((name + "hpT_KT04").c_str());
 
-    // hTEEC_collinear->Write((name + "hTEEC_collinear").c_str());
-    // hTEEC_full_nolog->Write((name + "hTEEC_full_nolog").c_str());
-    // hTEEC_b2b->Write((name + "hTEEC_b2b").c_str());
-    // hTEEC_full->Write((name + "hTEEC_full").c_str());
-    // hTEEC_z_collinear->Write((name + "hTEEC_z_collinear").c_str());
-    // hTEEC_z_full_nolog->Write((name + "hTEEC_z_full_nolog").c_str());
-    // hTEEC_z_b2b->Write((name + "hTEEC_z_b2b").c_str());
-    // hTEEC_z_full->Write((name + "hTEEC_z_full").c_str());
+    hTEEC_collinear->Write((name + "hTEEC_collinear").c_str());
+    hTEEC_full_nolog->Write((name + "hTEEC_full_nolog").c_str());
+    hTEEC_b2b->Write((name + "hTEEC_b2b").c_str());
+    hTEEC_full->Write((name + "hTEEC_full").c_str());
+    hTEEC_z_collinear->Write((name + "hTEEC_z_collinear").c_str());
+    hTEEC_z_full_nolog->Write((name + "hTEEC_z_full_nolog").c_str());
+    hTEEC_z_b2b->Write((name + "hTEEC_z_b2b").c_str());
+    hTEEC_z_full->Write((name + "hTEEC_z_full").c_str());
 
+}
+
+void HistoGroup::MergeHistos(const HistoGroup& other) {
+    // Merge all histograms from other into this group
+    hm1_R04->Add(other.hm1_R04.get());
+    hm2_R04->Add(other.hm2_R04.get());
+    hm3_R04->Add(other.hm3_R04.get());
+    hm4_R04->Add(other.hm4_R04.get());
+    hmjj_R04->Add(other.hmjj_R04.get());
+    hdyjj_R04->Add(other.hdyjj_R04.get());
+    hEEC_R04->Add(other.hEEC_R04.get());
+    
+    hm1_R06->Add(other.hm1_R06.get());
+    hpT_R06->Add(other.hpT_R06.get());
+    hEEC_R06->Add(other.hEEC_R06.get());
+    
+    hm1_R10->Add(other.hm1_R10.get());
+    hpT_R10->Add(other.hpT_R10.get());
+    hEEC_R10->Add(other.hEEC_R10.get());
+
+    hm1_CA04->Add(other.hm1_CA04.get());
+    hpT_CA04->Add(other.hpT_CA04.get());
+    hEEC_CA04->Add(other.hEEC_CA04.get());
+    hmjj_CA04->Add(other.hmjj_CA04.get());
+    hdRjj_CA04->Add(other.hdRjj_CA04.get());
+    hdyjj_CA04->Add(other.hdyjj_CA04.get());
+    hdphijj_CA04->Add(other.hdphijj_CA04.get());
+    
+    hm1_CA06->Add(other.hm1_CA06.get());
+    hpT_CA06->Add(other.hpT_CA06.get());
+    
+    hm1_KT04->Add(other.hm1_KT04.get());
+    hpT_KT04->Add(other.hpT_KT04.get());
+    
+    hTEEC_collinear->Add(other.hTEEC_collinear.get());
+    hTEEC_full_nolog->Add(other.hTEEC_full_nolog.get());
+    hTEEC_b2b->Add(other.hTEEC_b2b.get());
+    hTEEC_full->Add(other.hTEEC_full.get());
+    hTEEC_z_collinear->Add(other.hTEEC_z_collinear.get());
+    hTEEC_z_full_nolog->Add(other.hTEEC_z_full_nolog.get());
+    hTEEC_z_b2b->Add(other.hTEEC_z_b2b.get());
+    hTEEC_z_full->Add(other.hTEEC_z_full.get());
 }
