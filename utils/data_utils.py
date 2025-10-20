@@ -135,6 +135,11 @@ def get_kinematics(
         "jet_track_eff": apply jet track efficiency systematic
         "track_fake": apply track fake systematic
         "track_scale": apply track scale systematic
+        "muon_id": apply muon ID track resolution up systematic
+        "muon_ms": apply muon MS track resolution up systematic
+        "muon_resbias": apply muon resolution bias up systematic
+        "muon_rho": apply muon efficiency (?) up sytematic
+        "muon_scale": apply muon scale up systematic
     **kwargs - keyword arguments for systematics to apply to track kinematics
 
     Returns:
@@ -147,22 +152,52 @@ def get_kinematics(
     prekey = ""
     if get_truth:
         prekey = "truth_"
+        assert syst_kw is None, "Cannot run systematics on truth level data"
+
+    # Create muon pre and post key for muon systematics
+    muon_prekey = ""
+    muon_postkey = ""
+    pass_postkey = ""
+    if syst_kw is not None and "muon" in syst_kw:
+        muon_prekey = "syst_"
+        if syst_kw == "muon_id":
+            muon_postkey = "_ID_Up"
+        elif syst_kw == "muon_ms":
+            muon_postkey = "_MS_Up"
+        elif syst_kw == "muon_resbias":
+            muon_postkey = "_MSResbias_Up"
+        elif syst_kw == "muon_rho":
+            muon_postkey = "_MSRho_Up"
+        elif syst_kw == "muon_scale":
+            muon_postkey = "_Scale_Up"
+        pass_postkey = "_syst" + muon_postkey
+    else:
+        muon_prekey = prekey
 
     # Filter information
     evt_filter = ak.to_numpy(
-        tree[prekey + "pass190"].array(entry_start=start, entry_stop=stop)
+        tree[prekey + "pass190" + pass_postkey].array(
+            entry_start=start, entry_stop=stop
+        )
     )
     if passBoth:
+        assert syst_kw is None, "Cannot run systematics and require all filters to pass"
         p190 = ak.to_numpy(tree["pass190"].array(entry_start=start, entry_stop=stop))
         truth_p190 = ak.to_numpy(
             tree["truth_pass190"].array(entry_start=start, entry_stop=stop)
         )
-        evt_filter = np.local_and(p190, truth_p190)
+        evt_filter = np.logical_and(p190, truth_p190)
 
     # Muon information, take logarithm of pT values immediately
+    # Note also that muon systs only effect the pT values, so only need to add special
+    # pre and post keys for these
     m1_pt = np.log(
         ak.unflatten(
-            tree[prekey + "pT_l1"].array(entry_start=start, entry_stop=stop), 1, axis=0
+            tree[muon_prekey + "pT_l1" + muon_postkey].array(
+                entry_start=start, entry_stop=stop
+            ),
+            1,
+            axis=0,
         )
     )
     m1_eta = ak.unflatten(
@@ -173,7 +208,11 @@ def get_kinematics(
     )
     m2_pt = np.log(
         ak.unflatten(
-            tree[prekey + "pT_l2"].array(entry_start=start, entry_stop=stop), 1, axis=0
+            tree[muon_prekey + "pT_l2" + muon_postkey].array(
+                entry_start=start, entry_stop=stop
+            ),
+            1,
+            axis=0,
         )
     )
     m2_eta = ak.unflatten(
@@ -206,9 +245,15 @@ def get_kinematics(
         # Pull info, note taking log of track pT values here
         if syst_kw == "track_scale":
             assert not get_truth, "Cannot run track scale systematic on truth data"
-            track_pt = np.log(ak.unflatten(tree["syst_correctedpT_tracks"].array(
-                entry_start=start, entry_stop=stop
-            ), 1, axis=0))
+            track_pt = np.log(
+                ak.unflatten(
+                    tree["syst_correctedpT_tracks"].array(
+                        entry_start=start, entry_stop=stop
+                    ),
+                    1,
+                    axis=0,
+                )
+            )
         else:
             track_pt = np.log(
                 ak.unflatten(
@@ -266,6 +311,7 @@ def get_observables(
     start=None,
     stop=None,
     passBoth=False,
+    syst_kw=None,
 ):
     """get_observables - This function will accept an uproot TTree object, and
     return the requested branches as numpy arrays.
@@ -278,6 +324,8 @@ def get_observables(
     start - starting event index, optional
     stop - stopping event index, optional
     passBoth - If true, require events pass both reco and truth selections
+    syst_kw - keyword argument for the systematic to apply. Note only muon systematics
+        effect pass190 flag. Track systematics passed here will have no effect
 
     Returns:
     plotting - numpy array of requested branches, stacked along the second axis
@@ -286,14 +334,31 @@ def get_observables(
     # Initialize empty list to hold requested branches
     observables = []
 
-    # Get filter, need to know whether we want truth or reco level data
+    # Get pre and post keys
     prekey = ""
-    if get_truth:
+    postkey = ""
+    if syst_kw is not None and "muon" in syst_kw:
+        prekey = ""
+        if syst_kw == "muon_id":
+            postkey = "_syst_ID_Up"
+        elif syst_kw == "muon_ms":
+            postkey = "_syst_MS_Up"
+        elif syst_kw == "muon_resbias":
+            postkey = "_syst_MSResbias_Up"
+        elif syst_kw == "muon_rho":
+            postkey = "_syst_MSRho_Up"
+        elif syst_kw == "muon_scale":
+            postkey = "_syst_Scale_Up"
+    elif get_truth:
+        assert syst_kw is None, "Cannot run systematics on truth level data"
         prekey = "truth_"
+
+    # Get the filter
     evt_filter = ak.to_numpy(
-        tree[prekey + "pass190"].array(entry_start=start, entry_stop=stop)
+        tree[prekey + "pass190" + postkey].array(entry_start=start, entry_stop=stop)
     )
     if passBoth:
+        assert syst_kw is None, "Cannot run systematics and require all filters to pass"
         p190 = ak.to_numpy(tree["pass190"].array(entry_start=start, entry_stop=stop))
         truth_p190 = ak.to_numpy(
             tree["truth_pass190"].array(entry_start=start, entry_stop=stop)
@@ -421,23 +486,43 @@ def get_w1_obs(get_truth=False, syst_kw=None):
     """
 
     # Mapping dictionary for syst_kw to prekey in trees
-    syst_map = {
+    syst_prekey_map = {
         None: "",
         "track_eff": "syst_TrackFilter_",
         "jet_track_eff": "syst_JetTrackFilter_",
         "track_fake": "syst_Fake_",
         "track_scale": "syst_pTScale_",
+        "muon_id": "syst_",
+        "muon_ms": "syst_",
+        "muon_resbias": "syst_",
+        "muon_rho": "syst_",
+        "muon_scale": "syst_",
+    }
+    syst_postkey_map = {
+        None: "",
+        "track_eff": "",
+        "jet_track_eff": "",
+        "track_fake": "",
+        "track_scale": "",
+        "muon_id": "_ID_Up",
+        "muon_ms": "_MS_Up",
+        "muon_resbias": "_MSResbias_Up",
+        "muon_rho": "_MSRho_Up",
+        "muon_scale": "_Scale_Up",
     }
 
-    # Set prekey
+    # Set pre and post keys
     if get_truth:
         assert syst_kw is None, "Cannot run systematics on truth level data"
         prekey = "truth_"
+        postkey = ""
     elif syst_kw is not None:
         assert not get_truth, "Cannot run systematics on truth level data"
-        prekey = syst_map[syst_kw]
+        prekey = syst_prekey_map[syst_kw]
+        postkey = syst_postkey_map[syst_kw]
     else:
         prekey = ""
+        postkey = ""
 
     # Loop through plotting config and get keys
     with open("./utils/plots_config.yml", "r") as stream:
@@ -447,18 +532,17 @@ def get_w1_obs(get_truth=False, syst_kw=None):
         # Skip the observables not used for w1 calculation
         if not plots_config["plots"][plot]["w1_eval"]:
             continue
-        # Check if systematic is active
+        # Pull the correct key
+        key = plots_config["plots"][plot]["key"]
+        # Check if a systematic is activate
         if syst_kw is not None:
-            # Add prekey if systematic effects this observabel
+            # Adjust key if systematic effects this observable
             if syst_kw in plots_config["plots"][plot]["modified"]:
-                key = prekey + plots_config["plots"][plot]["key"]
-            # Else use the key as is
-            else:
-                key = plots_config["plots"][plot]["key"]
+                key = prekey + key + postkey
         # If systematic is not active, always use the prekey
+        # to possibly get the truth level data
         else:
-            # Else awlays use
-            key = prekey + plots_config["plots"][plot]["key"]
+            key = prekey + key
         w1_keys.append(key)
 
     return w1_keys

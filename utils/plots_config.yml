@@ -52,6 +52,7 @@ plots:
         - 500.0
         - 800.0
     verbosity_level: 1
+    modified: ["muon_id", "muon_ms", "muon_resbias", "muon_rho", "muon_scale"]
 
   pT_l2:
     <<: *default_plot
@@ -68,6 +69,7 @@ plots:
       - 300.0
       - 400.0
     verbosity_level: 1
+    modified: ["muon_id", "muon_ms", "muon_resbias", "muon_rho", "muon_scale"]
 
   eta_l1:
     <<: *default_plot
@@ -204,6 +206,7 @@ plots:
         - 600.0
         - 1000.0
     verbosity_level: 1
+    modified: ["muon_id", "muon_ms", "muon_resbias", "muon_rho", "muon_scale"]
 
   y_ll:
     <<: *default_plot
@@ -228,6 +231,7 @@ plots:
       - 2.0
       - 2.5
     verbosity_level: 2
+    modified: ["muon_id", "muon_ms", "muon_resbias", "muon_rho", "muon_scale"]
 
   pT_trackj1:
     <<: *default_plot

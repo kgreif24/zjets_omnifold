@@ -221,25 +221,37 @@ def test_get_observables_syst():
     f = uproot.open(sample)
     t = f["OmniTree"]
     p190 = ak.to_numpy(t["pass190"].array())
+    mid_p190 = ak.to_numpy(t["pass190_syst_ID_Up"].array())
 
     # Get obserable keys
     nominal_keys = du.get_w1_obs()
     trackeff_keys = du.get_w1_obs(syst_kw="track_eff")
     trackscale_keys = du.get_w1_obs(syst_kw="track_scale")
+    muonid_keys = du.get_w1_obs(syst_kw="muon_id")
     assert len(nominal_keys) == len(trackeff_keys)
     assert len(nominal_keys) == len(trackscale_keys)
+    assert len(nominal_keys) == len(muonid_keys)
 
     # Filter out 3 keys
     nominal_3keys = ["Ntracks", "HT_tracks", "pT_ll"]
     trackeff_3keys = ["syst_TrackFilter_Ntracks", "syst_TrackFilter_HT_tracks", "pT_ll"]
+    muonid_3keys = [
+        "syst_pT_l1_ID_Up",
+        "syst_pT_ll_ID_Up",
+        "m_trackj1",
+    ]
     assert all([key in nominal_keys for key in nominal_3keys])
     assert all([key in trackeff_keys for key in trackeff_3keys])
+    assert all([key in muonid_keys for key in muonid_3keys])
 
     # Get nominal and syst varied observables
-    nominal_obs = du.get_observables(t, nominal_3keys)
-    trackeff_obs = du.get_observables(t, trackeff_3keys)
+    nominal_obs = du.get_observables(t, nominal_3keys, syst_kw=None)
+    trackeff_obs = du.get_observables(t, trackeff_3keys, syst_kw="track_eff")
+    muonid_obs = du.get_observables(t, muonid_3keys, syst_kw="muon_id")
     assert nominal_obs.shape == trackeff_obs.shape == (np.sum(p190), 3)
+    assert muonid_obs.shape == (np.sum(mid_p190), 3)
 
+    # Verify some features of the track systematics
     assert np.all(nominal_obs[:, 0] >= trackeff_obs[:, 0])
     assert np.all(nominal_obs[:, 1] + 1e-4 >= trackeff_obs[:, 1])
     assert np.all(np.isclose(nominal_obs[:, 2], trackeff_obs[:, 2], rtol=1e-4))

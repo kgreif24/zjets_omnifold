@@ -459,6 +459,7 @@ class LOfData(L.LightningDataModule):
             get_truth=self.use_truth,
             start=start,
             stop=stop,
+            syst_kw=self.syst_kw if which_file == "source" else None,
         )
 
         return kinematics, indeces, pdgids, weights, weights_root, w1_observables
