@@ -78,62 +78,57 @@ def test_omnifold_process(tmp_path):
     i1s1 = np.load(
         tmp_path / "test-of" / "test-of-run_1" / "weights" / "iteration_1_step_1.npz"
     )
-    p190 = i1s1["source_pass190_test"]
     raw_test = i1s1["raw_test_output"]
-    assert len(raw_test) == np.count_nonzero(p190)
     expected_net_weights = np.exp(raw_test)
     assert np.all(expected_net_weights == i1s1["network_test"])
     test_weights = i1s1["test"]
-    assert np.all(test_weights[p190 == 1] == expected_net_weights)
-    assert np.all(test_weights[p190 == 0] == np.ones(len(p190[p190 == 0])))
+    assert np.all(test_weights[mc_test_p190 == 1] == expected_net_weights)
+    assert np.all(
+        test_weights[mc_test_p190 == 0] == np.ones(len(mc_test_p190[mc_test_p190 == 0]))
+    )
 
     # Check that the i1s2 weights are correct
     i1s2 = np.load(
         tmp_path / "test-of" / "test-of-run_1" / "weights" / "iteration_1_step_2.npz"
     )
-    truth_p190 = i1s2["source_truth_pass190_test"]
     raw_test = i1s2["raw_test_output"]
-    assert len(raw_test) == np.count_nonzero(truth_p190)
     expected_net_weights = np.exp(raw_test)
     assert np.all(expected_net_weights == i1s2["network_test"])
     test_weights = i1s2["test"]
-    assert np.all(test_weights[truth_p190 == 1] == expected_net_weights)
+    assert np.all(test_weights[mc_test_truth_p190 == 1] == expected_net_weights)
     assert np.all(
-        test_weights[truth_p190 == 0] == np.ones(len(truth_p190[truth_p190 == 0]))
+        test_weights[mc_test_truth_p190 == 0]
+        == np.ones(len(mc_test_truth_p190[mc_test_truth_p190 == 0]))
     )
 
     # Check that the i2s1 weights are correct
     i2s1 = np.load(
         tmp_path / "test-of" / "test-of-run_1" / "weights" / "iteration_2_step_1.npz"
     )
-    p190 = i2s1["source_pass190_test"]
     raw_test = i2s1["raw_test_output"]
-    assert len(raw_test) == np.count_nonzero(p190)
     expected_net_weights = np.exp(raw_test)
     assert np.all(expected_net_weights == i2s1["network_test"])
     test_weights = i2s1["test"]
     assert np.all(
-        test_weights[p190 == 1]
+        test_weights[mc_test_p190 == 1]
         == expected_net_weights * i1s2["test"][mc_test_p190 == 1]
     )
-    assert np.all(test_weights[p190 == 0] == i1s2["test"][mc_test_p190 == 0])
+    assert np.all(test_weights[mc_test_p190 == 0] == i1s2["test"][mc_test_p190 == 0])
 
     # Check that the i2s2 weights are correct
     i2s2 = np.load(
         tmp_path / "test-of" / "test-of-run_1" / "weights" / "iteration_2_step_2.npz"
     )
-    truth_p190 = i2s2["source_truth_pass190_test"]
     raw_test = i2s2["raw_test_output"]
-    assert len(raw_test) == np.count_nonzero(truth_p190)
     expected_net_weights = np.exp(raw_test)
     assert np.all(expected_net_weights == i2s2["network_test"])
     test_weights = i2s2["test"]
     assert np.all(
-        test_weights[truth_p190 == 1]
+        test_weights[mc_test_truth_p190 == 1]
         == expected_net_weights * i1s2["test"][mc_test_truth_p190 == 1]
     )
     assert np.all(
-        test_weights[truth_p190 == 0] == i1s2["test"][mc_test_truth_p190 == 0]
+        test_weights[mc_test_truth_p190 == 0] == i1s2["test"][mc_test_truth_p190 == 0]
     )
 
 

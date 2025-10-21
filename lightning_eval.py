@@ -390,12 +390,6 @@ class OfEval:
             self.updated_weights_test = start_weights_test.copy()
             self.updated_weights_test[pass190_test == 1] *= network_weights_test
 
-            # Get all pass190s for source
-            source_pass190_train = d_module_train.get_source_reco_pass190()
-            source_pass190_test = d_module_test.get_source_reco_pass190()
-            source_truth_pass190_train = d_module_train.get_source_truth_pass190()
-            source_truth_pass190_test = d_module_test.get_source_truth_pass190()
-
             # Make and log test plots
             root_weights_test = d_module_test.get_source_root_weights()
             plot_weights_test = self.updated_weights_test * root_weights_test
@@ -425,10 +419,6 @@ class OfEval:
                 network_test=network_weights_test,
                 train=self.updated_weights_train,
                 test=self.updated_weights_test,
-                source_pass190_train=source_pass190_train,
-                source_pass190_test=source_pass190_test,
-                source_truth_pass190_train=source_truth_pass190_train,
-                source_truth_pass190_test=source_truth_pass190_test,
             )
 
         # Wait for rank 0 process to finish saving weights and plotting

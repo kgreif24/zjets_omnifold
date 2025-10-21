@@ -141,16 +141,7 @@ class LOfData(L.LightningDataModule):
         self.num_source = self.source_tree.num_entries
         if self.num_source > self.max_events_source:
             self.num_source = self.max_events_source
-        self.source_pass190 = ak.to_numpy(
-            self.source_tree["pass190"].array(entry_stop=self.num_source)
-        )
-        self.source_truth_pass190 = ak.to_numpy(
-            self.source_tree["truth_pass190"].array(entry_stop=self.num_source)
-        )
-        if self.use_truth:
-            self.source_use190 = self.source_truth_pass190
-        else:
-            self.source_use190 = self.source_pass190
+        self.source_use190 = self._get_pass190("source", syst_kw=self.syst_kw)
         rank_zero_info(f"Loading source data from {self.source_file}")
 
         # If we have a target file, do the same for the target, else set to None
@@ -159,21 +150,10 @@ class LOfData(L.LightningDataModule):
             self.num_target = self.target_tree.num_entries
             if self.num_target > self.max_events_target:
                 self.num_target = self.max_events_target
-            self.target_pass190 = ak.to_numpy(
-                self.target_tree["pass190"].array(entry_stop=self.num_target)
-            )
-            if self.use_truth:
-                self.target_truth_pass190 = ak.to_numpy(
-                    self.target_tree["truth_pass190"].array(entry_stop=self.num_target)
-                )
-                self.target_use190 = self.target_truth_pass190
-            else:
-                self.target_use190 = self.target_pass190
+            self.target_use190 = self._get_pass190("target")
             rank_zero_info(f"Loading target data from {self.target_file}")
         else:
             self.num_target = None
-            self.target_pass190 = None
-            self.target_truth_pass190 = None
             self.target_use190 = None
 
         rank_zero_info(f"We have {self.num_source} source events")
@@ -209,6 +189,51 @@ class LOfData(L.LightningDataModule):
         if self.target_file is not None:
             self._rebuild_dataset("target", piece=self.current_piece)
             self._concatenate_datasets(piece=self.current_piece)
+
+    def _get_pass190(self, filename, syst_kw=None):
+        """_get_pass190 - This function gets the pass190 filter for the source
+        or target data. It returns the pass190 filter as a numpy array. Also
+        accepts a syst_kw argument to adjust pass190 flags for muon systematics
+        (only for source data)
+
+        Arguments:
+            filename {str} -- The file to get the pass190 filter from. Can be 'source'
+                or 'target'.
+            syst_kw {str} -- The systematic keyword to apply to the pass190 filter.
+                Only used for source data. Defaults to None.
+
+        Returns:
+            np.ndarray -- The pass190 filter as a numpy array.
+        """
+
+        # Adjust key depending on truth / reco and syst_kw
+        prekey = ""
+        postkey = ""
+        if syst_kw is not None and "muon" in syst_kw:
+            prekey = ""
+            if syst_kw == "muon_id":
+                postkey = "_syst_ID_Up"
+            elif syst_kw == "muon_ms":
+                postkey = "_syst_MS_Up"
+            elif syst_kw == "muon_resbias":
+                postkey = "_syst_MSResbias_Up"
+            elif syst_kw == "muon_rho":
+                postkey = "_syst_MSRho_Up"
+            elif syst_kw == "muon_scale":
+                postkey = "_syst_Scale_Up"
+        elif self.use_truth:
+            prekey = "truth_"
+        pass190_key = prekey + "pass190" + postkey
+
+        # Get the pass190 filter from the tre
+        if filename == "source":
+            return ak.to_numpy(
+                self.source_tree[pass190_key].array(entry_stop=self.num_source)
+            )
+        elif filename == "target":
+            return ak.to_numpy(
+                self.target_tree[pass190_key].array(entry_stop=self.num_target)
+            )
 
     def _setup_pieces(self, num_events):
         """_setup_pieces - This function sets up the pieces for the data module.
@@ -630,7 +655,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start:start+idx])
+        acquired_good_evts = np.sum(pass190[start:start + idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts
@@ -681,12 +706,6 @@ class LOfData(L.LightningDataModule):
 
     def get_target_pass190(self):
         return self.target_use190
-
-    def get_source_reco_pass190(self):
-        return self.source_pass190
-
-    def get_source_truth_pass190(self):
-        return self.source_truth_pass190
 
     # Train dataloader
     def train_dataloader(self):
