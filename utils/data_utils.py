@@ -217,6 +217,7 @@ def get_kinematics(
 
     # Apply filter
     kinematics = kinematics[evt_filter == 1, ...]
+    assert ak.all(kinematics > -98), "Kinematics contains -99s"
     pdgids = pdgids[evt_filter == 1, ...]
 
     # Track information if requested
@@ -592,7 +593,7 @@ def calc_muon_syst_pass190(tree, stop=None, syst_kw=None):
     # Load the needed branches
     ptll = ak.to_numpy(tree[prekey + "pT_ll" + postkey].array(entry_stop=stop))
     mll = ak.to_numpy(tree[prekey + "m_ll" + postkey].array(entry_stop=stop))
-    yll = ak.to_numpy(tree[prekey + "y_ll" + postkey].array(entry_stop=stop))
+    yll = ak.to_numpy(tree["y_ll"].array(entry_stop=stop))
 
     # Return the filter
     return (ptll > 190) & (mll > 81) & (mll < 101) & (yll > -98)
