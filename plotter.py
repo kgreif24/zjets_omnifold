@@ -49,6 +49,7 @@ class Plotter:
         root_files=None,
         ibu_bins=False,
         kinematic_region=0,
+        syst_kw=None,
     ):
         """Initializes the Plotter class with the source and target paths
         for the root files. The verbosity level controls how many plots are
@@ -79,6 +80,8 @@ class Plotter:
                 1. High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2. Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3. Diboson enhanced: pT_j1 > 32 GeV
+            syst_kw (str): Systematic to apply. Only needed to handle plotting
+                with active muon systematics. Defaults to None.
         """
 
         # Store instance variables
@@ -97,6 +100,8 @@ class Plotter:
         self.root_files = root_files
         self.ibu_bins = ibu_bins
         self.kinematic_region = kinematic_region
+        self.syst_kw = syst_kw
+        self.syst_prekey, self.syst_postkey = du.get_syst_pre_and_post_keys(syst_kw)
 
         # Initialize ROOT file caching
         self._root_file_cache = {}
@@ -334,11 +339,12 @@ class Plotter:
         target = target[target_pass190 == 1]
 
         # Get data and labels for W1 calculation
-        w1_keys = du.get_w1_obs()
-        source_w1_obs = np.stack([self._get_data(key) for key in w1_keys], axis=-1)
-        target_w1_obs = np.stack(
-            [self._get_data(key, is_target=True) for key in w1_keys],
-            axis=-1,
+        w1_keys = du.get_w1_obs(get_truth=self.use_truth, syst_kw=self.syst_kw)
+        source_w1_obs = du.get_observables(
+            self.source_tree, w1_keys, evt_filter=source_pass190
+        )
+        target_w1_obs = du.get_observables(
+            self.target_tree, w1_keys, evt_filter=target_pass190
         )
         w1_data = np.concatenate((source_w1_obs, target_w1_obs), axis=0)
         labels = np.concatenate(
@@ -363,6 +369,7 @@ class Plotter:
     def _get_histogram(
         self,
         plot_dict,
+        is_target=False,
         weights=None,
         density=False,
         root_index=0,
@@ -385,6 +392,7 @@ class Plotter:
         Arguments:
             plot_dict (dict): Dictionary containing the plot configuration
                 including the key for the observable.
+            is_target (bool): If true, pull from the target tree instead of source
             weights (np.array): Weights to use for histogram in building
                 the histogram
             density (bool): If True, will normalize the histogram to
@@ -420,8 +428,13 @@ class Plotter:
         else:
             assert not return_variance
 
+            # Get the correct key
+            key = plot_dict["key"]
+            if not is_target and self.syst_kw in plot_dict["modified"]:
+                key = self.syst_prekey + key + self.syst_postkey
+
             # Get filtered data
-            data = self._get_data(plot_dict["key"], **kwargs)
+            data = self._get_data(key, is_target=is_target)
 
             # Create histogram using shared method
             hist, bins = self._create_histogram_from_data(
@@ -543,6 +556,7 @@ class Plotter:
             key = "truth_" + key
 
         # Load data
+        print(f"Loading data for key: {key}")
         data = tree[key].array(entry_stop=max_events)
 
         # Apply pass190 filter (should already include kinematic cuts)
@@ -829,21 +843,49 @@ class Plotter:
             )
 
     def _get_cached_pass190_flags(self, tree_type="source"):
-        """Cache and return pass190 flags for the given tree type."""
+        """Cache and return pass190 flags for the given tree type.
+        This typically involves pulling the pass190 flags from the tree, but
+        in the special case of running muon systematics, we need to re-calculate
+        the flags from scratch.
+        Arguments:
+            tree_type (str): Type of tree to get pass190 flags for
+                "source" or "target"
+
+        Returns:
+            np.array: Boolean mask for the events in the given kinematic region.
+        """
+
+        # Only need to care about muon systematics, and only for source data
+        recalc = (
+            self.syst_kw is not None
+            and "muon" in self.syst_kw
+            and tree_type == "source"
+        )
+
+        # Use cached flags if available
         if tree_type in self._pass190_cache:
             return self._pass190_cache[tree_type]
 
-        if tree_type == "source":
-            tree = self.source_tree
-            max_events = self.source_events
-        elif tree_type == "target":
-            tree = self.target_tree
-            max_events = self.target_events
-        else:
-            raise ValueError(f"Unknown tree_type: {tree_type}")
+        # Use the flags from the trees in the majority of cases
+        if not recalc:
 
-        pull_key = "truth_pass190" if self.use_truth else "pass190"
-        flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
+            if tree_type == "source":
+                tree = self.source_tree
+                max_events = self.source_events
+            elif tree_type == "target":
+                tree = self.target_tree
+                max_events = self.target_events
+            else:
+                raise ValueError(f"Unknown tree_type: {tree_type}")
+
+            pull_key = "truth_pass190" if self.use_truth else "pass190"
+            flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
+
+        # Else recalculate with the muon systematic varied inputs
+        else:
+            flags = du.calc_muon_syst_pass190(
+                self.source_tree, stop=max_events, syst_kw=self.syst_kw
+            )
 
         self._pass190_cache[tree_type] = flags
         return flags

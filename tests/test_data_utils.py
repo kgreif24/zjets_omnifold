@@ -113,7 +113,7 @@ def test_get_kinematics():
     nt = nt[p190 == 1]
 
     # Assert we have the expected number of events
-    gk1, ind1, pdgids = du.get_kinematics(t)
+    gk1, ind1, pdgids = du.get_kinematics(t, evt_filter=p190)
     assert len(gk1) == np.sum(p190)
     assert len(ind1) == np.sum(p190)
     assert len(pdgids) == np.sum(p190)
@@ -150,7 +150,7 @@ def test_get_kinematics_truth():
     nt = nt[p190 == 1]
 
     # Assert we have the expected number of events
-    gk1, ind1, pdgids = du.get_kinematics(t, get_truth=True)
+    gk1, ind1, pdgids = du.get_kinematics(t, get_truth=True, evt_filter=p190)
     assert len(gk1) == np.sum(p190)
     assert len(ind1) == np.sum(p190)
     assert len(pdgids) == np.sum(p190)
@@ -172,16 +172,18 @@ def test_get_kinematics_syst():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Get nominal kinematics
-    nominal_kinematics, nominal_indices, _ = du.get_kinematics(t)
+    nominal_kinematics, nominal_indices, _ = du.get_kinematics(t, evt_filter=p190)
     assert len(nominal_kinematics) == np.sum(p190)
 
     # Get systematic kinematics
-    trackeff_kinematics, trackeff_indices, _ = du.get_kinematics(t, syst_kw="track_eff")
+    trackeff_kinematics, trackeff_indices, _ = du.get_kinematics(
+        t, syst_kw="track_eff", evt_filter=p190
+    )
     assert len(trackeff_kinematics) == np.sum(p190)
 
     # Get track scale kinematics
     trackscale_kinematics, trackscale_indices, _ = du.get_kinematics(
-        t, syst_kw="track_scale"
+        t, syst_kw="track_scale", evt_filter=p190
     )
     assert len(trackscale_kinematics) == np.sum(p190)
 
@@ -210,7 +212,7 @@ def test_get_observables():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Assert we have 100 events and 2 vars
-    plotting = du.get_observables(t, ["Ntracks", "pT_ll"])
+    plotting = du.get_observables(t, ["Ntracks", "pT_ll"], evt_filter=p190)
     assert plotting.shape == (np.sum(p190), 2)
 
 
@@ -221,7 +223,10 @@ def test_get_observables_syst():
     f = uproot.open(sample)
     t = f["OmniTree"]
     p190 = ak.to_numpy(t["pass190"].array())
-    mid_p190 = ak.to_numpy(t["pass190_syst_ID_Up"].array())
+    mptll = ak.to_numpy(t["syst_pT_ll_ID_Up"].array())
+    mmll = ak.to_numpy(t["syst_m_ll_ID_Up"].array())
+    myll = ak.to_numpy(t["syst_y_ll_ID_Up"].array())
+    mid_p190 = (mptll > 190) & (mmll > 81) & (mmll < 101) & (myll > -98)
 
     # Get obserable keys
     nominal_keys = du.get_w1_obs()
@@ -245,9 +250,9 @@ def test_get_observables_syst():
     assert all([key in muonid_keys for key in muonid_3keys])
 
     # Get nominal and syst varied observables
-    nominal_obs = du.get_observables(t, nominal_3keys, syst_kw=None)
-    trackeff_obs = du.get_observables(t, trackeff_3keys, syst_kw="track_eff")
-    muonid_obs = du.get_observables(t, muonid_3keys, syst_kw="muon_id")
+    nominal_obs = du.get_observables(t, nominal_3keys, evt_filter=p190)
+    trackeff_obs = du.get_observables(t, trackeff_3keys, evt_filter=p190)
+    muonid_obs = du.get_observables(t, muonid_3keys, evt_filter=mid_p190)
     assert nominal_obs.shape == trackeff_obs.shape == (np.sum(p190), 3)
     assert muonid_obs.shape == (np.sum(mid_p190), 3)
 
@@ -266,7 +271,7 @@ def test_stack():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Get kinematics
-    gk1, ind1, pdgids = du.get_kinematics(t)
+    gk1, ind1, pdgids = du.get_kinematics(t, evt_filter=p190)
 
     # Zero pad kinematics
     gk1 = du.pad_kinematics(gk1, max_tracks=10, fill=0)
@@ -288,3 +293,19 @@ def test_stack():
     # Concatenate one hot with kinematics
     gk1 = np.concatenate([gk1, masses, one_hot], axis=1)
     assert gk1.shape == (np.sum(p190), 10, 10)
+
+
+def test_calc_muon_syst_pass190():
+
+    # Hardcode the location of the event sample
+    sample = "./assets/evts_000_100.root"
+    f = uproot.open(sample)
+    t = f["OmniTree"]
+    mid_p190 = du.calc_muon_syst_pass190(t, stop=len(t), syst_kw="muon_id")
+    ptll = ak.to_numpy(t["syst_pT_ll_ID_Up"].array())
+    mll = ak.to_numpy(t["syst_m_ll_ID_Up"].array())
+    yll = ak.to_numpy(t["syst_y_ll_ID_Up"].array())
+    assert np.all(ptll[mid_p190] > 190)
+    assert np.all(mll[mid_p190] > 81)
+    assert np.all(mll[mid_p190] < 101)
+    assert np.all(yll[mid_p190] > -98)

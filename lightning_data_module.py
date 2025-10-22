@@ -194,7 +194,12 @@ class LOfData(L.LightningDataModule):
         """_get_pass190 - This function gets the pass190 filter for the source
         or target data. It returns the pass190 filter as a numpy array. Also
         accepts a syst_kw argument to adjust pass190 flags for muon systematics
-        (only for source data)
+        (only for source data).
+
+        Note if syst_kw is None, then the nominal pass190 filter is returned.
+        If the string "muon" is in syst_kw, then the pass190 filter will be
+        re-calculated since we can't trust the syst-varied pass190 flags in
+        the trees.
 
         Arguments:
             filename {str} -- The file to get the pass190 filter from. Can be 'source'
@@ -206,33 +211,25 @@ class LOfData(L.LightningDataModule):
             np.ndarray -- The pass190 filter as a numpy array.
         """
 
-        # Adjust key depending on truth / reco and syst_kw
-        prekey = ""
-        postkey = ""
-        if syst_kw is not None and "muon" in syst_kw:
-            prekey = ""
-            if syst_kw == "muon_id":
-                postkey = "_syst_ID_Up"
-            elif syst_kw == "muon_ms":
-                postkey = "_syst_MS_Up"
-            elif syst_kw == "muon_resbias":
-                postkey = "_syst_MSResbias_Up"
-            elif syst_kw == "muon_rho":
-                postkey = "_syst_MSRho_Up"
-            elif syst_kw == "muon_scale":
-                postkey = "_syst_Scale_Up"
-        elif self.use_truth:
-            prekey = "truth_"
-        pass190_key = prekey + "pass190" + postkey
+        # Return the tree value if we are not running muon systematics
+        if syst_kw is None or "muon" not in syst_kw:
+            key = ""
+            if self.use_truth:
+                key = "truth_"
+            if filename == "source":
+                return ak.to_numpy(
+                    self.source_tree[key + "pass190"].array(entry_stop=self.num_source)
+                )
+            elif filename == "target":
+                return ak.to_numpy(
+                    self.target_tree[key + "pass190"].array(entry_stop=self.num_target)
+                )
 
-        # Get the pass190 filter from the tre
-        if filename == "source":
-            return ak.to_numpy(
-                self.source_tree[pass190_key].array(entry_stop=self.num_source)
-            )
-        elif filename == "target":
-            return ak.to_numpy(
-                self.target_tree[pass190_key].array(entry_stop=self.num_target)
+        # Else we are running muon systematics, need to re-calculate the pass190 filter
+        else:
+            assert not self.use_truth, "Cannot run muon systematics on truth level data"
+            return du.calc_muon_syst_pass190(
+                self.source_tree, stop=self.num_source, syst_kw=syst_kw
             )
 
     def _setup_pieces(self, num_events):
@@ -449,11 +446,13 @@ class LOfData(L.LightningDataModule):
             np.ndarray -- The W1 observable data
         """
 
-        # Get tree to use
+        # Get tree and filters to use
         if which_file == "source":
             tree = self.source_tree
+            evt_filter = self.get_source_pass190()
         elif which_file == "target":
             tree = self.target_tree
+            evt_filter = self.get_target_pass190()
         else:
             raise ValueError("Invalid file argument")
 
@@ -461,6 +460,7 @@ class LOfData(L.LightningDataModule):
         # Note systematics are only ever applied to the source data
         kinematics, indeces, pdgids = du.get_kinematics(
             tree,
+            evt_filter=evt_filter,
             muon_only=self.muon_only,
             get_truth=self.use_truth,
             start=start,
@@ -481,10 +481,9 @@ class LOfData(L.LightningDataModule):
         w1_observables = du.get_observables(
             tree,
             w1_keys,
-            get_truth=self.use_truth,
+            evt_filter=evt_filter,
             start=start,
             stop=stop,
-            syst_kw=self.syst_kw if which_file == "source" else None,
         )
 
         return kinematics, indeces, pdgids, weights, weights_root, w1_observables

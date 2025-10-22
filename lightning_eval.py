@@ -252,6 +252,7 @@ class OfEval:
                 labels=labels,
                 verbosity=1,
                 max_events=self.config.max_events_target,
+                syst_kw=self.use_syst_kw,
             )
 
             if step == 2 and self.config.truth_data_path is not None:
