@@ -884,7 +884,7 @@ class Plotter:
         # Else recalculate with the muon systematic varied inputs
         else:
             flags = du.calc_muon_syst_pass190(
-                self.source_tree, stop=max_events, syst_kw=self.syst_kw
+                self.source_tree, stop=self.source_events, syst_kw=self.syst_kw
             )
 
         self._pass190_cache[tree_type] = flags
