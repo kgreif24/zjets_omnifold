@@ -556,7 +556,6 @@ class Plotter:
             key = "truth_" + key
 
         # Load data
-        print(f"Loading data for key: {key}")
         data = tree[key].array(entry_stop=max_events)
 
         # Apply pass190 filter (should already include kinematic cuts)

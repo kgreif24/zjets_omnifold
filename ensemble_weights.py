@@ -91,8 +91,9 @@ parser.add_argument(
 parser.add_argument("--output", type=str, help="Output file path")
 args = parser.parse_args()
 
-# Load indices for unshuffling MC test events
+# Load indices for unshuffling MC test events and HV events
 indices_nominal = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices.npy")
+indices_hv = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices_hv.npy")
 
 # Define the names of the various run groups in a campaign
 assert len(args.iterations) == len(
@@ -110,7 +111,7 @@ for gn, it in zip(args.group_names, args.iterations):
     print(f"Pulling weights for {pull_gn}")
     # Set the indices to use
     if gn == "hv":
-        use_indices = None
+        use_indices = indices_hv
     else:
         use_indices = indices_nominal
     pulled_weights = pull_weights(
