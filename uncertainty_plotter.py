@@ -97,11 +97,47 @@ class UncertaintyPlotter(plotter.Plotter):
                 "plot_ratio": False,
                 "stochastic": False,
             },
-            "mc-stat": {
-                "name": "MC stat",
-                "color": "green",
+            "track-fake": {
+                "name": "Track fake",
+                "color": "brown",
                 "plot_ratio": False,
-                "stochastic": True,
+                "stochastic": False,
+            },
+            "track-scale": {
+                "name": "Track scale",
+                "color": "gray",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
+            "muon-id": {
+                "name": "Muon ID",
+                "color": "lightgreen",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
+            "muon-ms": {
+                "name": "Muon MS",
+                "color": "lightblue",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
+            "muon-resbias": {
+                "name": "Muon resolution bias",
+                "color": "deepskyblue",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
+            "muon-rho": {
+                "name": "Muon rho",
+                "color": "lightseagreen",
+                "plot_ratio": False,
+                "stochastic": False,
+            },
+            "muon-scale": {
+                "name": "Muon scale",
+                "color": "teal",
+                "plot_ratio": False,
+                "stochastic": False,
             },
             "hv": {
                 "name": "Hidden variable",
@@ -118,6 +154,12 @@ class UncertaintyPlotter(plotter.Plotter):
             "data-stat": {
                 "name": "Data stat",
                 "color": "blue",
+                "plot_ratio": False,
+                "stochastic": True,
+            },
+            "mc-stat": {
+                "name": "MC stat",
+                "color": "green",
                 "plot_ratio": False,
                 "stochastic": True,
             },
@@ -193,10 +235,9 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Define uncertainty merging groups
         self.uncertainty_groups = {
-            "Tracking": ["track-eff", "jet-track-eff"],
+            "Tracking": ["track-eff", "jet-track-eff", "track-fake", "track-scale"],
             "Unfolding": ["dd", "hv"],
-            # Add more groups as needed
-            # "detector": ["track-eff", "jet-track-eff", "other-detector-syst"],
+            "Muon": ["muon-id", "muon-ms", "muon-resbias", "muon-rho", "muon-scale"],
         }
 
         # Control whether to hide individual uncertainties when merging
@@ -1199,7 +1240,8 @@ class UncertaintyPlotter(plotter.Plotter):
         central_weights = weights_file["nominal-central"]
         nraw_events = len(central_weights)
         max_events_nominal = min(nraw_events, self.max_events)
-        max_events_sherpa = min(self.sherpa_events, self.max_events)
+        if "hv" in self.active_systs:
+            max_events_sherpa = min(self.sherpa_events, self.max_events)
 
         # Pre-allocate result dictionary
         result = {}
@@ -1305,7 +1347,8 @@ class UncertaintyPlotter(plotter.Plotter):
             dict: Dictionary with source weights applied
         """
         source_weights = self._get_source_weights_efficiently()
-        sherpa_weights = self._get_sherpa_weights_efficiently()
+        if "hv" in self.active_systs:
+            sherpa_weights = self._get_sherpa_weights_efficiently()
 
         result = {}
 

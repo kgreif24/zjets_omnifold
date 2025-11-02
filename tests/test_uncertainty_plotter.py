@@ -65,18 +65,16 @@ def test_systematic_uncertainties(tmp_path):
     # Load the weights file to check systematic variations
     weights_data = np.load("./assets/unc_wgts.npz")
 
-    # Check that all expected systematic variations are present
+    # Check that all expected systematic variations are present (with -central suffix)
     expected_systematics = [
-        "nn-init",
-        "mc-stat",
-        "data-stat",
-        "track_eff",
-        "jet-track-eff",
-        "hv",
+        "nn-init-central",
+        "mc-stat-central",
+        "data-stat-central",
+        "track-eff-central",
+        "jet-track-eff-central",
+        "hv-central",
     ]
-    for syst in expected_systematics:
-        assert f"{syst}_up" in weights_data.keys()
-        assert f"{syst}_down" in weights_data.keys()
+    assert all([key in weights_data.keys() for key in expected_systematics])
 
     # Test plot generation with systematic weights
     _ = plotter.plot("./assets/unc_wgts.npz")
@@ -248,7 +246,12 @@ def test_uncertainty_merging_functionality(tmp_path):
     # Test default uncertainty groups
     assert "Tracking" in plotter.uncertainty_groups
     assert "Unfolding" in plotter.uncertainty_groups
-    assert plotter.uncertainty_groups["Tracking"] == ["track-eff", "jet-track-eff"]
+    assert plotter.uncertainty_groups["Tracking"] == [
+        "track-eff",
+        "jet-track-eff",
+        "track-fake",
+        "track-scale",
+    ]
     assert plotter.uncertainty_groups["Unfolding"] == ["dd", "hv"]
 
     # Test default hiding behavior

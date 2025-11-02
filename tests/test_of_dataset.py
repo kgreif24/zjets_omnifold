@@ -8,6 +8,7 @@ import utils.data_utils as du
 
 import uproot
 import numpy as np
+import awkward as ak
 
 
 def test_of_dataset():
@@ -16,9 +17,10 @@ def test_of_dataset():
     sample = "./assets/evts_000_100.root"
     f = uproot.open(sample)
     t = f["OmniTree"]
+    p190 = ak.to_numpy(t["pass190"].array())
 
     # Load the kinematics and indeces
-    kinematics, ind, pdgids = du.get_kinematics(t)
+    kinematics, ind, pdgids = du.get_kinematics(t, evt_filter=p190)
 
     # Create dummy weights
     weights = np.ones(len(kinematics))
@@ -27,7 +29,7 @@ def test_of_dataset():
     labels = np.random.randint(0, 2, len(kinematics))
 
     # Get observables for W1 calculations
-    obs = du.get_observables(t, ["Ntracks", "pT_ll"])
+    obs = du.get_observables(t, ["Ntracks", "pT_ll"], evt_filter=p190)
 
     # Make datasets
     d1 = ofd.OfDataset(

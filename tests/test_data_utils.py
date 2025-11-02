@@ -113,7 +113,7 @@ def test_get_kinematics():
     nt = nt[p190 == 1]
 
     # Assert we have the expected number of events
-    gk1, ind1, pdgids = du.get_kinematics(t)
+    gk1, ind1, pdgids = du.get_kinematics(t, evt_filter=p190)
     assert len(gk1) == np.sum(p190)
     assert len(ind1) == np.sum(p190)
     assert len(pdgids) == np.sum(p190)
@@ -150,7 +150,7 @@ def test_get_kinematics_truth():
     nt = nt[p190 == 1]
 
     # Assert we have the expected number of events
-    gk1, ind1, pdgids = du.get_kinematics(t, get_truth=True)
+    gk1, ind1, pdgids = du.get_kinematics(t, get_truth=True, evt_filter=p190)
     assert len(gk1) == np.sum(p190)
     assert len(ind1) == np.sum(p190)
     assert len(pdgids) == np.sum(p190)
@@ -172,12 +172,20 @@ def test_get_kinematics_syst():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Get nominal kinematics
-    nominal_kinematics, nominal_indices, _ = du.get_kinematics(t)
+    nominal_kinematics, nominal_indices, _ = du.get_kinematics(t, evt_filter=p190)
     assert len(nominal_kinematics) == np.sum(p190)
 
     # Get systematic kinematics
-    trackeff_kinematics, trackeff_indices, _ = du.get_kinematics(t, syst_kw="track_eff")
+    trackeff_kinematics, trackeff_indices, _ = du.get_kinematics(
+        t, syst_kw="track_eff", evt_filter=p190
+    )
     assert len(trackeff_kinematics) == np.sum(p190)
+
+    # Get track scale kinematics
+    trackscale_kinematics, trackscale_indices, _ = du.get_kinematics(
+        t, syst_kw="track_scale", evt_filter=p190
+    )
+    assert len(trackscale_kinematics) == np.sum(p190)
 
     # Count tracks and assert track efficiency varied data has fewer
     nominal_count = ak.to_numpy(ak.count(nominal_kinematics[:, 0, :], axis=1))
@@ -189,6 +197,11 @@ def test_get_kinematics_syst():
     trackeff_ht = ak.to_numpy(np.sum(np.exp(trackeff_kinematics[:, 0, :]), axis=1))
     assert np.all(nominal_ht >= trackeff_ht)
 
+    # Ensure that the track scale pT is different from the nominal pT
+    nominal_pt = nominal_kinematics[:, 0, :]
+    trackscale_pt = trackscale_kinematics[:, 0, :]
+    assert ak.any(nominal_pt != trackscale_pt)
+
 
 def test_get_observables():
 
@@ -199,7 +212,7 @@ def test_get_observables():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Assert we have 100 events and 2 vars
-    plotting = du.get_observables(t, ["Ntracks", "pT_ll"])
+    plotting = du.get_observables(t, ["Ntracks", "pT_ll"], evt_filter=p190)
     assert plotting.shape == (np.sum(p190), 2)
 
 
@@ -210,23 +223,40 @@ def test_get_observables_syst():
     f = uproot.open(sample)
     t = f["OmniTree"]
     p190 = ak.to_numpy(t["pass190"].array())
+    mptll = ak.to_numpy(t["syst_pT_ll_ID_Up"].array())
+    mmll = ak.to_numpy(t["syst_m_ll_ID_Up"].array())
+    myll = ak.to_numpy(t["syst_y_ll_ID_Up"].array())
+    mid_p190 = (mptll > 190) & (mmll > 81) & (mmll < 101) & (myll > -98)
 
     # Get obserable keys
     nominal_keys = du.get_w1_obs()
     trackeff_keys = du.get_w1_obs(syst_kw="track_eff")
+    trackscale_keys = du.get_w1_obs(syst_kw="track_scale")
+    muonid_keys = du.get_w1_obs(syst_kw="muon_id")
     assert len(nominal_keys) == len(trackeff_keys)
+    assert len(nominal_keys) == len(trackscale_keys)
+    assert len(nominal_keys) == len(muonid_keys)
 
     # Filter out 3 keys
     nominal_3keys = ["Ntracks", "HT_tracks", "pT_ll"]
     trackeff_3keys = ["syst_TrackFilter_Ntracks", "syst_TrackFilter_HT_tracks", "pT_ll"]
+    muonid_3keys = [
+        "syst_pT_l1_ID_Up",
+        "syst_pT_ll_ID_Up",
+        "m_trackj1",
+    ]
     assert all([key in nominal_keys for key in nominal_3keys])
     assert all([key in trackeff_keys for key in trackeff_3keys])
+    assert all([key in muonid_keys for key in muonid_3keys])
 
     # Get nominal and syst varied observables
-    nominal_obs = du.get_observables(t, nominal_3keys)
-    trackeff_obs = du.get_observables(t, trackeff_3keys)
+    nominal_obs = du.get_observables(t, nominal_3keys, evt_filter=p190)
+    trackeff_obs = du.get_observables(t, trackeff_3keys, evt_filter=p190)
+    muonid_obs = du.get_observables(t, muonid_3keys, evt_filter=mid_p190)
     assert nominal_obs.shape == trackeff_obs.shape == (np.sum(p190), 3)
+    assert muonid_obs.shape == (np.sum(mid_p190), 3)
 
+    # Verify some features of the track systematics
     assert np.all(nominal_obs[:, 0] >= trackeff_obs[:, 0])
     assert np.all(nominal_obs[:, 1] + 1e-4 >= trackeff_obs[:, 1])
     assert np.all(np.isclose(nominal_obs[:, 2], trackeff_obs[:, 2], rtol=1e-4))
@@ -241,7 +271,7 @@ def test_stack():
     p190 = ak.to_numpy(t["pass190"].array())
 
     # Get kinematics
-    gk1, ind1, pdgids = du.get_kinematics(t)
+    gk1, ind1, pdgids = du.get_kinematics(t, evt_filter=p190)
 
     # Zero pad kinematics
     gk1 = du.pad_kinematics(gk1, max_tracks=10, fill=0)
@@ -263,3 +293,19 @@ def test_stack():
     # Concatenate one hot with kinematics
     gk1 = np.concatenate([gk1, masses, one_hot], axis=1)
     assert gk1.shape == (np.sum(p190), 10, 10)
+
+
+def test_calc_muon_syst_pass190():
+
+    # Hardcode the location of the event sample
+    sample = "./assets/evts_000_100.root"
+    f = uproot.open(sample)
+    t = f["OmniTree"]
+    mid_p190 = du.calc_muon_syst_pass190(t, stop=len(t), syst_kw="muon_id")
+    ptll = ak.to_numpy(t["syst_pT_ll_ID_Up"].array())
+    mll = ak.to_numpy(t["syst_m_ll_ID_Up"].array())
+    yll = ak.to_numpy(t["syst_y_ll_ID_Up"].array())
+    assert np.all(ptll[mid_p190] > 190)
+    assert np.all(mll[mid_p190] > 81)
+    assert np.all(mll[mid_p190] < 101)
+    assert np.all(yll[mid_p190] > -98)

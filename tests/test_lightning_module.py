@@ -129,6 +129,33 @@ def test_lofdata(tmp_path):
     assert np.all(save_wgts == random_weights)
 
 
+def test_lofdata_syst():
+
+    # Get standalone event sample
+    source_sample = "./assets/evts_000_100.root"
+    target_sample = "./assets/evts_000_100.root"
+    source_f = uproot.open(source_sample)
+    source_t = source_f["OmniTree"]
+    target_f = uproot.open(target_sample)
+    target_t = target_f["OmniTree"]
+    source_mid_p190 = ak.to_numpy(source_t["pass190_syst_ID_Up"].array())
+    target_p190 = ak.to_numpy(target_t["pass190"].array())
+
+    # Get data class, using muon ID syst
+    data_module = LOfData(
+        source_file="./assets/evts_000_100.root",
+        target_file="./assets/evts_000_100.root",
+        source_weight_path=None,
+        target_weight_path=None,
+        batch_size=1,
+        syst_kw="muon_id",
+    )
+
+    # Check pass190 flags
+    assert np.all(data_module.get_source_pass190() == source_mid_p190)
+    assert np.all(data_module.get_target_pass190() == target_p190)
+
+
 def test_data_pieces():
 
     # Check data divisor, ensure we can use different chunks of the data

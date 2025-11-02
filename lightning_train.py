@@ -12,7 +12,6 @@ import re
 import os
 import time
 import argparse
-import atexit
 import glob
 import signal
 import numpy as np
@@ -26,7 +25,6 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_info, rank_zero_only
 from cli.of_config import OfConfig
 from lightning_module import LOfTransformer
 from lightning_data_module import LOfData
-from utils.subprocess_utils import cleanup_resources
 
 
 class OfTrain:
@@ -451,10 +449,12 @@ class OfTrain:
         elif self.trainer.global_step >= self.finish_steps:
             # Find the best checkpoint
             best_checkpoint = self._find_best_checkpoint()
+            # If one doesn't exist, just return and let next process re-attempt training
             if not best_checkpoint:
-                raise RuntimeError(
-                    "No checkpoints found on timeout, cannot make symlink."
+                rank_zero_info(
+                    "No checkpoints found on timeout, not making symlink."
                 )
+                return
             if os.path.lexists(best_model_link):
                 os.remove(best_model_link)
             os.symlink(best_checkpoint, best_model_link)
@@ -538,9 +538,6 @@ class OfTrain:
 # This function will be called as a subprocess from the Omnifolder class
 
 if __name__ == "__main__":
-
-    # Register GPU cleanup at exit
-    atexit.register(cleanup_resources)
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run the omnifold algorithm")
