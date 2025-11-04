@@ -133,6 +133,12 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
     hTEEC_z_b2b = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
     hTEEC_z_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
 
+    // type_Yvar_Xvar_jetalgo
+    h2d_m1OverpT_JetR_CA = make_shared<TProfile>(TH1D("", "", 2*nbins, symlog_edges));
+    h2d_m1OverpT_pT_CA   = make_shared<TProfile>(TH1D("", "", 2*nbins, symlog_edges));
+    TProfile *prof = 
+
+
 }
 
 HistoGroup::~HistoGroup() {

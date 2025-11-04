@@ -42,6 +42,8 @@ public :
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
    // Declaration of leaf types
+   vector<float> additional_weights;
+   bool has_kevin_branches = true;
    Float_t         weight;
    Int_t           pass190;
    Int_t           truth_pass190;
@@ -94,9 +96,17 @@ public :
    Int_t           nphi_tracks;
    Double_t        phi_tracks[309];   //[nphi_tracks]
    Int_t           ntrackJetIndex_tracks;
-   Double_t           trackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
+   Double_t        trackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
    Int_t           npdgId_tracks;
-   Long_t           pdgId_tracks[309];   //[npdgId_tracks]
+   Long_t          pdgId_tracks[309];   //[npdgId_tracks]
+
+
+   vector<float>*   pT_tracks_vec = nullptr; 
+   vector<float>*   eta_tracks_vec = nullptr;
+   vector<float>*   phi_tracks_vec = nullptr;
+   vector<float>*   trackJetIndex_tracks_vec = nullptr;
+   vector<int>*     pdgId_tracks_vec = nullptr;
+
 
    // List of branches
    TBranch        *b_weight;   //!
@@ -243,13 +253,23 @@ void MakeOmni::Init(TTree *tree)
    fChain = tree;
    fCurrent = -1;
    fChain->SetMakeClass(1);
+   TObjArray* branches = fChain->GetListOfBranches();
+   if (!branches->FindObject("npT_tracks")){has_kevin_branches = false;}
 
    // Set branch addresses that are used for both truth and reco data
    fChain->SetBranchAddress("weight", &weight, &b_weight);
    fChain->SetBranchAddress("weight_mc", &weight_mc, &b_weight_mc);
-   fChain->SetBranchAddress("target_dd", &target_dd, &b_target_dd);
+   if (has_kevin_branches) fChain->SetBranchAddress("target_dd", &target_dd, &b_target_dd);
    fChain->SetBranchAddress("EventNumber", &EventNumber, &b_EventNumber);
    fChain->SetBranchAddress("RunNumber", &RunNumber, &b_RunNumber);
+   if (weightFilename == "None"){
+      for (auto w_str:weightBranchNames){
+          if (w_str != "weight" && w_str != "weight_mc" && w_str != "target_dd"){
+              additional_weights.push_back(0.0);
+              fChain->SetBranchAddress(w_str.c_str(), &additional_weights.back());
+          }
+      }
+   }
 
    // Set branch addresses depending on whether we want to use truth or reco
    if (isTruth) {
@@ -276,20 +296,29 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("truth_tau1_trackj2", &tau1_trackj2, &b_tau1_trackj2);
       fChain->SetBranchAddress("truth_tau2_trackj2", &tau2_trackj2, &b_tau2_trackj2);
       fChain->SetBranchAddress("truth_tau3_trackj2", &tau3_trackj2, &b_tau3_trackj2);
-      fChain->SetBranchAddress("truth_pT_tracks", &pT_tracks, &b_pT_tracks);
-      fChain->SetBranchAddress("truth_eta_tracks", &eta_tracks, &b_eta_tracks);
-      fChain->SetBranchAddress("truth_phi_tracks", &phi_tracks, &b_phi_tracks);
-      fChain->SetBranchAddress("truth_trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
       fChain->SetBranchAddress("truth_Ntracks", &Ntracks, &b_Ntracks);
       fChain->SetBranchAddress("truth_Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("truth_Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
-      fChain->SetBranchAddress("truth_NtrackJets20", &NtrackJets20, &b_NtrackJets20);
-      fChain->SetBranchAddress("ntruth_pT_tracks", &npT_tracks, &b_npT_tracks);
-      fChain->SetBranchAddress("ntruth_eta_tracks", &neta_tracks, &b_neta_tracks);
-      fChain->SetBranchAddress("ntruth_phi_tracks", &nphi_tracks, &b_nphi_tracks);
-      fChain->SetBranchAddress("ntruth_trackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
-      fChain->SetBranchAddress("ntruth_pdgId_tracks", &npdgId_tracks, &b_npdgId_tracks);
-      fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks, &b_pdgId_tracks);
+      fChain->SetBranchAddress("truth_NtrackJets20", &NtrackJets20, &b_NtrackJets20); 
+      if (has_kevin_branches) {
+        fChain->SetBranchAddress("truth_pT_tracks", &pT_tracks, &b_pT_tracks);
+        fChain->SetBranchAddress("truth_eta_tracks", &eta_tracks, &b_eta_tracks);
+        fChain->SetBranchAddress("truth_phi_tracks", &phi_tracks, &b_phi_tracks);
+        fChain->SetBranchAddress("truth_trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
+        fChain->SetBranchAddress("ntruth_pT_tracks", &npT_tracks, &b_npT_tracks);
+        fChain->SetBranchAddress("ntruth_eta_tracks", &neta_tracks, &b_neta_tracks);
+        fChain->SetBranchAddress("ntruth_phi_tracks", &nphi_tracks, &b_nphi_tracks);
+        fChain->SetBranchAddress("ntruth_trackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
+        fChain->SetBranchAddress("ntruth_pdgId_tracks", &npdgId_tracks, &b_npdgId_tracks);
+        fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks, &b_pdgId_tracks);
+      }
+      else{
+        fChain->SetBranchAddress("truth_pT_tracks", &pT_tracks_vec, &b_pT_tracks);
+        fChain->SetBranchAddress("truth_eta_tracks", &eta_tracks_vec, &b_eta_tracks);
+        fChain->SetBranchAddress("truth_phi_tracks", &phi_tracks_vec, &b_phi_tracks);
+        fChain->SetBranchAddress("truth_trackJetIndex_tracks", &trackJetIndex_tracks_vec, &b_trackJetIndex_tracks);
+        fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks_vec, &b_pdgId_tracks);
+      }
    } else {
       fChain->SetBranchAddress("pass190", &pass190, &b_pass190);
       fChain->SetBranchAddress("pT_ll", &pT_ll, &b_pT_ll);
@@ -318,14 +347,22 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
       fChain->SetBranchAddress("NtrackJets20", &NtrackJets20, &b_NtrackJets20);
-      fChain->SetBranchAddress("npT_tracks", &npT_tracks, &b_npT_tracks);
-      fChain->SetBranchAddress("neta_tracks", &neta_tracks, &b_neta_tracks);
-      fChain->SetBranchAddress("nphi_tracks", &nphi_tracks, &b_nphi_tracks);
-      fChain->SetBranchAddress("ntrackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
-      fChain->SetBranchAddress("pT_tracks", &pT_tracks, &b_pT_tracks);
-      fChain->SetBranchAddress("eta_tracks", &eta_tracks, &b_eta_tracks);
-      fChain->SetBranchAddress("phi_tracks", &phi_tracks, &b_phi_tracks);
-      fChain->SetBranchAddress("trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
+      if (has_kevin_branches) {
+        fChain->SetBranchAddress("npT_tracks", &npT_tracks, &b_npT_tracks);
+        fChain->SetBranchAddress("neta_tracks", &neta_tracks, &b_neta_tracks);
+        fChain->SetBranchAddress("nphi_tracks", &nphi_tracks, &b_nphi_tracks);
+        fChain->SetBranchAddress("ntrackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
+        fChain->SetBranchAddress("pT_tracks", &pT_tracks, &b_pT_tracks);
+        fChain->SetBranchAddress("eta_tracks", &eta_tracks, &b_eta_tracks);
+        fChain->SetBranchAddress("phi_tracks", &phi_tracks, &b_phi_tracks);
+        fChain->SetBranchAddress("trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
+      }
+      else{
+        fChain->SetBranchAddress("pT_tracks", &pT_tracks_vec, &b_pT_tracks);
+        fChain->SetBranchAddress("eta_tracks", &eta_tracks_vec, &b_eta_tracks);
+        fChain->SetBranchAddress("phi_tracks", &phi_tracks_vec, &b_phi_tracks);
+        fChain->SetBranchAddress("trackJetIndex_tracks", &trackJetIndex_tracks_vec, &b_trackJetIndex_tracks);
+      }
    }
    
    Notify();

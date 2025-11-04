@@ -11,7 +11,7 @@ int main(int argc, char* argv[]){
 
 	// Read command line args
 	TString fileName;
-	string weight_file;
+	string weight_file = "None";
 	vector<string> weight_names;
 	TString outFile;
 	bool isTruth = false;
@@ -60,12 +60,12 @@ int main(int argc, char* argv[]){
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				nEns = std::stoi(argv[i+1]);
 				i++; // Move to the next arg
+        if (weight_file == "None") nEns =0;
 			} else { // Throw error if no argument provided
 				std::cerr << "--nEns option requires one argument." << std::endl;
 				return 1;
 			}
 		}
-		
 		if (arg == "--outFile") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				outFile = TString(argv[i+1]);
@@ -75,9 +75,9 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
-        if (arg == "--truth") {
-            isTruth = true;
-        }
+    if (arg == "--truth") {
+        isTruth = true;
+    }
 		if (arg == "--maxEvents") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				maxEvents = std::stoi(argv[i+1]);
@@ -102,7 +102,8 @@ int main(int argc, char* argv[]){
 	TChain* myChain = new TChain("OmniTree");
 	myChain->Add(fileName);
 	cout << "Building hists from file: " << fileName << endl;
-	cout << "Using weights from file: " << weight_file << endl;
+  if (weight_file.size()) cout << "Using weights from file: " << weight_file << endl;
+  else cout << "Using weights from file: " << fileName <<". nEns set to 0." << endl;
 	if (weight_names.size() > 0) {
 		cout << "Using weight_names: ";
 		for (const auto& weight_name : weight_names) {

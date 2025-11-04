@@ -28,6 +28,10 @@ class HistoGroup {
         // Name for the histogram group, prepended to each histogram name
         string name;
 
+        map<string,shared_ptr<TH1D>> h_map;
+        map<string,shared_ptr<TH1D>> h2d_map;
+        map<string,shared_ptr<TProfile>> prof_map;
+
         // Kinematic region
         int kinematic_region;
 

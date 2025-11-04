@@ -56,23 +56,30 @@ vector<float> MakeOmni::LoadWeights(string filename, string key) {
 
 void MakeOmni::Loop(Long64_t maxEvents) {
 
-   // Load needed weights
-   vector<vector<float>> central_weights;
-   vector<vector<float>> ens_weights;
+     // Load needed weights
+    vector<vector<float>> central_weights;
+    vector<vector<float>> ens_weights;
 
-   // Load the needed weights
-   for (const auto& weight_name : weightBranchNames) {
-      if (weight_name != "weight" && weight_name != "weight_mc" && weight_name != "target_dd") {
-         central_weights.push_back(LoadWeights(weightFilename, weight_name + "-central"));
-      } else {
-         central_weights.push_back(vector<float>());
-      }
-   }
+    // Load the needed weights
+    if (weightFilename == "None"){
+        for (long unsigned int i=0; i< weightBranchNames.size();i++) {
+            central_weights.push_back(vector<float>());
+        }
+    }
+    else{
+        for (const auto& weight_name : weightBranchNames) {
+            if (weight_name != "weight" && weight_name != "weight_mc" && weight_name != "target_dd") {
+              central_weights.push_back(LoadWeights(weightFilename, weight_name + "-central"));
+            } else {
+              central_weights.push_back(vector<float>());
+            }
+        }
+    }
 
-   // Load the ensemble weights
-   for (int i = 0; i < nEns; ++i) {
-      ens_weights.push_back(LoadWeights(weightFilename, weightBranchNames[0] + "-" + to_string(i)));
-   }
+    // Load the ensemble weights
+    for (int i = 0; i < nEns; ++i) {
+        ens_weights.push_back(LoadWeights(weightFilename, weightBranchNames[0] + "-" + to_string(i)));
+    }
 
    // Jet definitions to consider
    JetDefinition jetdef_kt(kt_algorithm, 0.4);
@@ -134,7 +141,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    // Pre-load all events sequentially (ROOT trees are not thread-safe)
    std::cout << " === pre-loading events === " << std::endl;
    vector<Long64_t> valid_entries;
-   
+
    // Create a structure to hold event data
    struct EventData {
       Long64_t entry;
@@ -146,16 +153,17 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       Float_t pT_trackj2, y_trackj2, phi_trackj2, m_trackj2;
       Int_t Ntracks, npT_tracks;
       vector<Double_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
-      vector<Long_t> pdgId_tracks_vec;
+      vector<int> pdgId_tracks_vec;
+      vector<float> additional_weights;
    };
-   
+
    vector<EventData> event_data;
    
    for (Long64_t jentry=0; jentry<nentries;jentry++) {
       Long64_t ientry = LoadTree(jentry);
       if (ientry < 0) continue;
       nb = fChain->GetEntry(jentry);   nbytes += nb;
-      
+
       // Store the event data
       EventData evt;
       evt.entry = jentry;
@@ -180,16 +188,29 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       evt.phi_trackj2 = phi_trackj2;
       evt.m_trackj2 = m_trackj2;
       evt.Ntracks = Ntracks;
-      evt.npT_tracks = npT_tracks;
-      
-      // Copy track arrays
-      evt.pT_tracks_vec.assign(pT_tracks, pT_tracks + npT_tracks);
-      evt.eta_tracks_vec.assign(eta_tracks, eta_tracks + npT_tracks);
-      evt.phi_tracks_vec.assign(phi_tracks, phi_tracks + npT_tracks);
-      if (isTruth) {
-         evt.pdgId_tracks_vec.assign(pdgId_tracks, pdgId_tracks + npT_tracks);
+       // Copy track arrays
+      if (has_kevin_branches) {
+        evt.npT_tracks = npT_tracks;
+        evt.pT_tracks_vec.assign(pT_tracks, pT_tracks + evt.npT_tracks);
+        evt.eta_tracks_vec.assign(eta_tracks, eta_tracks + evt.npT_tracks);
+        evt.phi_tracks_vec.assign(phi_tracks, phi_tracks + evt.npT_tracks);
+        if (isTruth) {
+          evt.pdgId_tracks_vec.assign(pdgId_tracks, pdgId_tracks + evt.npT_tracks);
+        }
       }
-      
+      else {
+        evt.npT_tracks = Ntracks;
+        evt.pT_tracks_vec.assign(pT_tracks_vec->begin(), pT_tracks_vec->end());
+        evt.eta_tracks_vec.assign(eta_tracks_vec->begin(), eta_tracks_vec->end());
+        evt.phi_tracks_vec.assign(phi_tracks_vec->begin(), phi_tracks_vec->end());
+        if (isTruth) {
+          evt.pdgId_tracks_vec.assign(pdgId_tracks_vec->begin(), pdgId_tracks_vec->end());
+        }
+      }
+
+      if (weightFilename == "None"){
+        for (auto val: additional_weights) evt.additional_weights.push_back(val);
+      }
       event_data.push_back(evt);
       
       // Update progress bar for loading
@@ -372,11 +393,13 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          vector<double> tau;
          ETransTotal = GetTEEC(particles, zboson, etrans, tau);
 
+
          // -------------------- Fill Histograms --------------------
          // Note we are filling with values only from leading jet for now
          // Can also use the FillEEC function for the TEEC
 
          // Loop through all groups
+         int tracker = -1;
          for (unsigned int i = 0; i < centralHistoGroups.size() + ensHistoGroups.size(); ++i) {
 
             // Get weight
@@ -387,7 +410,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                use_weight = evt.weight_mc;
             } else if (weightBranchNames[i] == "target_dd") {
                use_weight = evt.target_dd;
-            } else if (i < centralHistoGroups.size()) {
+            } else if (weightFilename == "None"){
+               use_weight = evt.additional_weights[tracker++] * evt.weight_mc;
+            } else if (i < centralHistoGroups.size()) { // assumes if no weight file, then no ensembling.
                use_weight = central_weights[i][jentry] * evt.weight_mc;
             } else {
                use_weight = ens_weights[i - centralHistoGroups.size()][jentry] * evt.weight_mc;
@@ -464,6 +489,10 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             FillEEC(histoGroup.hTEEC_z_full_nolog, etrans, tau, ETransTotal, use_weight);
             FillEEC(histoGroup.hTEEC_z_b2b, etrans, tau, ETransTotal, use_weight);
             FillEEC(histoGroup.hTEEC_z_full, etrans, tau, ETransTotal, use_weight);
+
+            // draw2D(ts->at(z), varX, varY , weight[z]+cut, binningX, binningY, nentries)
+            // make_2DHistv(in.jz_slices, &jetTrees, pT_truth.name, Response_Calibrated.name, wNewMCcStr, versatile_CutStr[i], pT_truth.sliceEdges, Response_Calibrated.sliceEdges, in.NentriesPerZSlice))
+            // m_profs["prof_Calibrated_"+tmp_key] = Sum_TH2D_Holder->ProfileX("prof_Calibrated_"+tmp_key, 1, -1, "s");
 
          }
 
