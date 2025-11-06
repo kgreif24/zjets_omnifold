@@ -74,28 +74,56 @@ def get_one_hot(kinematics, track_jet_indeces, n_jets=5):
     return np.stack(tj_one_hots, axis=1)
 
 
-def get_masses(pdgids) -> np.ndarray:
+def get_masses(pdgids: ak.Array | np.ndarray) -> ak.Array | np.ndarray:
     """get_masses - This function will return the mass of the particle given the
     pdgid.
 
     Arguments:
-        pdgids {np.ndarray} -- numpy array of pdgids, shape (n_events, 1, n_tracks)
+        pdgids {np.ndarray or ak.Array} -- numpy or awkward array of pdgids,
+            shape (n_events, 1, n_tracks)
 
     Returns:
-        masses {np.ndarray} -- numpy array of masses, shape (n_events, 1, n_tracks)
+        masses {np.ndarray or ak.Array} -- numpy or awkward array of masses,
+            same type and shape as input pdgids
     """
 
-    assert np.all(np.isin(pdgids, [13, 211, -999]))
-    masses = np.zeros_like(pdgids, dtype=np.float32)
-    masses[pdgids == 13] = 0.105658
-    masses[pdgids == 211] = 0.13957
-    # masses[pdgids == 321] = 0.493677
-    # masses[pdgids == 2212] = 0.938272
-    # masses[pdgids == 11] = 0.000511
-    # masses[pdgids == 3222] = 1.189
-    # masses[pdgids == 3112] = 1.197
-    # masses[pdgids == 3312] = 1.321
-    # masses[pdgids == 3334] = 1.672
+    # Take absolute value of pdgids
+    pdgids = np.abs(pdgids)
+
+    # Check if input is awkward array
+    is_awkward = isinstance(pdgids, ak.Array)
+
+    if is_awkward:
+        # Use awkward array operations
+        # Create zeros array with same structure as pdgids
+        # Use same pattern as ak.ones_like used elsewhere in this file
+        masses = ak.ones_like(pdgids, dtype=np.float32) * 0.0
+        masses = ak.where(pdgids == 13, 0.105658, masses)
+        masses = ak.where(pdgids == 211, 0.13957, masses)
+        masses = ak.where(pdgids == 321, 0.493677, masses)
+        masses = ak.where(pdgids == 2212, 0.938272, masses)
+        masses = ak.where(pdgids == 11, 0.000511, masses)
+        masses = ak.where(pdgids == 3222, 1.189, masses)
+        masses = ak.where(pdgids == 3112, 1.197, masses)
+        masses = ak.where(pdgids == 3312, 1.321, masses)
+        masses = ak.where(pdgids == 3334, 1.672, masses)
+    else:
+        # Use numpy array operations
+        # Validate PDG IDs for numpy arrays
+        assert np.all(
+            np.isin(pdgids, [13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999])
+        )
+        masses = np.zeros_like(pdgids, dtype=np.float32)
+        masses[pdgids == 13] = 0.105658
+        masses[pdgids == 211] = 0.13957
+        masses[pdgids == 321] = 0.493677
+        masses[pdgids == 2212] = 0.938272
+        masses[pdgids == 11] = 0.000511
+        masses[pdgids == 3222] = 1.189
+        masses[pdgids == 3112] = 1.197
+        masses[pdgids == 3312] = 1.321
+        masses[pdgids == 3334] = 1.672
+
     return masses
 
 
@@ -104,9 +132,11 @@ def get_kinematics(
     evt_filter,
     muon_only=False,
     get_truth=False,
+    get_truth_pdgids=False,
     start=None,
     stop=None,
     syst_kw=None,
+    take_log_pt=True,
     **kwargs,
 ):
     """get_kinematics - This function will accept an uproot TTree object, and return the
@@ -126,9 +156,12 @@ def get_kinematics(
     evt_filter - boolean array of events to keep
     muon_only - boolean to return only muon kinematics, optional
     get_truth - If true, get the truth level data instead of reco, optional
+    get_truth_pdgids - If true, get the truth level pdgids instead of fixing all tracks
+        to 211 (charged pion), optional
     start - starting event index, optional
     stop - stopping event index, optional
     syst_kw - keyword argument for the systematic to apply, optional
+    take_log_pt - boolean to take the logarithm of the pT values, optional
     **kwargs - keyword arguments for systematics to apply to track kinematics, optional
 
     Returns:
@@ -156,52 +189,43 @@ def get_kinematics(
     # Muon information, take logarithm of pT values immediately
     # Note also that muon systs only effect the pT values, so only need to add special
     # pre and post keys for these
-    m1_pt = np.log(
-        ak.unflatten(
-            tree[muon_prekey + "pT_l1" + muon_postkey].array(
-                entry_start=start, entry_stop=stop
-            ),
-            1,
-            axis=0,
-        )
-    )
-    m1_eta = ak.unflatten(
-        tree[prekey + "eta_l1"].array(
+    m1_pt = ak.unflatten(
+        tree[muon_prekey + "pT_l1" + muon_postkey].array(
             entry_start=start, entry_stop=stop
         ),
+        1,
+        axis=0,
+    )
+    m1_eta = ak.unflatten(
+        tree[prekey + "eta_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m1_phi = ak.unflatten(
-        tree[prekey + "phi_l1"].array(
+        tree[prekey + "phi_l1"].array(entry_start=start, entry_stop=stop),
+        1,
+        axis=0,
+    )
+    m2_pt = ak.unflatten(
+        tree[muon_prekey + "pT_l2" + muon_postkey].array(
             entry_start=start, entry_stop=stop
         ),
         1,
         axis=0,
     )
-    m2_pt = np.log(
-        ak.unflatten(
-            tree[muon_prekey + "pT_l2" + muon_postkey].array(
-                entry_start=start, entry_stop=stop
-            ),
-            1,
-            axis=0,
-        )
-    )
     m2_eta = ak.unflatten(
-        tree[prekey + "eta_l2"].array(
-            entry_start=start, entry_stop=stop
-        ),
+        tree[prekey + "eta_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_phi = ak.unflatten(
-        tree[prekey + "phi_l2"].array(
-            entry_start=start, entry_stop=stop
-        ),
+        tree[prekey + "phi_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
+    if take_log_pt:
+        m1_pt = np.log(m1_pt)
+        m2_pt = np.log(m2_pt)
     m1_kinematics = ak.concatenate([m1_pt, m1_eta, m1_phi], axis=1)
     m1_kinematics = ak.unflatten(m1_kinematics, 1, axis=1)
     m2_kinematics = ak.concatenate([m2_pt, m2_eta, m2_phi], axis=1)
@@ -227,25 +251,21 @@ def get_kinematics(
         # Pull info, note taking log of track pT values here
         if syst_kw == "track_scale":
             assert not get_truth, "Cannot run track scale systematic on truth data"
-            track_pt = np.log(
-                ak.unflatten(
-                    tree["syst_correctedpT_tracks"].array(
-                        entry_start=start, entry_stop=stop
-                    ),
-                    1,
-                    axis=0,
-                )
+            track_pt = ak.unflatten(
+                tree["syst_correctedpT_tracks"].array(
+                    entry_start=start, entry_stop=stop
+                ),
+                1,
+                axis=0,
             )
         else:
-            track_pt = np.log(
-                ak.unflatten(
-                    tree[prekey + "pT_tracks"].array(
-                        entry_start=start, entry_stop=stop
-                    ),
-                    1,
-                    axis=0,
-                )
+            track_pt = ak.unflatten(
+                tree[prekey + "pT_tracks"].array(entry_start=start, entry_stop=stop),
+                1,
+                axis=0,
             )
+        if take_log_pt:
+            track_pt = np.log(track_pt)
         track_eta = ak.unflatten(
             tree[prekey + "eta_tracks"].array(entry_start=start, entry_stop=stop),
             1,
@@ -269,7 +289,13 @@ def get_kinematics(
         )
 
         # Track pdgids
-        track_pdgids = 211 * ak.ones_like(track_pt)
+        if get_truth_pdgids:
+            assert get_truth, "Cannot get truth level pdgids without truth level data"
+            track_pdgids = ak.unflatten(tree["truth_pdgId_tracks"].array(
+                entry_start=start, entry_stop=stop
+            ), 1, axis=0)
+        else:
+            track_pdgids = 211 * ak.ones_like(track_pt)
 
         # Apply filter then truncate if necessary
         track_kinematics = track_kinematics[evt_filter == 1, ...]

@@ -1,4 +1,4 @@
-__pycache__/*
+__pycache__
 *.pyc
 plot_storage
 weight_storage
@@ -19,3 +19,5 @@ fastjet/obj
 fastjet/out
 fastjet/copies
 experiments
+emd_storage
+hist_storage
