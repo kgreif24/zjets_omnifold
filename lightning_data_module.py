@@ -358,8 +358,11 @@ class LOfData(L.LightningDataModule):
             assert not self.use_truth
             # Get the weights from the bootstrap
             bootstrap_weights = self.data_bootstrap_weights[start:stop]
-            # Multiply the weights by the bootstrap weights
-            weights *= bootstrap_weights[self.target_use190[start:stop] == 1]
+            # Apply the bootstrap to all weights
+            self.target_all_weights = self.target_all_weights * bootstrap_weights
+            # Apply the bootstrap to the weights for this piece and shard
+            piece_bs = bootstrap_weights[start:stop][piece190 == 1]
+            weights = weights * piece_bs
 
         # ---------------------- Build dataset ----------------------------
 
