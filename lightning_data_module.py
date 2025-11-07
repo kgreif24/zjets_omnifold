@@ -65,6 +65,7 @@ class LOfData(L.LightningDataModule):
         testing=False,
         use_truth=False,
         syst_kw=None,
+        data_bootstrap_path=None,
         **kwargs,
     ):
         """__init__ - This method initializes the LOfData class. It takes
@@ -111,6 +112,8 @@ class LOfData(L.LightningDataModule):
                 for the data module. Defaults to false.
             syst_kw {dict} - Keyword of the systematic variation that should be
                 activated for this data module.
+            data_bootstrap_path {str} - The path to the data bootstrap in this training
+                If None, no bootstrap will be used.
             **kwargs - Passed to the OfDataset classes
         """
 
@@ -134,7 +137,8 @@ class LOfData(L.LightningDataModule):
         self.testing = testing
         self.use_truth = use_truth
         self.syst_kw = syst_kw
-
+        self.data_bootstrap_path = data_bootstrap_path
+        
         # Find total number of events in source and target, and get the pass190 filters
         # for the source dataset
         self.source_tree = uproot.open(self.source_file)["OmniTree"]
@@ -190,6 +194,16 @@ class LOfData(L.LightningDataModule):
                 f"We have a fraction {np.sum(self.target_use190) / self.num_target}"
                 " of good events in the target dataset"
             )
+
+        # If we are using a data bootstrap, load the weights from the bootstrap
+        self.data_bootstrap_weights = None
+        if self.data_bootstrap_path is not None:
+            assert self.target_file is not None
+            assert not self.use_truth
+            rank_zero_info(f"Loading data bootstrap from {self.data_bootstrap_path}")
+            self.data_bootstrap_weights = np.load(self.data_bootstrap_path)
+            rank_zero_info(f"We have {len(self.data_bootstrap_weights)} bootstrap weights")
+            assert len(self.data_bootstrap_weights) == self.num_target
 
         # Determine start / stop indeces for each data piece, note we don't
         # trucate in the case of non-divisible data, since it is fine if
@@ -312,6 +326,18 @@ class LOfData(L.LightningDataModule):
             labels = np.zeros((len(kinematics), 1), dtype=np.float32)
         elif filename == "target":
             labels = np.ones((len(kinematics), 1), dtype=np.float32)
+
+        # --------------------- Run Bootstraps ---------------------------
+        
+        # The case where we bootstrap the pseudodata or data
+        # Pseudodata or data is the target so only bootstrap the target data
+        # Make sure we are not running the truth
+        if self.data_bootstrap_weights is not None and filename == "target":
+            assert not self.use_truth
+            # Get the weights from the bootstrap
+            bootstrap_weights = self.data_bootstrap_weights[start:stop]
+            # Multiply the weights by the bootstrap weights
+            weights *= bootstrap_weights[self.target_use190[start:stop] == 1]
 
         # ---------------------- Build dataset ----------------------------
 

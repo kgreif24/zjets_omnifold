@@ -11,6 +11,8 @@ import sys
 import time
 import subprocess
 import numpy as np
+import uproot
+import awkward as ak
 
 from cli.of_config import OfConfig
 
@@ -83,6 +85,11 @@ class Omnifolder:
         self.use_slurm = use_slurm
         self.made_checkpoint = False
 
+        # Set seeds for running bootstraps if enabled
+        self.data_bootstrap_path = None
+        if self.cfg.bootstrap_data:
+            self.data_bootstrap_path = self._generate_data_bootstrap()
+
     def run_of(self):
         """run_of - Run the whole Omnifold procedure from start to finish.
         Arguments: None
@@ -142,6 +149,12 @@ class Omnifolder:
                 "--split_seed",
                 str(seed),
             ]
+
+            # Add bootstrap seeds if enabled
+            if self.cfg.bootstrap_data:
+                assert step == 1
+                train_args.append("--data_bootstrap_path")
+                train_args.append(str(self.data_bootstrap_path))
 
             # Add slurm arguments if we are using
             if self.use_slurm:
@@ -283,6 +296,32 @@ class Omnifolder:
 
         # If loop concludes, we are done with the procedure
         return self.cfg.num_iterations, 2, False
+
+    def _generate_data_bootstrap(self):
+        """_generate_data_bootstrap - This function generates the data bootstrap to be
+        used throuhgout the rest of the Omnifold procedure.
+
+        Arguments: None
+        Returns:
+            {str} - The path to the bootstrap weights
+        """
+
+        # Load the data using uproot to understand the number of events
+        f = uproot.open(self.cfg.data_path)
+        tree = f["OmniTree"]
+        p190 = ak.to_numpy(tree["pass190"].array())
+
+        # Sample Poisson to get the bootstrap
+        bs_seed = 100 + self.index
+        rng = np.random.default_rng(bs_seed)
+        bs_weights = rng.poisson(lam=1.0, size=len(p190))
+
+        # Save the bootstrap weights to disk
+        location = f"{self.root_dir}/bootstrap_s{bs_seed}.npy"
+        np.save(location, bs_weights)
+
+        # Return the location of the bootstrap weights
+        return location
 
 
 if __name__ == "__main__":

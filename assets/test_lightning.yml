@@ -53,6 +53,9 @@ max_events_target: 500000
 # Keyword of the systematic variation to apply to MC. If this is None, then no systematic variation is used
 syst_kw: null
 
+# If set, bootstrap the data. The seed used will depend on the ensemble index.
+bootstrap_data: False
+
 # Batch size for training
 batch_size: 10
 
