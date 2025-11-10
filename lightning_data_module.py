@@ -470,7 +470,7 @@ class LOfData(L.LightningDataModule):
 
         # Get weights, note this is for all events, without the pass190 filter
         weights, weights_root = self._load_weights(
-            tree, which_file=which_file, path=weight_path, test=self.testing
+            tree, which_file=which_file, path=weight_path, test=self.testing,
         )
 
         # Get observables for calculating W1 metrics
@@ -525,6 +525,25 @@ class LOfData(L.LightningDataModule):
         root_key = "weight_mc" if self.use_truth else "weight"
         root_weights = ak.to_numpy(tree[root_key].array(entry_stop=max_read))
         net_weights = np.ones_like(root_weights, dtype=np.float32)
+
+        # Load and multiply root weights by the systematic weights if needed
+        if self.syst_kw is not None:
+            assert which_file == "source"
+            assert not self.use_truth
+            if self.syst_kw == "muon_effreco":
+                syst_weights = ak.to_numpy(tree["syst_recoSFDown"])
+            elif self.syst_kw == "muon_effiso":
+                syst_weights = ak.to_numpy(tree["syst_isoSFDown"])
+            elif self.syst_kw == "muon_efftrk":
+                syst_weights = ak.to_numpy(tree["syst_TTVASFDown"])
+            elif self.syst_kw == "muon_efftrig":
+                syst_weights = ak.to_numpy(tree["syst_trigSFDown"])
+            elif self.syst_kw == "prw":
+                syst_weights = ak.to_numpy(tree["syst_prwDown"])
+            # Some systematics don't adjust the root weights
+            else:
+                syst_weights = 1.0
+            root_weights *= syst_weights
 
         # Load weights from the path
         if path is not None:
