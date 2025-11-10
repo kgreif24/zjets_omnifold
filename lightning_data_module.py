@@ -527,19 +527,28 @@ class LOfData(L.LightningDataModule):
         net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load and multiply root weights by the systematic weights if needed
-        if self.syst_kw is not None:
-            assert which_file == "source"
+        if self.syst_kw is not None and which_file == "source":
             assert not self.use_truth
-            if self.syst_kw == "muon_effreco":
-                syst_weights = ak.to_numpy(tree["syst_recoSFDown"])
-            elif self.syst_kw == "muon_effiso":
-                syst_weights = ak.to_numpy(tree["syst_isoSFDown"])
-            elif self.syst_kw == "muon_efftrk":
-                syst_weights = ak.to_numpy(tree["syst_TTVASFDown"])
-            elif self.syst_kw == "muon_efftrig":
-                syst_weights = ak.to_numpy(tree["syst_trigSFDown"])
+            if self.syst_kw == "msf_effreco":
+                syst_weights = ak.to_numpy(
+                    tree["syst_recoSFDown"].array(entry_stop=max_read)
+                )
+            elif self.syst_kw == "msf_effiso":
+                syst_weights = ak.to_numpy(
+                    tree["syst_isoSFDown"].array(entry_stop=max_read)
+                )
+            elif self.syst_kw == "msf_efftrk":
+                syst_weights = ak.to_numpy(
+                    tree["syst_TTVASFDown"].array(entry_stop=max_read)
+                )
+            elif self.syst_kw == "msf_efftrig":
+                syst_weights = ak.to_numpy(
+                    tree["syst_trigSFDown"].array(entry_stop=max_read)
+                )
             elif self.syst_kw == "prw":
-                syst_weights = ak.to_numpy(tree["syst_prwDown"])
+                syst_weights = ak.to_numpy(
+                    tree["syst_prwDown"].array(entry_stop=max_read)
+                )
             # Some systematics don't adjust the root weights
             else:
                 syst_weights = 1.0

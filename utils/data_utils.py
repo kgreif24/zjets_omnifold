@@ -562,13 +562,15 @@ def get_syst_pre_and_post_keys(syst_kw):
         return "syst_", "_MSRho_Up"
     elif syst_kw == "muon_scale":
         return "syst_", "_Scale_Up"
-    elif syst_kw == "muon_effreco":
+    elif syst_kw == "msf_effreco":
         return "", ""
-    elif syst_kw == "muon_effiso":
+    elif syst_kw == "msf_effiso":
         return "", ""
-    elif syst_kw == "muon_efftrk":
+    elif syst_kw == "msf_efftrk":
         return "", ""
-    elif syst_kw == "muon_efftrig":
+    elif syst_kw == "msf_efftrig":
+        return "", ""
+    elif syst_kw == "prw":
         return "", ""
     elif syst_kw == "track_eff":
         return "syst_TrackFilter_", ""
