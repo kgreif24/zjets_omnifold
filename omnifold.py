@@ -151,8 +151,7 @@ class Omnifolder:
             ]
 
             # Add bootstrap seeds if enabled
-            if self.cfg.bootstrap_data:
-                assert step == 1
+            if self.cfg.bootstrap_data and step == 1:
                 train_args.append("--data_bootstrap_path")
                 train_args.append(str(self.data_bootstrap_path))
 
