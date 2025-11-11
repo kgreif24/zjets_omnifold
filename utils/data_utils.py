@@ -291,9 +291,11 @@ def get_kinematics(
         # Track pdgids
         if get_truth_pdgids:
             assert get_truth, "Cannot get truth level pdgids without truth level data"
-            track_pdgids = ak.unflatten(tree["truth_pdgId_tracks"].array(
-                entry_start=start, entry_stop=stop
-            ), 1, axis=0)
+            track_pdgids = ak.unflatten(
+                tree["truth_pdgId_tracks"].array(entry_start=start, entry_stop=stop),
+                1,
+                axis=0,
+            )
         else:
             track_pdgids = 211 * ak.ones_like(track_pt)
 
@@ -310,6 +312,56 @@ def get_kinematics(
 
     # Return kinematics and track indeces
     return kinematics, indeces, pdgids
+
+
+def get_kinematics_multiple(trees, evt_filters, **kwargs):
+    """get_kinematics_multiple - This function calls get_kinematics for multiple
+    trees and event filters, and concatenates the returned awkward arrays together.
+
+    Note don't use this function unless you want all of each tree's events!
+
+    Arguments:
+    trees - list of uproot TTree objects
+    evt_filters - list of boolean arrays of events to keep (one per tree)
+    **kwargs - keyword arguments to pass to get_kinematics
+        (see get_kinematics docstring for available options)
+
+    Returns:
+    (ak.Array) - awkward array of the concatenated muon and track kinematics
+    (ak.Array) - awkward array of the track jet indeces (or None if muon_only=True)
+    (ak.Array) - awkward array of the pdgids
+    """
+
+    # Validate input lengths
+    assert len(trees) == len(
+        evt_filters
+    ), "Number of trees must match number of evt_filters"
+
+    # Lists to collect results
+    all_kinematics = []
+    all_indeces = []
+    all_pdgids = []
+
+    # Call get_kinematics for each tree/filter pair
+    for tree, evt_filter in zip(trees, evt_filters):
+        kinematics, indeces, pdgids = get_kinematics(
+            tree=tree, evt_filter=evt_filter, **kwargs
+        )
+        all_kinematics.append(kinematics)
+        all_indeces.append(indeces)
+        all_pdgids.append(pdgids)
+
+    # Concatenate along the event axis (axis=0)
+    concatenated_kinematics = ak.concatenate(all_kinematics, axis=0)
+    concatenated_pdgids = ak.concatenate(all_pdgids, axis=0)
+
+    # Handle indeces - if muon_only, all indeces will be None
+    if all_indeces[0] is None:
+        concatenated_indeces = None
+    else:
+        concatenated_indeces = ak.concatenate(all_indeces, axis=0)
+
+    return concatenated_kinematics, concatenated_indeces, concatenated_pdgids
 
 
 def get_observables(

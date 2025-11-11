@@ -7,6 +7,7 @@ import awkward as ak
 import vector
 import energyflow as ef
 import jet_clusterer
+import multiprocessing
 
 import sys
 
@@ -84,7 +85,7 @@ def calculate_emds(
     """
     # Compute the mean pT of the jets
     jet_pts = np.array([vec.pt for vec in jet_4vectors])
-    mean_pt = np.mean([np.min(jet_pts), np.max(jet_pts)])
+    mean_pt = np.mean(jet_pts)
     print(f"Got mean pT of {mean_pt} GeV")
     print(f"Got min pT of {np.min(jet_pts)} GeV")
     print(f"Got max pT of {np.max(jet_pts)} GeV")
@@ -175,14 +176,23 @@ def calculate_emds_from_file(
 
     # Get kinematics from the tree
     print(f"Getting kinematics from tree (get_truth={get_truth})")
-    kinematics, _, pdgids = du.get_kinematics(
-        tree,
-        pass190_flags,
-        get_truth=get_truth,
-        get_truth_pdgids=get_truth,
-        take_log_pt=False,
-        stop=len(pass190_flags),
-    )
+    if isinstance(tree, list):
+        kinematics, _, pdgids = du.get_kinematics_multiple(
+            tree,
+            pass190_flags,
+            get_truth=get_truth,
+            get_truth_pdgids=get_truth,
+            take_log_pt=False,
+        )
+    else:
+        kinematics, _, pdgids = du.get_kinematics(
+            tree,
+            pass190_flags,
+            get_truth=get_truth,
+            get_truth_pdgids=get_truth,
+            take_log_pt=False,
+            stop=len(pass190_flags),
+        )
 
     # Extract pT, eta, phi from kinematics array
     # kinematics shape is (n_events, 3, n_particles) where axis 1 is [pT, eta, phi]
@@ -329,16 +339,54 @@ def calculate_correlation_dimension_from_emds(
     return dims, dims_var, midbins
 
 
+def _process_weight_set(args):
+    """Helper function to process a single weight set for parallel execution.
+
+    Arguments:
+    ----------
+    args : tuple
+        Tuple containing (hist_name, weights, emds, event_indices, bins)
+
+    Returns:
+    --------
+    tuple : (hist_name, dims, dims_var, midbins)
+    """
+    hist_name, weights, emds, event_indices, bins = args
+
+    # Ensure event_indices is a 1D array
+    event_indices = np.asarray(event_indices).flatten()
+
+    weights = np.asarray(weights)
+
+    # Get the weights of the jets (fine if some events have multiple jets)
+    jet_weights = weights[event_indices]
+
+    # Create EMD weights matrix: weight for EMD(i,j) = weight(i) * weight(j)
+    # This represents the product of weights for the two events
+    emd_weights = jet_weights[:, None] * jet_weights[None, :]
+
+    print(f"Calculating correlation dimension for '{hist_name}'...")
+    dims, dims_var, midbins = calculate_correlation_dimension_from_emds(
+        emds, emd_weights, bins
+    )
+
+    return hist_name, dims, dims_var, midbins
+
+
 def calculate_correlation_dimension_from_file(
     npz_path: str,
     weights_dict: dict[str, np.ndarray],
     bins: np.ndarray,
+    n_jobs=1,
 ) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Calculate correlation dimension from EMDs stored in a .npz file.
 
     This function loads EMDs and event indices from a .npz file (produced by
     calculate_emds_from_file), broadcasts event-level weights to EMD pairs,
     and calculates the correlation dimension for each set of weights.
+
+    Since there are huge numbers of EMDs for a reasonable number of jets,
+    binning the EMDs will be done in parallel when possible.
 
     Arguments:
     ----------
@@ -351,6 +399,10 @@ def calculate_correlation_dimension_from_file(
     bins : np.ndarray
         Array of bin edges to use for the histogram in the correlation
         dimension calculation.
+    n_jobs : int, optional
+        Number of parallel jobs for the calculation.
+        If -1, parallelize to the number of histograms in weights_dict
+         or the number of CPUs available. Whichever is smaller.
 
     Returns:
     --------
@@ -361,12 +413,15 @@ def calculate_correlation_dimension_from_file(
         - dims_var: The variance of the correlation dimension values
         - midbins: The midpoints of the bins used in the calculation
     """
-    # Load EMDs and event indices from the .npz file
+
+    # Load EMDs and event indices once from disk
+    print(f"Loading EMDs from {npz_path}...")
     data = np.load(npz_path)
     emds = data["emds"]
     event_indices = data["event_indices"]
+    data.close()
 
-    print(f"Loaded EMDs with shape {emds.shape} from {npz_path}")
+    print(f"Loaded EMDs with shape {emds.shape}")
     print(f"Loaded event indices with shape {event_indices.shape}")
 
     # Ensure event_indices is a 1D array
@@ -380,24 +435,41 @@ def calculate_correlation_dimension_from_file(
             f"({n_jets}, {n_jets}) based on event_indices length"
         )
 
+    # Determine number of parallel jobs
+    n_histograms = len(weights_dict)
+    if n_jobs == -1:
+        # Use all available CPUs or number of histograms, whichever is smaller
+        n_workers = min(multiprocessing.cpu_count(), n_histograms)
+    elif n_jobs == 1:
+        n_workers = 1
+    else:
+        n_workers = min(n_jobs, n_histograms)
+
     results = {}
 
-    # Process each set of weights
-    for hist_name, weights in weights_dict.items():
-        weights = np.asarray(weights)
+    # Prepare arguments for parallel processing
+    # Pass arrays directly (will be pickled and sent to worker processes)
+    args_list = [
+        (hist_name, weights, emds, event_indices, bins)
+        for hist_name, weights in weights_dict.items()
+    ]
 
-        # Get the weights of the jets (fine if some events have multiple jets)
-        jet_weights = weights[event_indices]
-
-        # Create EMD weights matrix: weight for EMD(i,j) = weight(i) * weight(j)
-        # This represents the product of weights for the two events
-        emd_weights = jet_weights[:, None] * jet_weights[None, :]
-
-        print(f"Calculating correlation dimension for '{hist_name}'...")
-        dims, dims_var, midbins = calculate_correlation_dimension_from_emds(
-            emds, emd_weights, bins
+    # Process each set of weights in parallel
+    if n_workers > 1:
+        print(
+            f"Processing {n_histograms} weight sets with "
+            f"{n_workers} parallel workers..."
         )
+        with multiprocessing.Pool(processes=n_workers) as pool:
+            processed_results = pool.map(_process_weight_set, args_list)
 
-        results[hist_name] = (dims, dims_var, midbins)
+        # Collect results into dictionary
+        for hist_name, dims, dims_var, midbins in processed_results:
+            results[hist_name] = (dims, dims_var, midbins)
+    else:
+        # Sequential processing (n_jobs=1 or only one histogram)
+        for args in args_list:
+            hist_name, dims, dims_var, midbins = _process_weight_set(args)
+            results[hist_name] = (dims, dims_var, midbins)
 
     return results

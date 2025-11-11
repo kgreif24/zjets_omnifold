@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import vector
+import uncertainties
 
 
 def plot_jets_eta_phi(
@@ -118,14 +119,14 @@ def plot_jets_eta_phi(
     return fig
 
 
-def compare_to_pd(
+def compare_to_target(
     all_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     prior_key: str = "prior",
     measured_key: str = "nominal",
-    truth_key: str = "truthpd",
+    target_key: str = "truthpd",
     prior_label: str = "Prior",
     measured_label: str = "Reweighted",
-    truth_label: str = "Truth Pseudodata",
+    target_label: str = "Truth Pseudodata",
     figsize=(6.4, 4.8),
     ylabel: str = "A.U.",
     xlabel: str = "Obs",
@@ -202,42 +203,15 @@ def compare_to_pd(
         raise KeyError(
             f"Key '{measured_key}' not found in all_hists. Available keys: {available}"
         )
-    if truth_key not in all_hists:
+    if target_key not in all_hists:
         available = list(all_hists.keys())
         raise KeyError(
-            f"Key '{truth_key}' not found in all_hists. Available keys: {available}"
+            f"Key '{target_key}' not found in all_hists. Available keys: {available}"
         )
 
-    prior_dims, prior_dims_var, prior_midbins = all_hists[prior_key]
-    measured_dims, measured_dims_var, measured_midbins = all_hists[measured_key]
-    truth_dims, truth_dims_var, truth_midbins = all_hists[truth_key]
-
-    # Use truth midbins as the reference for x-axis (all should be the same)
-    midbins = truth_midbins
-
-    # Handle case where dims might be shorter than midbins (by 1)
-    # This happens because correlation dimension is calculated from differences
-    # Pad dims with the first value to match midbins length for plotting
-    if len(prior_dims) == len(midbins) - 1:
-        prior_dims = np.concatenate([[prior_dims[0]], prior_dims])
-    if len(measured_dims) == len(midbins) - 1:
-        measured_dims = np.concatenate([[measured_dims[0]], measured_dims])
-    if len(truth_dims) == len(midbins) - 1:
-        truth_dims = np.concatenate([[truth_dims[0]], truth_dims])
-
-    # Create bin edges from midbins for plotting
-    # Approximate bin edges by assuming uniform spacing in log space
-    # This is a reasonable approximation for correlation dimension plots
-    if len(midbins) > 1:
-        # Calculate bin width (assuming logarithmic spacing)
-        log_midbins = np.log(midbins)
-        dlog = log_midbins[1] - log_midbins[0]
-        # Create bin edges
-        bin_edges = np.exp(log_midbins - dlog / 2)
-        bin_edges = np.append(bin_edges, np.exp(log_midbins[-1] + dlog / 2))
-    else:
-        # Fallback if we only have one bin
-        bin_edges = np.array([midbins[0] * 0.9, midbins[0] * 1.1])
+    prior_hist, _, bin_edges = all_hists[prior_key]
+    measured_hist, _, _ = all_hists[measured_key]
+    target_hist, _, _ = all_hists[target_key]
 
     # Create figure and axes if not provided
     if fig is None:
@@ -250,9 +224,9 @@ def compare_to_pd(
         ax = fig.add_subplot(this_grid[0, 0])
 
     # Duplicate last values for steps-post style plotting
-    prior_plot = np.append(prior_dims, prior_dims[-1])
-    measured_plot = np.append(measured_dims, measured_dims[-1])
-    truth_plot = np.append(truth_dims, truth_dims[-1])
+    prior_plot = np.append(prior_hist, prior_hist[-1])
+    measured_plot = np.append(measured_hist, measured_hist[-1])
+    target_plot = np.append(target_hist, target_hist[-1])
 
     # Plot on main axis
     ax.plot(
@@ -272,9 +246,9 @@ def compare_to_pd(
     )
     ax.plot(
         bin_edges,
-        truth_plot,
+        target_plot,
         drawstyle="steps-post",
-        label=truth_label,
+        label=target_label,
     )
     ax.plot(
         bin_edges,
@@ -297,9 +271,9 @@ def compare_to_pd(
 
     # Calculate ratios
     # Avoid division by zero
-    truth_plot_safe = np.where(truth_plot > 0, truth_plot, np.nan)
-    prior_ratio = prior_plot / truth_plot_safe
-    measured_ratio = measured_plot / truth_plot_safe
+    target_plot_safe = np.where(target_plot > 0, target_plot, np.nan)
+    prior_ratio = prior_plot / target_plot_safe
+    measured_ratio = measured_plot / target_plot_safe
 
     # Plot ratios
     axr.hlines(1, bin_edges[0], bin_edges[-1], color="black", linestyle="--", alpha=0.8)
@@ -327,10 +301,15 @@ def compare_to_pd(
     return fig
 
 
-def plot_uncertainties(
+def plot_measurement_with_uncertainties(
     all_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     measured_key: str = "nominal",
+    measured_label: str = "Reweighted",
     target_key: str = "truthpd",
+    target_label: str = "Truth Pseudodata",
+    target2_key: str = None,
+    target2_label: str = "MadGraph",
+    data_measurement_mode: bool = False,
     figsize=(6.4, 4.8),
     ylabel: str = "Correlation Dimension",
     xlabel: str = "Q [GeV]",
@@ -345,14 +324,8 @@ def plot_uncertainties(
        with total uncertainty
     2. Uncertainty budget plot showing individual uncertainty contributions
 
-    The function extracts systematic uncertainties from the all_hists
-    dictionary by:
-    - Computing differences between systematic variations and the nominal
-      measurement
-    - Computing NN initialization uncertainty from variance across ensemble
-      members
-    - Using provided variance information for MC statistical uncertainty
-    - Computing data statistical uncertainty if available
+    The function uses UncertaintyCalculator to extract systematic uncertainties
+    from the all_hists dictionary
 
     Arguments:
     ----------
@@ -364,8 +337,19 @@ def plot_uncertainties(
         - midbins: The bin edges (despite the name, these are edges not midpoints)
     measured_key : str, optional
         Key in all_hists for the measured/unfolded distribution (default: "nominal").
+    measured_label : str, optional
+        Label for the measured distribution in the legend (default: "Reweighted").
     target_key : str, optional
         Key in all_hists for the target/truth distribution (default: "truthpd").
+    target_label : str, optional
+        Label for the target distribution in the legend (default: "Truth Pseudodata").
+    target2_key : str, optional
+        Key in all_hists for the second target distribution. If provided and
+        data_measurement_mode is True, both targets will be plotted (default: None).
+    target2_label : str, optional
+        Label for the second target distribution in the legend (default: "MadGraph").
+    data_measurement_mode : bool, optional
+        If True, compares data measurement to truth generators
     figsize : tuple, optional
         Figure size in inches (width, height) (default: (6.4, 4.8)).
     ylabel : str, optional
@@ -386,6 +370,7 @@ def plot_uncertainties(
     fig_uncertainty_budget : matplotlib.figure.Figure
         Figure with uncertainty budget plot showing individual contributions.
     """
+
     # Extract measured and target histograms
     if measured_key not in all_hists:
         available = list(all_hists.keys())
@@ -398,232 +383,57 @@ def plot_uncertainties(
             f"Key '{target_key}' not found in all_hists. Available keys: {available}"
         )
 
-    measured_dims, measured_dims_var, measured_midbins = all_hists[measured_key]
-    target_dims, target_dims_var, target_midbins = all_hists[target_key]
+    measured_hist, _, bin_edges = all_hists[measured_key]
+    target_hist, _, _ = all_hists[target_key]
 
-    # Use measured midbins as reference (all should be the same)
-    # Note: despite the name "midbins", these are actually bin edges
-    bin_edges = measured_midbins
+    # Extract second target if provided
+    target2_hist = None
+    if target2_key is not None:
+        if target2_key not in all_hists:
+            available = list(all_hists.keys())
+            raise KeyError(
+                f"Key '{target2_key}' not found in all_hists. "
+                f"Available keys: {available}"
+            )
+        target2_hist, _, _ = all_hists[target2_key]
 
-    # Define systematic uncertainty names and properties
-    syst_definitions = {
-        "nn-init": {
-            "name": "NN Init",
-            "color": "aqua",
-            "stochastic": True,
-            "prefix": "nn-init-",
-        },
-        "track-eff": {
-            "name": "Track eff.",
-            "color": "purple",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "jet-track-eff": {
-            "name": "Jet track eff.",
-            "color": "pink",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "track-fake": {
-            "name": "Track fake",
-            "color": "brown",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "track-scale": {
-            "name": "Track scale",
-            "color": "gray",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "muon-id": {
-            "name": "Muon ID",
-            "color": "lightgreen",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "muon-ms": {
-            "name": "Muon MS",
-            "color": "lightblue",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "muon-resbias": {
-            "name": "Muon resolution bias",
-            "color": "deepskyblue",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "muon-scale": {
-            "name": "Muon scale",
-            "color": "teal",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "dd": {
-            "name": "Data driven",
-            "color": "red",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "hv": {
-            "name": "Hidden variable",
-            "color": "orange",
-            "stochastic": False,
-            "prefix": None,
-        },
-        "data-stat": {
-            "name": "Data stat",
-            "color": "blue",
-            "stochastic": True,
-            "prefix": None,
-        },
-    }
-
-    # Calculate systematic uncertainties
-    syst_vars = {}
-    syst_info = {}
-
-    # MC statistical uncertainty (from variance in measured distribution)
-    syst_vars["mc-stat"] = measured_dims_var
-    syst_info["mc-stat"] = {
-        "name": "MC stat",
-        "color": "green",
-        "stochastic": True,
-    }
-
-    # NN initialization uncertainty (from variance across ensemble members)
-    nn_init_keys = [
-        key
-        for key in all_hists.keys()
-        if key.startswith("nn-init-") and key != "nn-init"
-    ]
-    if nn_init_keys:
-        # Extract all ensemble member histograms
-        ensemble_dims = []
-        for key in sorted(nn_init_keys):
-            dims, _, _ = all_hists[key]
-            ensemble_dims.append(dims)
-
-        if ensemble_dims:
-            ensemble_dims = np.array(ensemble_dims)
-            # Calculate variance across ensemble members
-            # Normalize each member to match the nominal
-            for i in range(len(ensemble_dims)):
-                norm_factor = np.sum(measured_dims) / np.sum(ensemble_dims[i])
-                ensemble_dims[i] *= norm_factor
-            nn_init_var = np.var(ensemble_dims, axis=0) / (len(ensemble_dims) - 1)
-            syst_vars["nn-init"] = nn_init_var
-            syst_info["nn-init"] = syst_definitions["nn-init"]
-
-    # Other systematic uncertainties (from differences with nominal)
-    for syst_key, syst_def in syst_definitions.items():
-        if syst_key in ["nn-init", "mc-stat", "data-stat"]:
-            continue  # Already handled
-
-        # Check if this systematic exists in all_hists
-        if syst_key in all_hists:
-            syst_dims, _, _ = all_hists[syst_key]
-
-            # Normalize to match measured distribution
-            norm_factor = np.sum(measured_dims) / np.sum(syst_dims)
-            syst_dims *= norm_factor
-
-            # Calculate variance as squared difference
-            syst_var = np.abs(syst_dims - measured_dims) ** 2
-            syst_vars[syst_key] = syst_var
-            syst_info[syst_key] = syst_def
-
-    # Data statistical uncertainty (if available)
-    if "data-stat" in all_hists:
-        _, data_var, _ = all_hists["data-stat"]
-        syst_vars["data-stat"] = data_var
-        syst_info["data-stat"] = syst_definitions["data-stat"]
-
-    # Apply uncertainty merging (same as uncertainty_plotter.py)
-    # Define uncertainty merging groups
-    uncertainty_groups = {
-        "Tracking": ["track-eff", "jet-track-eff", "track-fake", "track-scale"],
-        "Unfolding": ["dd", "hv"],
-        "Muon": ["muon-id", "muon-ms", "muon-resbias", "muon-rho", "muon-scale"],
-    }
-    hide_individual_uncertainties = True
-
-    # Merge uncertainties in quadrature
-    merged_uncertainties = {}
-    hidden_uncertainties = {}
-    for group_name, individual_uncertainties in uncertainty_groups.items():
-        # Check which uncertainties are available
-        available_uncertainties = []
-        for uncert_name in individual_uncertainties:
-            if uncert_name in syst_vars:
-                available_uncertainties.append(uncert_name)
-
-        if not available_uncertainties:
-            continue
-
-        # Merge variances in quadrature
-        merged_var = np.sum(
-            [syst_vars[uncert] for uncert in available_uncertainties],
-            axis=0,
-        )
-
-        # Create merged uncertainty entry
-        merged_uncertainties[group_name] = {
-            "name": group_name.title(),
-            "color": syst_info[available_uncertainties[0]]["color"],
-            "var": merged_var,
-            "merged_from": available_uncertainties,
-        }
-
-        # Hide individual uncertainties if enabled
-        if hide_individual_uncertainties:
-            for uncert_name in available_uncertainties:
-                hidden_uncertainties[uncert_name] = {
-                    "var": syst_vars[uncert_name],
-                    "info": syst_info[uncert_name],
-                }
-                del syst_vars[uncert_name]
-                del syst_info[uncert_name]
-
-    # Add merged uncertainties to syst_vars and syst_info
-    for group_name, merged_uncert in merged_uncertainties.items():
-        syst_vars[group_name] = merged_uncert["var"]
-        syst_info[group_name] = {
-            "name": merged_uncert["name"],
-            "color": merged_uncert["color"],
-            "stochastic": False,
-        }
-
-    # Calculate total variance and uncertainty
-    total_var = np.sum(list(syst_vars.values()), axis=0)
-    total_uncert = np.sqrt(total_var)
-    rel_total_uncert = total_uncert / np.where(measured_dims > 0, measured_dims, 1)
-
-    # Normalize target to match measured
-    norm_factor = np.sum(measured_dims) / np.sum(target_dims)
-    norm_target_dims = norm_factor * target_dims
-
-    # Calculate ratio
-    ratio = measured_dims / np.where(norm_target_dims > 0, norm_target_dims, 1)
-
-    # Calculate method bias
-    mbias = (measured_dims - norm_target_dims) ** 2
-    rel_mbias = np.sqrt(mbias) / np.where(norm_target_dims > 0, norm_target_dims, 1)
-
-    # Duplicate last values for step plots
-    measured_plot = np.append(measured_dims, measured_dims[-1])
-    norm_target_plot = np.append(norm_target_dims, norm_target_dims[-1])
-    rel_total_uncert_plot = np.append(rel_total_uncert, rel_total_uncert[-1])
-    if len(rel_mbias) > 0:
-        rel_mbias_plot = np.append(rel_mbias, rel_mbias[-1])
+    # Calculate method bias (only in standard mode, not data comparison mode)
+    if data_measurement_mode:
+        mbias = None
+        rel_mbias = None
     else:
-        rel_mbias_plot = rel_mbias
+        mbias = (measured_hist - target_hist) ** 2
+        rel_mbias = np.sqrt(mbias) / np.where(target_hist > 0, target_hist, 1)
 
     # Create bin centers and errors for errorbar plots
     bin_centers = (bin_edges[1:] + bin_edges[:-1]) / 2
     bin_errors = (bin_edges[1:] - bin_edges[:-1]) / 2
+
+    # Normalize targets to match measured
+    norm_factor = np.sum(measured_hist) / np.sum(target_hist)
+    norm_target_hist = norm_factor * target_hist
+    if target2_hist is not None:
+        norm_factor2 = np.sum(measured_hist) / np.sum(target2_hist)
+        norm_target2_hist = norm_factor2 * target2_hist
+
+    # Create uncertainty calculator (using default definitions)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator()
+
+    # Calculate systematic uncertainties using UncertaintyCalculator
+    syst_vars, syst_info = uncertainty_calculator.calculate_uncertainties(
+        all_hists, measured_key=measured_key
+    )
+
+    # Calculate total variance and uncertainty
+    total_uncert = uncertainty_calculator.get_total_uncertainty(
+        all_hists, measured_key=measured_key
+    )
+
+    # Duplicate last values for step plots (only used in pseudo measurement mode)
+    target_plot = np.append(norm_target_hist, norm_target_hist[-1])
+    # Calculate relative total uncertainty for uncertainty budget plot
+    rel_total_uncert = total_uncert / np.where(measured_hist > 0, measured_hist, 1)
+    rel_total_uncert_plot = np.append(rel_total_uncert, rel_total_uncert[-1])
 
     # ===== Figure 1: Cross-section plot =====
     fig_cross_section, (ax, rax) = plt.subplots(
@@ -636,22 +446,53 @@ def plot_uncertainties(
     plt.subplots_adjust(hspace=0, top=0.95)
 
     # Main plot
-    ax.plot(
-        bin_edges,
-        norm_target_plot,
-        "--",
-        label="Target",
-        color="black",
-        drawstyle="steps-post",
-    )
-    ax.errorbar(
-        bin_centers,
-        measured_dims,
-        yerr=total_uncert,
-        fmt="o",
-        label="Unfolded",
-        color=color,
-    )
+    if data_measurement_mode:
+        # In data measurement mode: targets as colored points, measured as black points
+        ax.errorbar(
+            bin_centers,
+            norm_target_hist,
+            fmt="o",
+            label=target_label,
+            color="purple",
+        )
+
+        # Add second target if provided
+        if norm_target2_hist is not None:
+            ax.errorbar(
+                bin_centers,
+                norm_target2_hist,
+                fmt="o",
+                label=target2_label,
+                color="orange",
+            )
+
+        ax.errorbar(
+            bin_centers,
+            measured_hist,
+            xerr=bin_errors,
+            yerr=total_uncert,
+            fmt="+",
+            label=measured_label,
+            color="black",
+        )
+    else:
+        # Standard mode: target as dashed line, measured as colored points
+        ax.plot(
+            bin_edges,
+            target_plot,
+            "--",
+            label=target_label,
+            color="black",
+            drawstyle="steps-post",
+        )
+        ax.errorbar(
+            bin_centers,
+            measured_hist,
+            yerr=total_uncert,
+            fmt="o",
+            label=measured_label,
+            color=color,
+        )
 
     # Set plot properties
     if not linear_yscale:
@@ -666,17 +507,47 @@ def plot_uncertainties(
 
     # Ratio plot
     rax.axhline(1, color="black", linestyle="--")
-    rax.errorbar(
-        bin_centers,
-        ratio,
-        xerr=bin_errors,
-        yerr=rel_total_uncert,
-        fmt="o",
-        color=color,
-    )
+    if data_measurement_mode:
+        # In data measurement mode: ratio is target/measured
+        # Avoid division by zero
+        measured_safe = np.where(measured_hist > 0, measured_hist, np.nan)
+        ratio = norm_target_hist / measured_safe
+        rax.errorbar(
+            bin_centers,
+            ratio,
+            xerr=bin_errors,
+            yerr=rel_total_uncert,
+            fmt="o",
+            color="purple",
+        )
+
+        # Add second target ratio if provided
+        if norm_target2_hist is not None:
+            ratio2 = norm_target2_hist / measured_safe
+            rax.errorbar(
+                bin_centers,
+                ratio2,
+                xerr=bin_errors,
+                yerr=rel_total_uncert,
+                fmt="o",
+                color="orange",
+            )
+
+        rax.set_ylabel("Ratio")
+    else:
+        # Standard mode: ratio is measured/target
+        rax.errorbar(
+            bin_centers,
+            measured_hist / target_plot[:-1],  # Remove duplicated last bin
+            xerr=bin_errors,
+            yerr=rel_total_uncert,
+            fmt="o",
+            color=color,
+        )
+        rax.set_ylabel("Ratio to target")
+
     rax.set_ylim(0.5, 1.5)
     rax.set_yticks([0.5, 1.0, 1.5])
-    rax.set_ylabel("Ratio to target")
     rax.set_xlabel(xlabel)
     if log_xscale:
         rax.set_xscale("log")
@@ -703,27 +574,24 @@ def plot_uncertainties(
 
     # Plot individual uncertainties
     for syst_key in syst_vars:
-        syst_var = syst_vars[syst_key]
-        # Pad for step plot
-        syst_var_plot = np.append(syst_var, syst_var[-1])
-        rel_syst_uncert = np.sqrt(syst_var_plot) / np.where(
-            measured_plot > 0, measured_plot, 1
-        )
+        rel_var_uncert = syst_vars[syst_key] / measured_hist**2
+        plot_syst_uncert = np.sqrt(np.append(rel_var_uncert, rel_var_uncert[-1]))
         ax.plot(
             bin_edges,
-            rel_syst_uncert,
+            plot_syst_uncert,
             "-",
             color=syst_info[syst_key]["color"],
             label=syst_info[syst_key]["name"],
             drawstyle="steps-post",
         )
 
-    # Plot method bias
-    if len(rel_mbias_plot) > 0:
+    # Plot method bias (only in standard mode, not data comparison mode)
+    if rel_mbias is not None:
+        plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         ax.fill_between(
             bin_edges,
             0,
-            rel_mbias_plot,
+            plot_mbias,
             step="post",
             color="gray",
             alpha=0.3,
@@ -738,8 +606,8 @@ def plot_uncertainties(
     ax.set_ylabel("Uncertainty budget")
 
     # Set y-axis limits
-    if len(rel_mbias_plot) > 0:
-        top_uncert = np.max(np.concatenate([rel_total_uncert_plot, rel_mbias_plot]))
+    if rel_mbias is not None:
+        top_uncert = np.max(np.concatenate([rel_total_uncert_plot, plot_mbias]))
     else:
         top_uncert = np.max(rel_total_uncert_plot)
     if top_uncert > 0.2 or np.isnan(top_uncert):

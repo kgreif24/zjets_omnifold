@@ -127,12 +127,6 @@ class UncertaintyPlotter(plotter.Plotter):
                 "plot_ratio": False,
                 "stochastic": False,
             },
-            "muon-rho": {
-                "name": "Muon rho",
-                "color": "lightseagreen",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
             "muon-scale": {
                 "name": "Muon scale",
                 "color": "teal",
@@ -237,7 +231,7 @@ class UncertaintyPlotter(plotter.Plotter):
         self.uncertainty_groups = {
             "Tracking": ["track-eff", "jet-track-eff", "track-fake", "track-scale"],
             "Unfolding": ["dd", "hv"],
-            "Muon": ["muon-id", "muon-ms", "muon-resbias", "muon-rho", "muon-scale"],
+            "Muon": ["muon-id", "muon-ms", "muon-resbias", "muon-scale"],
         }
 
         # Control whether to hide individual uncertainties when merging
@@ -832,6 +826,7 @@ class UncertaintyPlotter(plotter.Plotter):
             rax.errorbar(
                 bin_centers,
                 ratio2,
+                xerr=bin_errors,
                 yerr=rel_total_uncert,
                 fmt="o",
                 color="orange",
