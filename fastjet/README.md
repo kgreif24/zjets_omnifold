@@ -94,6 +94,21 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
   --outFile highmass_output.root
 ```
 
+#### Truth-Level Non-Unfolded Monte-Carlo
+```bash
+./doHisto.out \
+  --file /path/to/mc.root,/path/to/mc2.root \
+  -- truth \
+  --weight_names weight_mc,\*w_QCD_dd,\*w_Alpha_s1 \
+  --outFile mc_output.root
+```
+
+#### Notes:
+- if no weight file is specified, the code will assume the weights are contained within the MC file itself.
+- weights contained within the MC file that are meant to be used as multiplicative factors can be denoetd by an asterist at the start of the input, see ex: 'Truth-Level Non-Unfolded Monte-Carlo.
+- multiple input files can be given. If no weight file is specified, each input file must contain the listed weights.
+
+
 ## Parallel Processing
 
 The application uses OpenMP for parallel processing. Control the number of threads using:

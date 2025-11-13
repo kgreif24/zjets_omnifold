@@ -10,7 +10,7 @@ using namespace std;
 int main(int argc, char* argv[]){
 
 	// Read command line args
-	TString fileName;
+	vector<TString> fileNames;
 	string weight_file = "None";
 	vector<string> weight_names;
 	TString outFile;
@@ -21,8 +21,17 @@ int main(int argc, char* argv[]){
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 		if (arg == "--file") {
-			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
-				fileName = TString(argv[i+1]);
+      if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				string systList = string(argv[i+1]);
+				// Parse comma separated list into vector
+				size_t pos = 0;
+				string token;
+				while ((pos = systList.find(",")) != string::npos) {
+					token = systList.substr(0, pos);
+					fileNames.push_back(token);
+					systList.erase(0, pos + 1);
+				}
+				fileNames.push_back(systList);  // Add the last token
 				i++; // Move to the next arg
 			} else { // Throw error if no argument provided
 				std::cerr << "--file option requires one argument." << std::endl;
@@ -100,10 +109,10 @@ int main(int argc, char* argv[]){
 
 	// Set up the chain
 	TChain* myChain = new TChain("OmniTree");
-	myChain->Add(fileName);
-	cout << "Building hists from file: " << fileName << endl;
-  if (weight_file.size()) cout << "Using weights from file: " << weight_file << endl;
-  else cout << "Using weights from file: " << fileName <<". nEns set to 0." << endl;
+  for (auto file:fileNames) myChain->Add(file);
+	cout << "Using event from files: " << endl;
+  for (auto file:fileNames) cout << " - " << file << endl;
+  cout << "Using weights from file: " << weight_file << endl;
 	if (weight_names.size() > 0) {
 		cout << "Using weight_names: ";
 		for (const auto& weight_name : weight_names) {

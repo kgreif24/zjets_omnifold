@@ -4,11 +4,24 @@
 #include <TFile.h>
 #include <TH1D.h>
 #include <TH2D.h>
+#include <TProfile.h>
 #include <TMath.h>
 #include "HistoGroup.h"
 using namespace std;
 
 HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinematic_region(kinematic_region) {
+
+    // binning for <m/pT> study
+    pTj1_bins = {10, 75, 125, 200, 1000};
+    yj1_bins  = {0, 0.7, 1.3, 1.8, 2.5};
+    antikt_jetR = {0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85};
+    ca_jetR     = {0.2, 0.4, 0.6, 0.8};
+
+    antikt_jetR_bins.push_back(antikt_jetR.front() - 0.5 * (antikt_jetR[1] - antikt_jetR[0]));
+    for (size_t i = 1; i < antikt_jetR.size(); ++i) antikt_jetR_bins.push_back(0.5 * (antikt_jetR[i - 1] + antikt_jetR[i]));
+
+    ca_jetR_bins.push_back(ca_jetR.front() - 0.5 * (ca_jetR[1] - ca_jetR[0]));
+    for (size_t i = 1; i < ca_jetR.size(); ++i) ca_jetR_bins.push_back(0.5 * (ca_jetR[i - 1] + ca_jetR[i]));
 
     // Define log spaced bins for EEC plots
     const Long64_t nbins = 20;
@@ -85,58 +98,70 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
         dRjj_nbins = 10; // 11 edges = 10 bins
     }
 
-    hm1_R04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hm2_R04 = make_shared<TH1D>(TH1D("", "", 4, m2_edges));
-    hm3_R04 = make_shared<TH1D>(TH1D("", "", 5, m_edges));
-    hm4_R04 = make_shared<TH1D>(TH1D("", "", 5, m_edges));
-    hmjj_R04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
-    hdyjj_R04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
-    hEEC_R04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
+
+    h_map["hm1_R04"] = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    h_map["hm2_R04"] = make_shared<TH1D>(TH1D("", "", 4, m2_edges));
+    h_map["hm3_R04"] = make_shared<TH1D>(TH1D("", "", 5, m_edges));
+    h_map["hm4_R04"] = make_shared<TH1D>(TH1D("", "", 5, m_edges));
+    h_map["hmjj_R04"] = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
+    h_map["hdyjj_R04"] = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
+    h_map["hEEC_R04"] = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
     // hLund_z_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
     // hLund_dR_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
     // hLund_plane_R04 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 11, 0.5, 6));
 
-    hm1_R06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
-    hEEC_R06 = make_shared<TH1D>(TH1D("", "", nbins, ak6_edges));
+    h_map["hm1_R06"] = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    h_map["hpT_R06"] = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    h_map["hEEC_R06"] = make_shared<TH1D>(TH1D("", "", nbins, ak6_edges));
     // hLund_z_R06 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
     // hLund_dR_R06 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
     // hLund_plane_R06 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
 
-    hm1_R10 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_R10 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
-    hEEC_R10 = make_shared<TH1D>(TH1D("", "", nbins, ak10_edges));
+    h_map["hm1_R10"] = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    h_map["hpT_R10"] = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    h_map["hEEC_R10"] = make_shared<TH1D>(TH1D("", "", nbins, ak10_edges));
     // hLund_z_R10 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
     // hLund_dR_R10 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
     // hLund_plane_R10 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
 
-    hm1_CA04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_CA04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
-    hEEC_CA04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
-    hmjj_CA04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
-    hdRjj_CA04 = make_shared<TH1D>(TH1D("", "", dRjj_nbins, dRjj_edges));
-    hdyjj_CA04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
-    hdphijj_CA04 = make_shared<TH1D>(TH1D("", "", 10, dphijj_edges));
+    h_map["hm1_CA04"] = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    h_map["hpT_CA04"] = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    h_map["hEEC_CA04"] = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
+    h_map["hmjj_CA04"] = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
+    h_map["hdRjj_CA04"] = make_shared<TH1D>(TH1D("", "", dRjj_nbins, dRjj_edges));
+    h_map["hdyjj_CA04"] = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
+    h_map["hdphijj_CA04"] = make_shared<TH1D>(TH1D("", "", 10, dphijj_edges));
 
-    hm1_CA06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_CA06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    h_map["hm1_CA06"] = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    h_map["hpT_CA06"] = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
 
-    hm1_KT04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_KT04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    h_map["hm1_KT04"] = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
+    h_map["hpT_KT04"] = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
 
-    hTEEC_collinear = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
-    hTEEC_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
-    hTEEC_b2b = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
-    hTEEC_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
-    hTEEC_z_collinear = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
-    hTEEC_z_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
-    hTEEC_z_b2b = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
-    hTEEC_z_full = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
+    h_map["hTEEC_collinear"] = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
+    h_map["hTEEC_full_nolog"] = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
+    h_map["hTEEC_b2b"] = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
+    h_map["hTEEC_full"] = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
+    h_map["hTEEC_z_collinear"] = make_shared<TH1D>(TH1D("", "", nbins, b2b_edges));
+    h_map["hTEEC_z_full_nolog"] = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
+    h_map["hTEEC_z_b2b"] = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
+    h_map["hTEEC_z_full"] = make_shared<TH1D>(TH1D("", "", 2*nbins, symlog_edges));
 
-    // type_Yvar_Xvar_jetalgo
-    h2d_m1OverpT_JetR_CA = make_shared<TProfile>(TH1D("", "", 2*nbins, symlog_edges));
-    h2d_m1OverpT_pT_CA   = make_shared<TProfile>(TH1D("", "", 2*nbins, symlog_edges));
-    TProfile *prof = 
+    prof_map["prof_aktRVaried_M1OverpT_All"] = std::make_shared<TProfile>( TProfile("", "", antikt_jetR_bins.size() - 1, antikt_jetR_bins.data()));
+    prof_map["prof_caRVaried_M1OverpT_All"]  = std::make_shared<TProfile>( TProfile("", "", ca_jetR_bins.size() - 1, ca_jetR_bins.data()));
+    for (long unsigned int i = 0; i < pTj1_bins.size()-1; i++){
+        for (long unsigned int j = 0; j < yj1_bins.size()-1; j++){
+            string prof_name;
+            prof_name           =  "prof_aktRVaried_M1OverpT_pTj1bin"+to_string(i+1)+"_yj1bin"+to_string(j+1);
+            prof_map[prof_name] = std::make_shared<TProfile>( TProfile("", "", antikt_jetR_bins.size() - 1, antikt_jetR_bins.data()));
+
+            prof_name           = "prof_caRVaried_M1OverpT_pTj1bin"+to_string(i+1)+"_yj1bin"+to_string(j+1);
+            prof_map[prof_name] = std::make_shared<TProfile>( TProfile("", "", ca_jetR_bins.size() - 1, ca_jetR_bins.data()));
+        }
+    }
+
+    // prof_map["h2d_m1OverpT_JetR_CA"] = make_shared<TProfile>(TH1D("", "", 2*nbins, symlog_edges));
+    // prof_map["h2d_m1OverpT_pT_CA"]   = make_shared<TProfile>(TH1D("", "", 2*nbins, symlog_edges));
 
 
 }
@@ -146,97 +171,51 @@ HistoGroup::~HistoGroup() {
     // Histograms will be automatically deleted when the unique_ptr goes out of scope
 }
 
-void HistoGroup::WriteHistos(TFile& foutput) {
+void HistoGroup::WriteHistoMap(TFile& foutput) {
     // Write histograms to the output file
     foutput.cd();
-    hm1_R04->Write((name + "hm1_R04").c_str());
-    hm2_R04->Write((name + "hm2_R04").c_str());
-    hm3_R04->Write((name + "hm3_R04").c_str());
-    hm4_R04->Write((name + "hm4_R04").c_str());
-    hmjj_R04->Write((name + "hmjj_R04").c_str());
-    hdyjj_R04->Write((name + "hdyjj_R04").c_str());
-    hEEC_R04->Write((name + "hEEC_R04").c_str());
-    // hLund_z_R04->Write((name + "hLund_z_R04").c_str());
-    // hLund_dR_R04->Write((name + "hLund_dR_R04").c_str());
-    // hLund_plane_R04->Write((name + "hLund_plane_R04").c_str());
-
-    hm1_R06->Write((name + "hm1_R06").c_str());
-    hpT_R06->Write((name + "hpT_R06").c_str());
-    hEEC_R06->Write((name + "hEEC_R06").c_str());
-    // hLund_z_R06->Write((name + "hLund_z_R06").c_str());
-    // hLund_dR_R06->Write((name + "hLund_dR_R06").c_str());
-    // hLund_plane_R06->Write((name + "hLund_plane_R06").c_str());
-
-    hm1_R10->Write((name + "hm1_R10").c_str());
-    hpT_R10->Write((name + "hpT_R10").c_str());
-    hEEC_R10->Write((name + "hEEC_R10").c_str());
-    // hLund_z_R10->Write((name + "hLund_z_R10").c_str());
-    // hLund_dR_R10->Write((name + "hLund_dR_R10").c_str());
-    // hLund_plane_R10->Write((name + "hLund_plane_R10").c_str());
-
-    hm1_CA04->Write((name + "hm1_CA04").c_str());
-    hpT_CA04->Write((name + "hpT_CA04").c_str());
-    hEEC_CA04->Write((name + "hEEC_CA04").c_str());
-    hmjj_CA04->Write((name + "hmjj_CA04").c_str());
-    hdRjj_CA04->Write((name + "hdRjj_CA04").c_str());
-    hdyjj_CA04->Write((name + "hdyjj_CA04").c_str());
-    hdphijj_CA04->Write((name + "hdphijj_CA04").c_str());
-
-    hm1_CA06->Write((name + "hm1_CA06").c_str());
-    hpT_CA06->Write((name + "hpT_CA06").c_str());
-
-    hm1_KT04->Write((name + "hm1_KT04").c_str());
-    hpT_KT04->Write((name + "hpT_KT04").c_str());
-
-    hTEEC_collinear->Write((name + "hTEEC_collinear").c_str());
-    hTEEC_full_nolog->Write((name + "hTEEC_full_nolog").c_str());
-    hTEEC_b2b->Write((name + "hTEEC_b2b").c_str());
-    hTEEC_full->Write((name + "hTEEC_full").c_str());
-    hTEEC_z_collinear->Write((name + "hTEEC_z_collinear").c_str());
-    hTEEC_z_full_nolog->Write((name + "hTEEC_z_full_nolog").c_str());
-    hTEEC_z_b2b->Write((name + "hTEEC_z_b2b").c_str());
-    hTEEC_z_full->Write((name + "hTEEC_z_full").c_str());
-
+    string key; std::shared_ptr<TH1D> h;
+    for (auto elmnt:h_map){
+        key = elmnt.first;
+        h = elmnt.second;
+        h.get()->SetName((name + key).c_str());
+        h.get()->Write((name + key).c_str(),TObject::kOverwrite);
+    }
 }
 
-void HistoGroup::MergeHistos(const HistoGroup& other) {
-    // Merge all histograms from other into this group
-    hm1_R04->Add(other.hm1_R04.get());
-    hm2_R04->Add(other.hm2_R04.get());
-    hm3_R04->Add(other.hm3_R04.get());
-    hm4_R04->Add(other.hm4_R04.get());
-    hmjj_R04->Add(other.hmjj_R04.get());
-    hdyjj_R04->Add(other.hdyjj_R04.get());
-    hEEC_R04->Add(other.hEEC_R04.get());
-    
-    hm1_R06->Add(other.hm1_R06.get());
-    hpT_R06->Add(other.hpT_R06.get());
-    hEEC_R06->Add(other.hEEC_R06.get());
-    
-    hm1_R10->Add(other.hm1_R10.get());
-    hpT_R10->Add(other.hpT_R10.get());
-    hEEC_R10->Add(other.hEEC_R10.get());
+void HistoGroup::WriteProfMap(TFile& foutput) {
+    foutput.cd();
+    string key; std::shared_ptr<TProfile> p;
+    for (auto elmnt:prof_map){
+        key = elmnt.first;
+        p = elmnt.second;
+        p->SetName((name + key).c_str());
+        p->Write((name + key).c_str(),TObject::kOverwrite);
+    }
+}
 
-    hm1_CA04->Add(other.hm1_CA04.get());
-    hpT_CA04->Add(other.hpT_CA04.get());
-    hEEC_CA04->Add(other.hEEC_CA04.get());
-    hmjj_CA04->Add(other.hmjj_CA04.get());
-    hdRjj_CA04->Add(other.hdRjj_CA04.get());
-    hdyjj_CA04->Add(other.hdyjj_CA04.get());
-    hdphijj_CA04->Add(other.hdphijj_CA04.get());
-    
-    hm1_CA06->Add(other.hm1_CA06.get());
-    hpT_CA06->Add(other.hpT_CA06.get());
-    
-    hm1_KT04->Add(other.hm1_KT04.get());
-    hpT_KT04->Add(other.hpT_KT04.get());
-    
-    hTEEC_collinear->Add(other.hTEEC_collinear.get());
-    hTEEC_full_nolog->Add(other.hTEEC_full_nolog.get());
-    hTEEC_b2b->Add(other.hTEEC_b2b.get());
-    hTEEC_full->Add(other.hTEEC_full.get());
-    hTEEC_z_collinear->Add(other.hTEEC_z_collinear.get());
-    hTEEC_z_full_nolog->Add(other.hTEEC_z_full_nolog.get());
-    hTEEC_z_b2b->Add(other.hTEEC_z_b2b.get());
-    hTEEC_z_full->Add(other.hTEEC_z_full.get());
+void HistoGroup::WriteGroup(TFile& foutput) {
+    // Merge all histograms from other into this group
+    WriteHistoMap(foutput);
+    WriteProfMap(foutput);
+}
+
+void HistoGroup::MergeHistoMaps(const HistoGroup& other) {
+    // Merge all histograms from other into this group
+    for (auto& [key, h] : h_map){
+        h->Add(other.h_map.at(key).get());
+    }
+}
+
+void HistoGroup::MergeProfMaps(const HistoGroup& other) {
+    // Merge all histograms from other into this group
+    for (auto& [key, p] : prof_map){
+        p->Add(other.prof_map.at(key).get());
+    }
+}
+
+void HistoGroup::MergeGroup(const HistoGroup& other) {
+    // Merge all histograms from other into this group
+    MergeHistoMaps(other);
+    MergeProfMaps(other);
 }

@@ -14,6 +14,7 @@
 #include <TString.h>
 #include <TH1D.h>
 #include <TH2D.h>
+#include <TProfile.h>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -34,16 +35,39 @@ public :
    int nEns;
    TString saveName;
    int kinematicRegion;
+   map<string,bool> is_multiplicative;
 
    // HistoGroups
    vector<HistoGroup> centralHistoGroups;
    vector<HistoGroup> ensHistoGroups;
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
-
    // Declaration of leaf types
-   vector<float> additional_weights;
    bool has_kevin_branches = true;
+   bool has_theory_weights = true;
+   bool theory_prefix      = false;
+   map<string,Float_t> w_theory;
+   Float_t w_QCD_uu;
+   Float_t w_QCD_dd;
+   Float_t w_QCD_un;
+   Float_t w_QCD_nu;
+   Float_t w_QCD_nd;
+   Float_t w_QCD_dn;
+   Float_t w_PDF_CT14nnlo;
+   Float_t w_PDF_MMHT2014;
+   Float_t w_PDF_MSHT2020;
+   Float_t w_PDF_CT18nnlo;
+   Float_t w_Alpha_s1;
+   Float_t w_Alpha_s2;
+   Float_t w_Var2Up;
+   Float_t w_Var2Down;
+   Float_t w_Var1Up;
+   Float_t w_Var1Down;
+   Float_t w_MPIUp;
+   Float_t w_MPIDown;
+   Float_t w_RenUp;
+   Float_t w_RenDown;
+
    Float_t         weight;
    Int_t           pass190;
    Int_t           truth_pass190;
@@ -100,6 +124,9 @@ public :
    Int_t           npdgId_tracks;
    Long_t          pdgId_tracks[309];   //[npdgId_tracks]
 
+   // Override to alwayse read in truth info
+   Float_t         truth_pT_trackj1;
+   Float_t         truth_y_trackj1;
 
    vector<float>*   pT_tracks_vec = nullptr; 
    vector<float>*   eta_tracks_vec = nullptr;
@@ -164,6 +191,27 @@ public :
    TBranch        *b_trackJetIndex_tracks;   //!
    TBranch        *b_npdgId_tracks;   //!
    TBranch        *b_pdgId_tracks;   //!
+   TBranch        *b_QCD_uu;
+   TBranch        *b_QCD_dd;
+   TBranch        *b_QCD_un;
+   TBranch        *b_QCD_nu;
+   TBranch        *b_QCD_nd;
+   TBranch        *b_QCD_dn;
+   TBranch        *b_PDF_CT14nnlo;
+   TBranch        *b_PDF_MMHT2014;
+   TBranch        *b_PDF_MSHT2020;
+   TBranch        *b_PDF_CT18nnlo;
+   TBranch        *b_Alpha_s1;
+   TBranch        *b_Alpha_s2;
+   TBranch        *b_Var2Up;
+   TBranch        *b_Var2Down;
+   TBranch        *b_Var1Up;
+   TBranch        *b_Var1Down;
+   TBranch        *b_MPIUp;
+   TBranch        *b_MPIDown;
+   TBranch        *b_RenUp;
+   TBranch        *b_RenDown;
+   
 
    MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int kinematic_region = 0);
    virtual ~MakeOmni();
@@ -178,6 +226,9 @@ public :
    virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight, bool flip_z = false);
    virtual void     FillLund(shared_ptr<TH1D>& hz, shared_ptr<TH1D>& hdr, shared_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
    virtual float    GetMassFromPID(int pdgId);
+   virtual bool     inBin(Float_t val, double low, double high);
+   virtual bool     inBin(Int_t val, int low, int high);
+   virtual string   get_jetR_id(string prefix, Double_t jetR);
 };
 
 #endif
@@ -195,7 +246,14 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
    kinematicRegion = kinematic_region; // Store the kinematic region
 
    // Initialize histogram groups
-   for (const auto& weight_name : weightBranchNames) {
+   for (auto& weight_name : weightBranchNames) {
+      size_t pos = weight_name.find('*');
+      if (pos != string::npos) {
+          weight_name.erase(pos, 1);
+          is_multiplicative[weight_name] = true;
+      } else {
+          is_multiplicative[weight_name] = false;
+      }
       if (weight_name != "weight" && weight_name != "weight_mc") {
          centralHistoGroups.push_back(HistoGroup(weight_name + "-", kinematicRegion));
       } else {
@@ -252,23 +310,57 @@ void MakeOmni::Init(TTree *tree)
    if (!tree) return;
    fChain = tree;
    fCurrent = -1;
-   fChain->SetMakeClass(1);
+  //  fChain->SetMakeClass(1);
    TObjArray* branches = fChain->GetListOfBranches();
-   if (!branches->FindObject("npT_tracks")){has_kevin_branches = false;}
+   if (!branches->FindObject("npT_tracks"))has_kevin_branches = false;
+   if (!branches->FindObject("w_QCD_uu") && !branches->FindObject("QCD_uu")) has_theory_weights = false;
+
+   
+         
+   
 
    // Set branch addresses that are used for both truth and reco data
    fChain->SetBranchAddress("weight", &weight, &b_weight);
    fChain->SetBranchAddress("weight_mc", &weight_mc, &b_weight_mc);
    if (has_kevin_branches) fChain->SetBranchAddress("target_dd", &target_dd, &b_target_dd);
-   fChain->SetBranchAddress("EventNumber", &EventNumber, &b_EventNumber);
-   fChain->SetBranchAddress("RunNumber", &RunNumber, &b_RunNumber);
-   if (weightFilename == "None"){
-      for (auto w_str:weightBranchNames){
-          if (w_str != "weight" && w_str != "weight_mc" && w_str != "target_dd"){
-              additional_weights.push_back(0.0);
-              fChain->SetBranchAddress(w_str.c_str(), &additional_weights.back());
-          }
-      }
+  //  fChain->SetBranchAddress("EventNumber", &EventNumber, &b_EventNumber);
+  //  fChain->SetBranchAddress("RunNumber", &RunNumber, &b_RunNumber);
+
+
+
+  //  if (weightFilename == "None"){
+    // extra_weights.resize(100, 0); 
+  //     for (long unsigned int i = 0; i < weightBranchNames.size(); ++i) { // note, the indecies in weightBranchNames and extra_weights are ligned up!
+  //         string w_str = weightBranchNames[i]; 
+  //         if (w_str != "weight" && w_str != "weight_mc" && w_str != "target_dd" && w_str != "w_QCD_dd"){
+  //           fChain->SetBranchAddress(w_str.c_str(), &extra_weights[i]);
+  //         }
+  //     }
+  //  }
+   if (has_theory_weights){ 
+      TString prefix = "";
+      if (branches->FindObject("w_QCD_uu")) {theory_prefix = true; prefix = "w_";}  //if w_... then its MGFxFx, else its sherpa
+      fChain->SetBranchAddress(prefix+"QCD_uu", &w_QCD_uu, &b_QCD_uu);
+      fChain->SetBranchAddress(prefix+"QCD_dd", &w_QCD_dd, &b_QCD_dd);
+      fChain->SetBranchAddress(prefix+"QCD_un", &w_QCD_un, &b_QCD_un);
+      fChain->SetBranchAddress(prefix+"QCD_nu", &w_QCD_nu, &b_QCD_nu);
+      fChain->SetBranchAddress(prefix+"QCD_nd", &w_QCD_nd, &b_QCD_nd);
+      fChain->SetBranchAddress(prefix+"QCD_dn", &w_QCD_dn, &b_QCD_dn);
+      // fChain->SetBranchAddress(prefix+"PDF_CT14nnlo", &w_PDF_CT14nnlo, &b_PDF_CT14nnlo);
+      // fChain->SetBranchAddress(prefix+"PDF_MMHT2014", &w_PDF_MMHT2014, &b_PDF_MMHT2014);
+      fChain->SetBranchAddress(prefix+"PDF_MSHT2020", &w_PDF_MSHT2020, &b_PDF_MSHT2020);
+      fChain->SetBranchAddress(prefix+"PDF_CT18nnlo", &w_PDF_CT18nnlo, &b_PDF_CT18nnlo);
+      fChain->SetBranchAddress(prefix+"Alpha_s1", &w_Alpha_s1, &b_Alpha_s1);
+      fChain->SetBranchAddress(prefix+"Alpha_s2", &w_Alpha_s2, &b_Alpha_s2);
+
+      fChain->SetBranchAddress("w_Var2Up", &w_Var2Up, &b_Var2Up);
+      fChain->SetBranchAddress("w_Var2Down", &w_Var2Down, &b_Var2Down);
+      fChain->SetBranchAddress("w_Var1Up", &w_Var1Up, &b_Var1Up);
+      fChain->SetBranchAddress("w_Var1Down", &w_Var1Down, &b_Var1Down);
+      fChain->SetBranchAddress("w_MPIUp", &w_MPIUp, &b_MPIUp);
+      fChain->SetBranchAddress("w_MPIDown", &w_MPIDown, &b_MPIDown);
+      fChain->SetBranchAddress("w_RenUp", &w_RenUp, &b_RenUp);
+      fChain->SetBranchAddress("w_RenDown", &w_RenDown, &b_RenDown);
    }
 
    // Set branch addresses depending on whether we want to use truth or reco
@@ -347,6 +439,8 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
       fChain->SetBranchAddress("NtrackJets20", &NtrackJets20, &b_NtrackJets20);
+      fChain->SetBranchAddress("truth_pT_trackj1", &truth_pT_trackj1);
+      fChain->SetBranchAddress("truth_y_trackj1", &truth_y_trackj1);
       if (has_kevin_branches) {
         fChain->SetBranchAddress("npT_tracks", &npT_tracks, &b_npT_tracks);
         fChain->SetBranchAddress("neta_tracks", &neta_tracks, &b_neta_tracks);
@@ -364,7 +458,6 @@ void MakeOmni::Init(TTree *tree)
         fChain->SetBranchAddress("trackJetIndex_tracks", &trackJetIndex_tracks_vec, &b_trackJetIndex_tracks);
       }
    }
-   
    Notify();
 
 }
