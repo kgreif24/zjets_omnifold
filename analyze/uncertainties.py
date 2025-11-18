@@ -143,7 +143,7 @@ class UncertaintyCalculator:
                 "name": "Data stat",
                 "color": "blue",
                 "stochastic": True,
-                "prefix": None,
+                "prefix": "dbootstrap-",
             },
         }
 
@@ -289,46 +289,43 @@ class UncertaintyCalculator:
             syst_vars["mc-stat"] = measured_hist_var
             syst_info["mc-stat"] = mc_stat_def.copy()
 
-        # Data statistical uncertainty (from variance in reco level data histogram)
+        # Data statistical uncertainty
         data_stat_def = self.uncertainty_definitions.get("data-stat")
         if data_stat_def is not None:
-            _, data_hist_var, _ = all_hists["data-stat"]
-            syst_vars["data-stat"] = data_hist_var
+            prefix = data_stat_def.get("prefix", "dbootstrap")
+            data_stat_keys = [
+                key
+                for key in all_hists.keys()
+                if key.startswith(prefix)
+            ]
+            data_stat_hists = np.array([all_hists[key][0] for key in data_stat_keys])
+            syst_vars["data-stat"] = np.var(data_stat_hists, axis=0)
             syst_info["data-stat"] = data_stat_def.copy()
 
-        # NN initialization uncertainty (from variance across ensemble members)
+        # NN initialization uncertainty
         nn_init_def = self.uncertainty_definitions.get("nn-init")
         if nn_init_def is not None:
             prefix = nn_init_def.get("prefix", "nn-init-")
             nn_init_keys = [
                 key
                 for key in all_hists.keys()
-                if key.startswith(prefix) and key != "nn-init"
+                if key.startswith(prefix)
             ]
-            if nn_init_keys:
-                # Extract all ensemble member histograms
-                ensemble_hists = []
-                for key in sorted(nn_init_keys):
-                    hist, _, _ = all_hists[key]
-                    ensemble_hists.append(hist)
-
-                if ensemble_hists:
-                    ensemble_hists = np.array(ensemble_hists)
-                    # Calculate variance across ensemble members
-                    # Normalize each member to match the nominal
-                    for i in range(len(ensemble_hists)):
-                        norm_factor = np.sum(measured_hist) / np.sum(ensemble_hists[i])
-                        ensemble_hists[i] *= norm_factor
-                    nn_init_var = np.var(ensemble_hists, axis=0) / (
-                        len(ensemble_hists) - 1
-                    )
-                    syst_vars["nn-init"] = nn_init_var
-                    syst_info["nn-init"] = nn_init_def.copy()
+            ensemble_hists = np.array([all_hists[key][0] for key in nn_init_keys])
+            # Calculate variance across ensemble members
+            # Normalize each member to match the nominal
+            for i in range(len(ensemble_hists)):
+                norm_factor = np.sum(measured_hist) / np.sum(ensemble_hists[i])
+                ensemble_hists[i] *= norm_factor
+            nn_init_var = np.var(ensemble_hists, axis=0) / (
+                len(ensemble_hists) - 1
+            )
+            syst_vars["nn-init"] = nn_init_var
+            syst_info["nn-init"] = nn_init_def.copy()
 
         # Data driven uncertainty (from difference between "dd" and "dd-target")
         dd_def = self.uncertainty_definitions.get("dd")
-        dd_target_def = self.uncertainty_definitions.get("dd-target")
-        if dd_def is not None and dd_target_def is not None:
+        if dd_def is not None:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["dd-target"]
             dd_var = np.abs(dd_hist - dd_target_hist) ** 2
