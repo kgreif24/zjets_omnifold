@@ -67,57 +67,81 @@ class UncertaintyCalculator:
         dict : Dictionary of default uncertainty definitions.
         """
         return {
-            "nn-init": {
-                "name": "NN Init",
+            "nn-stability": {
+                "name": "NN stability",
                 "color": "aqua",
                 "stochastic": True,
-                "prefix": "nn-init-",
+                "prefix": "ensemble_",
             },
-            "track-eff": {
+            "trackEffMain": {
                 "name": "Track eff.",
                 "color": "purple",
                 "stochastic": False,
                 "prefix": None,
             },
-            "jet-track-eff": {
+            "trackEffJet": {
                 "name": "Jet track eff.",
                 "color": "pink",
                 "stochastic": False,
                 "prefix": None,
             },
-            "track-fake": {
+            "trackFake": {
                 "name": "Track fake",
                 "color": "brown",
                 "stochastic": False,
                 "prefix": None,
             },
-            "track-scale": {
+            "trackPtScale": {
                 "name": "Track scale",
                 "color": "gray",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muon-id": {
+            "muonCalID": {
                 "name": "Muon ID",
                 "color": "lightgreen",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muon-ms": {
+            "muonCalMS": {
                 "name": "Muon MS",
                 "color": "lightblue",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muon-resbias": {
+            "muonCalResBias": {
                 "name": "Muon resolution bias",
                 "color": "deepskyblue",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muon-scale": {
+            "muonCalScale": {
                 "name": "Muon scale",
                 "color": "teal",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "muonEffReco": {
+                "name": "Muon eff. reco.",
+                "color": "lightseagreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "muonEffIso": {
+                "name": "Muon eff. iso.",
+                "color": "seagreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "muonEffTrack": {
+                "name": "Muon eff. track.",
+                "color": "skyblue",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "muonEffTrig": {
+                "name": "Muon eff. trig.",
+                "color": "cadetblue",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -143,7 +167,7 @@ class UncertaintyCalculator:
                 "name": "Data stat",
                 "color": "blue",
                 "stochastic": True,
-                "prefix": "dbootstrap-",
+                "prefix": "bootstrap_data_",
             },
         }
 
@@ -156,13 +180,17 @@ class UncertaintyCalculator:
         dict : Dictionary of default uncertainty groups.
         """
         return {
-            "Tracking": ["track-eff", "jet-track-eff", "track-fake", "track-scale"],
+            "Tracking": ["trackEffMain", "trackEffJet", "trackFake", "trackPtScale"],
             "Unfolding": ["dd", "hv"],
             "Muon": [
-                "muon-id",
-                "muon-ms",
-                "muon-resbias",
-                "muon-scale",
+                "muonCalID",
+                "muonCalMS",
+                "muonCalResBias",
+                "muonCalScale",
+                "muonEffReco",
+                "muonEffIso",
+                "muonEffTrack",
+                "muonEffTrig",
             ],
         }
 
@@ -292,7 +320,7 @@ class UncertaintyCalculator:
         # Data statistical uncertainty
         data_stat_def = self.uncertainty_definitions.get("data-stat")
         if data_stat_def is not None:
-            prefix = data_stat_def.get("prefix", "dbootstrap")
+            prefix = data_stat_def.get("prefix", "bootstrap_data_")
             data_stat_keys = [
                 key
                 for key in all_hists.keys()
@@ -303,9 +331,9 @@ class UncertaintyCalculator:
             syst_info["data-stat"] = data_stat_def.copy()
 
         # NN initialization uncertainty
-        nn_init_def = self.uncertainty_definitions.get("nn-init")
+        nn_init_def = self.uncertainty_definitions.get("nn-stability")
         if nn_init_def is not None:
-            prefix = nn_init_def.get("prefix", "nn-init-")
+            prefix = nn_init_def.get("prefix", "ensemble_")
             nn_init_keys = [
                 key
                 for key in all_hists.keys()
@@ -320,21 +348,21 @@ class UncertaintyCalculator:
             nn_init_var = np.var(ensemble_hists, axis=0) / (
                 len(ensemble_hists) - 1
             )
-            syst_vars["nn-init"] = nn_init_var
-            syst_info["nn-init"] = nn_init_def.copy()
+            syst_vars["nn-stability"] = nn_init_var
+            syst_info["nn-stability"] = nn_init_def.copy()
 
         # Data driven uncertainty (from difference between "dd" and "dd-target")
         dd_def = self.uncertainty_definitions.get("dd")
         if dd_def is not None:
             dd_hist, _, _ = all_hists["dd"]
-            dd_target_hist, _, _ = all_hists["dd-target"]
+            dd_target_hist, _, _ = all_hists["target_dd"]
             dd_var = np.abs(dd_hist - dd_target_hist) ** 2
             syst_vars["dd"] = dd_var
             syst_info["dd"] = dd_def.copy()
 
         # Other systematic uncertainties (from differences with nominal)
         for syst_key, syst_def in self.uncertainty_definitions.items():
-            if syst_key in ["nn-init", "mc-stat", "data-stat", "dd"]:
+            if syst_key in ["nn-stability", "mc-stat", "data-stat", "dd"]:
                 continue  # Already handled
 
             # Check if this systematic exists in all_hists

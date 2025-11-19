@@ -8,6 +8,9 @@ import vector
 import energyflow as ef
 import jet_clusterer
 import multiprocessing
+import dask
+import dask.array as da
+from tqdm import tqdm
 
 import sys
 
@@ -297,15 +300,18 @@ def calculate_emds_from_file(
 
 
 def calculate_correlation_dimension_from_emds(
-    emds: np.ndarray,
-    emd_weights: np.ndarray,
+    emds: np.ndarray | da.Array,
+    emd_weights: np.ndarray | da.Array,
     bins: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Calculate correlation dimension from Earth Mover's Distances (EMDs).
 
+    This function now supports both numpy arrays and dask arrays. When using
+    dask arrays, the histogramming will be performed in parallel across chunks.
+
     Arguments:
-    emds - A numpy array of EMD values (typically from calculate_emds).
-    emd_weights - A numpy array of weights corresponding to each EMD value.
+    emds - A numpy or dask array of EMD values (typically from calculate_emds).
+    emd_weights - A numpy or dask array of weights corresponding to each EMD value.
     bins - A numpy array of bins to use in the histogram.
 
     Returns:
@@ -313,20 +319,49 @@ def calculate_correlation_dimension_from_emds(
     dims_var - The variance of the correlation dimension values.
     midbins - The midpoints of the bins used in the calculation.
     """
+    # Check if we're working with dask arrays
+    is_dask = isinstance(emds, da.Array) or isinstance(emd_weights, da.Array)
 
-    # Take upper triangle and mask invalid emds
-    emds = np.triu(emds)
-    mask = emds > 0 & np.isfinite(emds)
-    emds = emds[mask].flatten()
-    emd_weights = emd_weights[mask].flatten()
+    if is_dask:
+        # Ensure both are dask arrays
+        if not isinstance(emds, da.Array):
+            emds = da.from_array(emds, chunks=emd_weights.chunks)
+        if not isinstance(emd_weights, da.Array):
+            emd_weights = da.from_array(emd_weights, chunks=emds.chunks)
 
-    # Calculate the correlation dimension
-    midbins = (bins[1:] + bins[:-1]) / 2
-    dmidbins = np.log(midbins[1:]) - np.log(midbins[:-1])
-    hist, _ = np.histogram(emds, bins=bins, weights=emd_weights)
-    var, _ = np.histogram(emds, bins=bins, weights=emd_weights**2)
+        # Take upper triangle and mask invalid emds
+        emds = da.triu(emds)
+        mask = (emds > 0) & da.isfinite(emds)
+        emds = emds[mask].flatten()
+        emd_weights = emd_weights[mask].flatten()
 
-    # Calculate the CDF
+        # Calculate the correlation dimension
+        midbins = (bins[1:] + bins[:-1]) / 2
+        dmidbins = np.log(midbins[1:]) - np.log(midbins[:-1])
+
+        # Use dask histogram for parallel computation
+        hist, _ = da.histogram(emds, bins=bins, weights=emd_weights)
+        var, _ = da.histogram(emds, bins=bins, weights=emd_weights**2)
+
+        # Compute the histograms (trigger computation)
+        hist = hist.compute()
+        var = var.compute()
+
+    else:
+        # Original numpy implementation
+        # Take upper triangle and mask invalid emds
+        emds = np.triu(emds)
+        mask = (emds > 0) & np.isfinite(emds)
+        emds = emds[mask].flatten()
+        emd_weights = emd_weights[mask].flatten()
+
+        # Calculate the correlation dimension
+        midbins = (bins[1:] + bins[:-1]) / 2
+        dmidbins = np.log(midbins[1:]) - np.log(midbins[:-1])
+        hist, _ = np.histogram(emds, bins=bins, weights=emd_weights)
+        var, _ = np.histogram(emds, bins=bins, weights=emd_weights**2)
+
+    # Calculate the CDF (same for both numpy and dask after computation)
     counts = np.cumsum(hist) + np.finfo(float).eps
     counts_err = np.sqrt(np.cumsum(var))
 
@@ -339,45 +374,12 @@ def calculate_correlation_dimension_from_emds(
     return dims, dims_var, midbins
 
 
-def _process_weight_set(args):
-    """Helper function to process a single weight set for parallel execution.
-
-    Arguments:
-    ----------
-    args : tuple
-        Tuple containing (hist_name, weights, emds, event_indices, bins)
-
-    Returns:
-    --------
-    tuple : (hist_name, dims, dims_var, midbins)
-    """
-    hist_name, weights, emds, event_indices, bins = args
-
-    # Ensure event_indices is a 1D array
-    event_indices = np.asarray(event_indices).flatten()
-
-    weights = np.asarray(weights)
-
-    # Get the weights of the jets (fine if some events have multiple jets)
-    jet_weights = weights[event_indices]
-
-    # Create EMD weights matrix: weight for EMD(i,j) = weight(i) * weight(j)
-    # This represents the product of weights for the two events
-    emd_weights = jet_weights[:, None] * jet_weights[None, :]
-
-    print(f"Calculating correlation dimension for '{hist_name}'...")
-    dims, dims_var, midbins = calculate_correlation_dimension_from_emds(
-        emds, emd_weights, bins
-    )
-
-    return hist_name, dims, dims_var, midbins
-
-
 def calculate_correlation_dimension_from_file(
     npz_path: str,
     weights_dict: dict[str, np.ndarray],
     bins: np.ndarray,
     n_jobs=1,
+    chunk_size: int | None = None,
 ) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Calculate correlation dimension from EMDs stored in a .npz file.
 
@@ -385,8 +387,8 @@ def calculate_correlation_dimension_from_file(
     calculate_emds_from_file), broadcasts event-level weights to EMD pairs,
     and calculates the correlation dimension for each set of weights.
 
-    Since there are huge numbers of EMDs for a reasonable number of jets,
-    binning the EMDs will be done in parallel when possible.
+    The histogramming is performed using dask arrays for efficient parallel
+    computation, avoiding the pickling overhead of multiprocessing.
 
     Arguments:
     ----------
@@ -400,9 +402,12 @@ def calculate_correlation_dimension_from_file(
         Array of bin edges to use for the histogram in the correlation
         dimension calculation.
     n_jobs : int, optional
-        Number of parallel jobs for the calculation.
-        If -1, parallelize to the number of histograms in weights_dict
-         or the number of CPUs available. Whichever is smaller.
+        Number of parallel workers for dask computation.
+        If -1, uses all available CPUs (default: 1).
+    chunk_size : int, optional
+        Size of chunks for dask array. If None, automatically determines
+        a reasonable chunk size based on array size and available memory.
+        Smaller chunks use less memory but have more overhead.
 
     Returns:
     --------
@@ -435,41 +440,63 @@ def calculate_correlation_dimension_from_file(
             f"({n_jets}, {n_jets}) based on event_indices length"
         )
 
-    # Determine number of parallel jobs
-    n_histograms = len(weights_dict)
+    # Convert EMDs to dask array with appropriate chunking
+    # For large arrays, we want chunks that are large enough to be efficient
+    # but small enough to fit in memory. A good default is ~100MB per chunk.
+    if chunk_size is None:
+        # Estimate chunk size: aim for ~100MB chunks (assuming float64)
+        bytes_per_element = 8  # float64
+        target_chunk_bytes = 100 * 1024 * 1024  # 100 MB
+        # For a 2D array, chunk_size^2 * 8 bytes = target_chunk_bytes
+        chunk_size = int(np.sqrt(target_chunk_bytes / bytes_per_element))
+        # Round down to a reasonable size (e.g., multiple of 1000)
+        chunk_size = (chunk_size // 1000) * 1000
+        if chunk_size < 1000:
+            chunk_size = 1000
+        if chunk_size > n_jets:
+            chunk_size = n_jets
+
+    print(f"Converting EMDs to dask array with chunk size {chunk_size}...")
+    # Create dask array with square chunks
+    emds_da = da.from_array(emds, chunks=(chunk_size, chunk_size))
+
+    # Configure dask threading/processes based on n_jobs
     if n_jobs == -1:
-        # Use all available CPUs or number of histograms, whichever is smaller
-        n_workers = min(multiprocessing.cpu_count(), n_histograms)
-    elif n_jobs == 1:
-        n_workers = 1
+        n_workers = multiprocessing.cpu_count()
     else:
-        n_workers = min(n_jobs, n_histograms)
+        n_workers = n_jobs
 
-    results = {}
-
-    # Prepare arguments for parallel processing
-    # Pass arrays directly (will be pickled and sent to worker processes)
-    args_list = [
-        (hist_name, weights, emds, event_indices, bins)
-        for hist_name, weights in weights_dict.items()
-    ]
-
-    # Process each set of weights in parallel
-    if n_workers > 1:
+    # Set dask threading configuration
+    # Use threads for better memory efficiency with numpy operations
+    with dask.config.set(scheduler="threads", num_workers=n_workers):
+        n_histograms = len(weights_dict)
         print(
-            f"Processing {n_histograms} weight sets with "
-            f"{n_workers} parallel workers..."
+            f"Processing {n_histograms} weight sets using dask "
+            f"with {n_workers} workers..."
         )
-        with multiprocessing.Pool(processes=n_workers) as pool:
-            processed_results = pool.map(_process_weight_set, args_list)
+        results = {}
+        for hist_name, weights in tqdm(
+            weights_dict.items(),
+            total=n_histograms,
+            desc="Processing weight sets",
+            unit="set",
+        ):
+            # Ensure event_indices is a 1D array
+            event_indices_arr = np.asarray(event_indices).flatten()
+            weights_arr = np.asarray(weights)
 
-        # Collect results into dictionary
-        for hist_name, dims, dims_var, midbins in processed_results:
-            results[hist_name] = (dims, dims_var, midbins)
-    else:
-        # Sequential processing (n_jobs=1 or only one histogram)
-        for args in args_list:
-            hist_name, dims, dims_var, midbins = _process_weight_set(args)
+            # Get the weights of the jets (fine if some events have multiple jets)
+            jet_weights = weights_arr[event_indices_arr]
+
+            # Create EMD weights matrix: weight for EMD(i,j) = weight(i) * weight(j)
+            # This represents the product of weights for the two events
+            # Convert to dask array with same chunking as EMDs
+            jet_weights_da = da.from_array(jet_weights, chunks=emds_da.chunks[0])
+            emd_weights_da = jet_weights_da[:, None] * jet_weights_da[None, :]
+
+            dims, dims_var, midbins = calculate_correlation_dimension_from_emds(
+                emds_da, emd_weights_da, bins
+            )
             results[hist_name] = (dims, dims_var, midbins)
 
     return results
