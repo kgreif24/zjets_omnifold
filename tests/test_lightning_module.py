@@ -156,6 +156,34 @@ def test_lofdata_syst():
     assert np.all(data_module.get_target_pass190() == target_p190)
 
 
+def test_lofdata_bootstrap():
+
+    # Load the data bootstrap
+    data_bootstrap = np.load("./assets/test_bootstrap.npy")
+
+    # Get data class
+    data_module = LOfData(
+        source_file="./assets/evts_000_100.root",
+        target_file="./assets/evts_100_200.root",
+        source_weight_path=None,
+        target_weight_path=None,
+        batch_size=1,
+        data_bootstrap_path="./assets/test_bootstrap.npy",
+    )
+
+    # Check that the data bootstrap is loaded
+    assert data_module.data_bootstrap_weights is not None
+    assert len(data_module.data_bootstrap_weights) == len(data_module.target_use190)
+
+    # Check that the target dataset weights are multiplied by the data bootstrap
+    weights = data_bootstrap * data_module.target_root_weights
+    filtered_weights = weights[data_module.target_use190 == 1].flatten()
+    total_events = np.sum(data_module.target_use190) + np.sum(data_module.source_use190)
+    target_divisor = 2 * np.sum(filtered_weights) / total_events
+    filtered_weights /= target_divisor
+    assert np.all(np.isclose(data_module.target_dataset.weights.numpy().flatten(), filtered_weights))
+
+
 def test_data_pieces():
 
     # Check data divisor, ensure we can use different chunks of the data

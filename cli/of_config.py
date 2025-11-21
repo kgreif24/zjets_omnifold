@@ -167,6 +167,11 @@ class OfConfig:
                 "If this is None, then no systematic variation is used"
             ),
         )
+        self.parser.add_argument(
+            "--bootstrap_data",
+            action="store_true",
+            help="If set, bootstrap the data. The seed used will depend on the ensemble index.",
+        )
 
         # Training
         self.parser.add_argument(
