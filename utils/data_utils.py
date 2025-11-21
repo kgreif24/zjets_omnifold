@@ -9,6 +9,7 @@ python3
 import yaml
 import numpy as np
 import awkward as ak
+import vector
 
 
 def pad_kinematics(input_array, max_tracks=200, fill=0) -> np.ndarray:
@@ -166,16 +167,12 @@ def get_kinematics(
         )
     )
     m1_eta = ak.unflatten(
-        tree[prekey + "eta_l1"].array(
-            entry_start=start, entry_stop=stop
-        ),
+        tree[prekey + "eta_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m1_phi = ak.unflatten(
-        tree[prekey + "phi_l1"].array(
-            entry_start=start, entry_stop=stop
-        ),
+        tree[prekey + "phi_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
@@ -189,16 +186,12 @@ def get_kinematics(
         )
     )
     m2_eta = ak.unflatten(
-        tree[prekey + "eta_l2"].array(
-            entry_start=start, entry_stop=stop
-        ),
+        tree[prekey + "eta_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_phi = ak.unflatten(
-        tree[prekey + "phi_l2"].array(
-            entry_start=start, entry_stop=stop
-        ),
+        tree[prekey + "phi_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
@@ -584,7 +577,7 @@ def get_syst_pre_and_post_keys(syst_kw):
         raise ValueError(f"Systematic {syst_kw} not recognized!")
 
 
-def calc_muon_syst_pass190(tree, stop=None, syst_kw=None):
+def calc_muon_syst_pass190(tree, stop=None, syst_kw=None, pt_thresh=190):
     """calc_muon_syst_pass190 - This function will calculate the pass190 filter for
     the source data when running muon systematics.
 
@@ -592,6 +585,7 @@ def calc_muon_syst_pass190(tree, stop=None, syst_kw=None):
     tree - uproot TTree object
     stop - stopping event index
     syst_kw - keyword argument for the systematic to apply
+    pt_thresh - threshold on the pT of the lepton pair
 
     Returns:
     pass190_filter - boolean array of events that pass the pass190 filter
@@ -600,10 +594,32 @@ def calc_muon_syst_pass190(tree, stop=None, syst_kw=None):
     # Get the pre and post keys
     prekey, postkey = get_syst_pre_and_post_keys(syst_kw)
 
-    # Load the needed branches
-    ptll = ak.to_numpy(tree[prekey + "pT_ll" + postkey].array(entry_stop=stop))
-    mll = ak.to_numpy(tree[prekey + "m_ll" + postkey].array(entry_stop=stop))
+    # Load the needed varied branches
+    syst_ptll = ak.to_numpy(tree[prekey + "pT_ll" + postkey].array(entry_stop=stop))
+    syst_mll = ak.to_numpy(tree[prekey + "m_ll" + postkey].array(entry_stop=stop))
+
+    # Load the needed nominal branches
+    pass190 = ak.to_numpy(tree["pass190"].array(entry_stop=stop))
+    ptll = ak.to_numpy(tree["pT_ll"].array(entry_stop=stop))
+    ptl1 = ak.to_numpy(tree["pT_l1"].array(entry_stop=stop))
+    ptl2 = ak.to_numpy(tree["pT_l2"].array(entry_stop=stop))
+    etal1 = ak.to_numpy(tree["eta_l1"].array(entry_stop=stop))
+    etal2 = ak.to_numpy(tree["eta_l2"].array(entry_stop=stop))
+    phil1 = ak.to_numpy(tree["phi_l1"].array(entry_stop=stop))
+    phil2 = ak.to_numpy(tree["phi_l2"].array(entry_stop=stop))
+    v1 = vector.array(
+        {"pt": ptl1, "eta": etal1, "phi": phil1, "mass": 0.10565 * np.ones_like(ptl1)}
+    )
+    v2 = vector.array(
+        {"pt": ptl2, "eta": etal2, "phi": phil2, "mass": 0.10565 * np.ones_like(ptl2)}
+    )
+    v = v1 + v2
+    mll = v.mass
     yll = ak.to_numpy(tree["y_ll"].array(entry_stop=stop))
 
     # Return the filter
-    return (ptll > 190) & (mll > 81) & (mll < 101) & (yll > -98)
+    cf_logic = (syst_ptll > pt_thresh) & ((syst_mll > 81) & (syst_mll < 101))
+    term1 = (((ptll < pt_thresh) | ((mll < 81) | (mll > 101))) & cf_logic)
+    term2 = ((ptll > pt_thresh) & ((mll > 81) & (mll < 101)) & cf_logic & pass190)
+    term3 = (yll > -98)
+    return (term1 | term2) & term3
