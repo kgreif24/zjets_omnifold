@@ -182,7 +182,7 @@ class Plotter:
         }
         source_start = self._get_weights(source_start, **gw_kwargs)
         source_end = self._get_weights(source_end, **gw_kwargs)
-        target = self._get_weights(target, is_target=True, array_name="weights_nominal")  # , **gw_kwargs)
+        target = self._get_weights(target, is_target=True, **gw_kwargs)
 
         # Filter weights by pass190 flags
         source_pass190 = self._get_cached_pass190_flags("source")
@@ -222,13 +222,6 @@ class Plotter:
                 is_target=True,
                 root_index=2,
             )
-
-            print(f"source end histogram {source_end_hist}")
-            print(f"target histogram {target_hist}")
-
-            # DEBUG!! Normalize source start histogram to end histogram
-            norm_factor = np.sum(source_end_hist) / np.sum(source_start_hist)
-            source_start_hist = norm_factor * source_start_hist
 
             # Calculate ratios
             start_ratio = source_start_hist / target_hist
@@ -673,9 +666,7 @@ class Plotter:
             weights = np.load(weights)
             if array_name in weights.files:
                 assert not use_train
-                print(f"Using array {array_name} from {weights.files}")
                 weights = weights[array_name]
-                print(f"First few weights: {weights[:5]}")
             elif use_train:
                 weights = weights["train"]
             else:

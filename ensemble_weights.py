@@ -168,18 +168,20 @@ def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
             usepass = reco_pass
         elif gn == "muon-id":
             weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_id", pt_cut=200)
+            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_id", pt_thresh=200)
         elif gn == "muon-ms":
             weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_ms", pt_cut=200)
+            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_ms", pt_thresh=200)
         elif gn == "muon-resbias":
             weight = nominal_weight
             usepass = du.calc_muon_syst_pass190(
-                t_mc, syst_kw="muon_resbias", pt_cut=200
+                t_mc, syst_kw="muon_resbias", pt_thresh=200
             )
         elif gn == "muon-scale":
             weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_scale", pt_cut=200)
+            usepass = du.calc_muon_syst_pass190(
+                t_mc, syst_kw="muon_scale", pt_thresh=200
+            )
         else:
             raise ValueError(f"Systematic {gn} not recognized!")
         weight = weight[usepass == 1]
@@ -254,9 +256,9 @@ parser.add_argument(
     help="Path to the directory containing all of the data from a campaign",
 )
 parser.add_argument(
-    "--iterations",
+    "--iteration",
     type=int,
-    nargs="+",
+    required=True,
     help="The iterations to pull weights for, in order of the groups",
 )
 parser.add_argument(
@@ -269,11 +271,6 @@ parser.add_argument(
     help="The names of the run groups to pull weights for",
 )
 parser.add_argument("--output", type=str, help="Output file path")
-parser.add_argument(
-    "--print_stats",
-    action="store_true",
-    help="Print ndata and weight ratio values for each group name",
-)
 parser.add_argument(
     "--luminosity",
     type=float,
@@ -317,6 +314,7 @@ else:
     n_data_nominal = np.sum(pt_ll_data > args.ptll_cut)
 nominal_root_weights = ak.to_numpy(t["weight_mc"].array())
 hv_root_weights = ak.to_numpy(t_hv["weight_mc"].array())
+hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 dd_target_weights = ak.to_numpy(t["target_dd"].array())
 
 # Calculate the pass200 filters for the nominal and HV samples at
@@ -327,15 +325,10 @@ hv_pass200 = calc_pass_200(t_hv, ptll_cut=args.ptll_cut)
 hv_truth_pass200 = calc_pass_200(t_hv, truth=True, ptll_cut=args.ptll_cut)
 
 # Define the names of the various run groups in a campaign
-assert len(args.iterations) == len(
-    args.group_names
-), "Number of iterations must match number of groups"
 all_weights = {}
-stats = {}  # Dictionary to store ndata and ratio for each group
-print(f"Pulling weights for groups {args.group_names} at iterations {args.iterations}")
 
 # Loop through the run groups
-for gn, it in zip(args.group_names, args.iterations):
+for gn in args.group_names:
 
     # Skip the HV group, it is handled separately
     if gn == "hv":
@@ -350,7 +343,7 @@ for gn, it in zip(args.group_names, args.iterations):
     pulled_weights, run_names = pull_weights(
         args.campaign_path,
         pull_gn,
-        it,
+        args.iteration,
         indices=indices_nominal,
     )
     print(f"Got {len(pulled_weights)} weights for group {pull_gn}")
@@ -360,8 +353,6 @@ for gn, it in zip(args.group_names, args.iterations):
         central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
         central_weights *= nominal_root_weights
         ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
-        if args.print_stats:
-            stats[gn] = {"ndata": n_data_nominal, "ratio": ratio_mc}
         central_weights = norm_weights(
             central_weights,
             truth_pass200,
@@ -388,26 +379,14 @@ for gn, it in zip(args.group_names, args.iterations):
                 )
             else:
                 n_data = n_data_nominal
-            if args.print_stats:
-                bootstrap_stats.append(
-                    {
-                        "ndata": n_data,
-                        "ratio": ratio_mc,
-                        "run_name": run_names[i],
-                    }
-                )
             weight = norm_weights(
                 weight, truth_pass200, ratio_mc, n_data, args.luminosity
             )
             write_name = group_name_to_write_name(gn, i)
             all_weights[write_name] = weight
-        if args.print_stats:
-            stats[gn] = bootstrap_stats
 
 # Add in dd-target weights, note this are already multiplied by the nominal root weights
 ratio_mc = get_truth_to_reco_ratio("target_dd", t, pass200, truth_pass200)
-if args.print_stats:
-    stats["target_dd"] = {"ndata": n_data_nominal, "ratio": ratio_mc}
 dd_target_weights = norm_weights(
     dd_target_weights, truth_pass200, ratio_mc, n_data_nominal, args.luminosity
 )
@@ -416,65 +395,23 @@ all_weights["target_dd"] = dd_target_weights
 # Now handle the HV weights
 hv_weights = {}
 if "hv" in args.group_names:
-    print("Pulling HV weights")
     pulled_weights, _ = pull_weights(
         args.campaign_path,
-        "hv",
-        args.iterations[0],
+        "hv-data" if args.use_data else "hv",
+        args.iteration,
         indices=indices_hv,
     )
-    print(f"Got {len(pulled_weights)} weights for group hv")
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
     central_weights *= hv_root_weights
     # Normalize the HV weights
-    # Note that we use the original (pre-omnisequential) weights
-    original_wmc = ak.to_numpy(t_hv["w_mc_orig"].array())
-    original_w = ak.to_numpy(t_hv["w_orig"].array())
-    ratio_hv = np.sum(original_wmc[hv_truth_pass200 == 1]) / np.sum(
-        original_w[hv_pass200 == 1]
+    ratio_hv = np.sum(hv_root_weights[hv_truth_pass200 == 1]) / np.sum(
+        hv_reco_weights[hv_pass200 == 1]
     )
-    if args.print_stats:
-        stats["hv"] = {"ndata": n_data_nominal, "ratio": ratio_hv}
     central_weights = norm_weights(
         central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
     )
     hv_weights["weights_hv"] = central_weights
-
-# Print statistics if requested
-if args.print_stats:
-    print("\n" + "=" * 80)
-    print("STATISTICS SUMMARY: ndata and weight ratios for each group")
-    print("=" * 80)
-    for group_name, group_stats in sorted(stats.items()):
-        if isinstance(group_stats, list):
-            # Bootstrap groups have multiple runs
-            print(f"\n{group_name}:")
-            print(f"  Number of runs: {len(group_stats)}")
-            ndata_values = [s["ndata"] for s in group_stats]
-            ratio_values = [s["ratio"] for s in group_stats]
-            print(
-                f"  ndata: min={min(ndata_values):.0f}, max={max(ndata_values):.0f}, "
-                f"mean={np.mean(ndata_values):.2f}"
-            )
-            print(
-                f"  ratio: min={min(ratio_values):.6f}, max={max(ratio_values):.6f}, "
-                f"mean={np.mean(ratio_values):.6f}"
-            )
-            # Print individual run stats if there are only a few
-            if len(group_stats) <= 10:
-                for s in group_stats:
-                    run_name = s.get("run_name", "N/A")
-                    print(
-                        f"    {run_name}: ndata={s['ndata']:.0f}, "
-                        f"ratio={s['ratio']:.6f}"
-                    )
-        else:
-            # Regular groups have single values
-            print(f"\n{group_name}:")
-            print(f"  ndata: {group_stats['ndata']:.0f}")
-            print(f"  ratio: {group_stats['ratio']:.6f}")
-    print("\n" + "=" * 80 + "\n")
 
 # Create output directory if it doesn't exist
 output_dir = os.path.dirname(args.output)

@@ -273,7 +273,6 @@ class UncertaintyPlotter(plotter.Plotter):
                 weights=(use_weight_dict["central"]),
             )
             all_hists["nominal"] = (source_hist, source_hist_var, bins)
-            print(f"nominal normalization: {np.sum(source_hist)}")
 
             # Build target histograms
             target_hist, _, _ = self._get_histogram(
@@ -355,42 +354,33 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 if syst_key == "hv":
                     hv_plot = syst_plot.copy()
-                    syst_hist, syst_hist_var, _ = self._get_sherpa_histogram(
+                    all_hists[syst_key] = self._get_sherpa_histogram(
                         hv_plot,
                         weights=wgts,
                     )
-                    all_hists[syst_key] = (syst_hist, syst_hist_var, bins)
                 elif syst_key == "dd":
-                    syst_hist, syst_hist_var, _ = self._get_histogram(
+                    all_hists[syst_key] = self._get_histogram(
                         syst_plot,
                         weights=wgts,
                     )
-                    all_hists[syst_key] = (syst_hist, syst_hist_var, bins)
                     # Also need target_dd histogram
                     target_plot = plot.copy()
                     if target_plot["type"] == "fastjet":
                         target_plot["key"] = "target_dd-" + plot["key"]
-                    target_dd_hist, target_dd_hist_var, _ = self._get_histogram(
+                    all_hists["target_dd"] = self._get_histogram(
                         target_plot,
                         weights=use_weight_dict["target_dd"],
                         is_target=False,
                     )
-                    all_hists["target_dd"] = (target_dd_hist, target_dd_hist_var, bins)
                 else:
-                    syst_hist, syst_hist_var, _ = self._get_histogram(
+                    all_hists[syst_key] = self._get_histogram(
                         syst_plot,
                         weights=wgts,
                     )
-                    all_hists[syst_key] = (syst_hist, syst_hist_var, bins)
 
             # Calculate uncertainties using UncertaintyCalculator
             syst_vars, syst_info = self.uncertainty_calculator.calculate_uncertainties(
                 all_hists, measured_key="nominal"
-            )
-            self.uncertainty_calculator.plot_nominal_vs_hv(
-                all_hists,
-                measured_key="nominal",
-                output_path=self.store / (plot["key"] + "_nominal_vs_hv.pdf"),
             )
 
             # Make and save plot
