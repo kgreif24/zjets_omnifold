@@ -10,6 +10,7 @@ import lightning as L
 
 from lightning_data_module import LOfData
 from lightning_module import LOfTransformer
+from utils import data_utils as du
 
 
 @pytest.mark.slow
@@ -138,7 +139,7 @@ def test_lofdata_syst():
     source_t = source_f["OmniTree"]
     target_f = uproot.open(target_sample)
     target_t = target_f["OmniTree"]
-    source_mid_p190 = ak.to_numpy(source_t["pass190_syst_ID_Up"].array())
+    source_mid_p190 = du.calc_muon_syst_pass190(source_t, syst_kw="muon_id")
     target_p190 = ak.to_numpy(target_t["pass190"].array())
 
     # Get data class, using muon ID syst
