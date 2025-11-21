@@ -7,6 +7,7 @@ from correlation dimension histograms.
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
+import matplotlib.pyplot as plt
 
 
 class UncertaintyCalculator:
@@ -67,84 +68,84 @@ class UncertaintyCalculator:
         dict : Dictionary of default uncertainty definitions.
         """
         return {
-            "nn-stability": {
-                "name": "NN stability",
-                "color": "aqua",
-                "stochastic": True,
-                "prefix": "ensemble_",
-            },
-            "trackEffMain": {
-                "name": "Track eff.",
-                "color": "purple",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "trackEffJet": {
-                "name": "Jet track eff.",
-                "color": "pink",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "trackFake": {
-                "name": "Track fake",
-                "color": "brown",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "trackPtScale": {
-                "name": "Track scale",
-                "color": "gray",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonCalID": {
-                "name": "Muon ID",
-                "color": "lightgreen",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonCalMS": {
-                "name": "Muon MS",
-                "color": "lightblue",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonCalResBias": {
-                "name": "Muon resolution bias",
-                "color": "deepskyblue",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonCalScale": {
-                "name": "Muon scale",
-                "color": "teal",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonEffReco": {
-                "name": "Muon eff. reco.",
-                "color": "lightseagreen",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonEffIso": {
-                "name": "Muon eff. iso.",
-                "color": "seagreen",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonEffTrack": {
-                "name": "Muon eff. track.",
-                "color": "skyblue",
-                "stochastic": False,
-                "prefix": None,
-            },
-            "muonEffTrig": {
-                "name": "Muon eff. trig.",
-                "color": "cadetblue",
-                "stochastic": False,
-                "prefix": None,
-            },
+            # "nn-stability": {
+            #     "name": "NN stability",
+            #     "color": "aqua",
+            #     "stochastic": True,
+            #     "prefix": "ensemble_",
+            # },
+            # "trackEffMain": {
+            #     "name": "Track eff.",
+            #     "color": "purple",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "trackEffJet": {
+            #     "name": "Jet track eff.",
+            #     "color": "pink",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "trackFake": {
+            #     "name": "Track fake",
+            #     "color": "brown",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "trackPtScale": {
+            #     "name": "Track scale",
+            #     "color": "gray",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonCalID": {
+            #     "name": "Muon ID",
+            #     "color": "lightgreen",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonCalMS": {
+            #     "name": "Muon MS",
+            #     "color": "lightblue",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonCalResBias": {
+            #     "name": "Muon resolution bias",
+            #     "color": "deepskyblue",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonCalScale": {
+            #     "name": "Muon scale",
+            #     "color": "teal",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonEffReco": {
+            #     "name": "Muon eff. reco.",
+            #     "color": "lightseagreen",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonEffIso": {
+            #     "name": "Muon eff. iso.",
+            #     "color": "seagreen",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonEffTrack": {
+            #     "name": "Muon eff. track.",
+            #     "color": "skyblue",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
+            # "muonEffTrig": {
+            #     "name": "Muon eff. trig.",
+            #     "color": "cadetblue",
+            #     "stochastic": False,
+            #     "prefix": None,
+            # },
             "dd": {
                 "name": "Data driven",
                 "color": "red",
@@ -157,18 +158,18 @@ class UncertaintyCalculator:
                 "stochastic": False,
                 "prefix": None,
             },
-            "mc-stat": {
-                "name": "MC stat",
-                "color": "green",
-                "stochastic": True,
-                "prefix": None,
-            },
-            "data-stat": {
-                "name": "Data stat",
-                "color": "blue",
-                "stochastic": True,
-                "prefix": "bootstrap_data_",
-            },
+            # "mc-stat": {
+            #     "name": "MC stat",
+            #     "color": "green",
+            #     "stochastic": True,
+            #     "prefix": None,
+            # },
+            # "data-stat": {
+            #     "name": "Data stat",
+            #     "color": "blue",
+            #     "stochastic": True,
+            #     "prefix": "bootstrap_data_",
+            # },
         }
 
     @staticmethod
@@ -181,7 +182,7 @@ class UncertaintyCalculator:
         """
         return {
             "Tracking": ["trackEffMain", "trackEffJet", "trackFake", "trackPtScale"],
-            "Unfolding": ["dd", "hv"],
+            # "Unfolding": ["dd", "hv"],
             "Muon": [
                 "muonCalID",
                 "muonCalMS",
@@ -321,11 +322,7 @@ class UncertaintyCalculator:
         data_stat_def = self.uncertainty_definitions.get("data-stat")
         if data_stat_def is not None:
             prefix = data_stat_def.get("prefix", "bootstrap_data_")
-            data_stat_keys = [
-                key
-                for key in all_hists.keys()
-                if key.startswith(prefix)
-            ]
+            data_stat_keys = [key for key in all_hists.keys() if key.startswith(prefix)]
             data_stat_hists = np.array([all_hists[key][0] for key in data_stat_keys])
             syst_vars["data-stat"] = np.var(data_stat_hists, axis=0)
             syst_info["data-stat"] = data_stat_def.copy()
@@ -334,20 +331,14 @@ class UncertaintyCalculator:
         nn_init_def = self.uncertainty_definitions.get("nn-stability")
         if nn_init_def is not None:
             prefix = nn_init_def.get("prefix", "ensemble_")
-            nn_init_keys = [
-                key
-                for key in all_hists.keys()
-                if key.startswith(prefix)
-            ]
+            nn_init_keys = [key for key in all_hists.keys() if key.startswith(prefix)]
             ensemble_hists = np.array([all_hists[key][0] for key in nn_init_keys])
             # Calculate variance across ensemble members
             # Normalize each member to match the nominal
             for i in range(len(ensemble_hists)):
                 norm_factor = np.sum(measured_hist) / np.sum(ensemble_hists[i])
                 ensemble_hists[i] *= norm_factor
-            nn_init_var = np.var(ensemble_hists, axis=0) / (
-                len(ensemble_hists) - 1
-            )
+            nn_init_var = np.var(ensemble_hists, axis=0) / (len(ensemble_hists) - 1)
             syst_vars["nn-stability"] = nn_init_var
             syst_info["nn-stability"] = nn_init_def.copy()
 
@@ -369,14 +360,16 @@ class UncertaintyCalculator:
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
 
-                # Normalize to match measured distribution
-                norm_factor = np.sum(measured_hist) / np.sum(syst_hist)
-                syst_hist *= norm_factor
-
                 # Calculate variance as squared difference
                 syst_var = np.abs(syst_hist - measured_hist) ** 2
                 syst_vars[syst_key] = syst_var
                 syst_info[syst_key] = syst_def.copy()
+
+                # Print info on HV uncertainty
+                if syst_key == "hv":
+                    print(f"hv histogram {syst_hist}")
+                    print(f"measured histogram {measured_hist}")
+                    print(f"ratio: {syst_hist / measured_hist}")
 
         # Apply uncertainty grouping
         if self.uncertainty_groups:
@@ -478,3 +471,121 @@ class UncertaintyCalculator:
         syst_vars, _ = self.calculate_uncertainties(all_hists, measured_key)
         total_var = np.sum(list(syst_vars.values()), axis=0)
         return np.sqrt(total_var)
+
+    def plot_nominal_vs_hv(
+        self,
+        all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+        measured_key: str = "nominal",
+        output_path: Optional[str] = None,
+        figsize: Tuple[float, float] = (10, 8),
+    ):
+        """Create a comparison plot between nominal and hidden variable histograms.
+
+        Arguments:
+        ----------
+        all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
+            Dictionary mapping histogram names to tuples of (hist, hist_var, bins).
+        measured_key : str, optional
+            Key in all_hists for the measured/unfolded distribution
+            (default: "nominal").
+        output_path : str, optional
+            Path to save the plot. If None, displays the plot instead.
+        figsize : tuple of float, optional
+            Figure size (width, height) in inches (default: (10, 8)).
+        """
+        # Extract nominal histogram
+        if measured_key not in all_hists:
+            available = list(all_hists.keys())
+            raise KeyError(
+                f"Key '{measured_key}' not found in all_hists."
+                f" Available keys: {available}"
+            )
+        nominal_hist, _, nominal_bins = all_hists[measured_key]
+
+        # Extract HV histogram
+        if "hv" not in all_hists:
+            available = list(all_hists.keys())
+            raise KeyError(
+                f"Key 'hv' not found in all_hists." f" Available keys: {available}"
+            )
+        hv_hist, _, hv_bins = all_hists["hv"]
+
+        # Check that bins match
+        if not np.allclose(nominal_bins, hv_bins):
+            raise ValueError("Nominal and HV histograms have different bin edges")
+
+        # Calculate bin centers for plotting
+        bin_centers = (nominal_bins[:-1] + nominal_bins[1:]) / 2.0
+        bin_widths = nominal_bins[1:] - nominal_bins[:-1]
+
+        # Create figure with two subplots: main plot and ratio
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, figsize=figsize, gridspec_kw={"height_ratios": [3, 1]}, sharex=True
+        )
+
+        # Main plot: both histograms
+        ax1.bar(
+            bin_centers,
+            nominal_hist,
+            width=bin_widths,
+            alpha=0.7,
+            label=f"Nominal ({measured_key})",
+            color="blue",
+            edgecolor="black",
+            linewidth=0.5,
+        )
+        ax1.bar(
+            bin_centers,
+            hv_hist,
+            width=bin_widths,
+            alpha=0.7,
+            label="Hidden Variable (hv)",
+            color="orange",
+            edgecolor="black",
+            linewidth=0.5,
+        )
+        ax1.set_ylabel("Counts", fontsize=12)
+        ax1.set_title(
+            "Comparison: Nominal vs Hidden Variable Histograms",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax1.legend(loc="best", fontsize=11)
+        ax1.grid(True, alpha=0.3)
+        ax1.set_yscale("log")
+
+        # Ratio plot
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.divide(
+                hv_hist,
+                nominal_hist,
+                out=np.zeros_like(hv_hist),
+                where=nominal_hist != 0,
+            )
+
+        ax2.plot(
+            bin_centers,
+            ratio,
+            "o-",
+            color="red",
+            markersize=4,
+            linewidth=1.5,
+            label="HV / Nominal",
+        )
+        ax2.axhline(y=1.0, color="black", linestyle="--", linewidth=1, alpha=0.5)
+        ax2.set_xlabel("Bin Center", fontsize=12)
+        ax2.set_ylabel("Ratio", fontsize=12)
+        ax2.grid(True, alpha=0.3)
+        ax2.legend(loc="best", fontsize=10)
+        ax2.set_ylim([0.5, 1.5])  # Adjust as needed
+
+        plt.tight_layout()
+
+        # Save or show
+        if output_path is not None:
+            plt.savefig(output_path, dpi=300, bbox_inches="tight")
+            print(f"Plot saved to {output_path}")
+        else:
+            plt.show()
+
+        plt.close()

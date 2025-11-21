@@ -19,7 +19,6 @@ parser.add_argument(
     "--target", type=str, help="The path to target, either truth pseuodata or truth gen"
 )
 parser.add_argument("--hv", type=str, help="The path to the sherpa MC file")
-parser.add_argument("--data", type=str, help="The path to the data file")
 parser.add_argument(
     "--root_files",
     type=str,
@@ -27,8 +26,8 @@ parser.add_argument(
     default=None,
     help=(
         "If plotting observables that must be computed with fastjet"
-        ", provide the path to the root files in order (mc, target, hv, data)"
-        ". If using --target2, add target2 as the 5th file."
+        ", provide the path to the root files in order (mc, target, hv)"
+        ". If using --target2, add target2 as the 4th file."
     ),
 )
 parser.add_argument(
@@ -61,7 +60,7 @@ parser.add_argument(
     "--cut_region",
     type=int,
     default=0,
-    choices=[0, 1, 2, 3],
+    choices=[-1, 0, 1, 2, 3],
     help="Select a kinematic region to restrict to",
 )
 parser.add_argument(
@@ -82,9 +81,9 @@ args = parser.parse_args()
 
 # Validate arguments
 if args.target2 is not None and args.root_files is not None:
-    if len(args.root_files) != 5:
-        print("Warning: When using --target2, you should provide 5 root files:")
-        print("  [mc, target, hv, data, target2]")
+    if len(args.root_files) != 4:
+        print("Warning: When using --target2, you should provide 4 root files:")
+        print("  [mc, target, hv, target2]")
         print(f"  You provided {len(args.root_files)} files.")
 
 # Build the plotter and run
@@ -92,7 +91,6 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     args.mc,
     args.target,
     args.hv,
-    args.data,
     args.store,
     root_files=args.root_files,
     target2_path=args.target2,
