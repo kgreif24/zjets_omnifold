@@ -4,6 +4,7 @@ test_uncertainty_plotter.py - Test suite for the UncertaintyPlotter class
 
 import os
 import numpy as np
+import awkward as ak
 from uncertainty_plotter import UncertaintyPlotter
 
 
@@ -13,7 +14,6 @@ def test_uncertainty_plotter_init(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -22,7 +22,6 @@ def test_uncertainty_plotter_init(tmp_path):
     # Test basic initialization
     assert plotter.source_path == "./assets/evts_000_100.root"
     assert plotter.target_path == "./assets/truth_evts_000_100.root"
-    assert plotter.data_path == "./assets/data_evts.root"
     assert plotter.store == tmp_path
     assert plotter.verbosity == 0
 
@@ -33,7 +32,6 @@ def test_uncertainty_plotter_plot_basic(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -55,7 +53,6 @@ def test_systematic_uncertainties(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -65,14 +62,14 @@ def test_systematic_uncertainties(tmp_path):
     # Load the weights file to check systematic variations
     weights_data = np.load("./assets/unc_wgts.npz")
 
-    # Check that all expected systematic variations are present (with -central suffix)
+    # Check that all expected systematic variations are present (with weights_ prefix)
     expected_systematics = [
-        "nn-init-central",
-        "mc-stat-central",
-        "data-stat-central",
-        "track-eff-central",
-        "jet-track-eff-central",
-        "hv-central",
+        "weights_nn-init",
+        "weights_mc-stat",
+        "weights_data-stat",
+        "weights_track-eff",
+        "weights_jet-track-eff",
+        "weights_hv",
     ]
     assert all([key in weights_data.keys() for key in expected_systematics])
 
@@ -86,7 +83,6 @@ def test_dual_target_mode(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         target2_path="./assets/truth_evts_100_200.root",
         verbosity=0,
@@ -105,7 +101,6 @@ def test_data_comparison_mode(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         data_comparison_mode=True,
@@ -113,7 +108,6 @@ def test_data_comparison_mode(tmp_path):
 
     # Test that data_comparison_mode is set correctly
     assert plotter.data_comparison_mode is True
-    assert plotter.data_path == "./assets/data_evts.root"
 
     # Test basic functionality with data comparison mode
     _ = plotter.plot("./assets/unc_wgts.npz")
@@ -125,7 +119,6 @@ def test_uncertainty_budget_plot(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -146,14 +139,12 @@ def test_cached_pass190_for_all_trees(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         target2_path="./assets/truth_evts_100_200.root",
         verbosity=0,
     )
 
     # Test that all paths are set correctly
-    assert plotter.data_path == "./assets/data_evts.root"
     assert plotter.target2_path == "./assets/truth_evts_100_200.root"
 
     # Test that caching works for all trees
@@ -167,7 +158,6 @@ def test_kinematic_cuts_all_trees(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -197,7 +187,6 @@ def test_track_weights_batch(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -217,7 +206,6 @@ def test_efficient_weight_loading(tmp_path):
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
         max_events=100,
@@ -231,173 +219,227 @@ def test_efficient_weight_loading(tmp_path):
     # The exact implementation depends on the weight loading optimization
 
 
-def test_uncertainty_merging_functionality(tmp_path):
-    """Test uncertainty merging functionality with hiding of individual uncertainties"""
+def test_multiple_target_files(tmp_path):
+    """Test initialization and plotting with multiple target files"""
+    plotter = UncertaintyPlotter(
+        source_path="./assets/evts_000_100.root",
+        target_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
+        hv_path="./assets/sherpa_evts.root",
+        store=tmp_path,
+        verbosity=0,
+    )
+
+    # Test that multiple target trees are stored
+    assert plotter.target_trees is not None
+    assert len(plotter.target_trees) == 2
+    assert plotter.target_events_list is not None
+    assert len(plotter.target_events_list) == 2
+
+    # Test that total events is sum of all files
+    assert plotter.target_events == sum(plotter.target_events_list)
+
+    # Test basic functionality with multiple target files
+    results = plotter.plot("./assets/unc_wgts.npz")
+
+    # Check that plots were generated
+    assert len(results) > 0
+    png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
+    assert len(png_files) > 0
+
+
+def test_multiple_target_files_data_concatenation(tmp_path):
+    """Test that data from multiple target files is properly concatenated"""
+    import uproot
+
+    # Load data from individual files to compare
+    tree1 = uproot.open("./assets/truth_evts_000_100.root")["OmniTree"]
+    tree2 = uproot.open("./assets/truth_evts_100_200.root")["OmniTree"]
+
+    data1 = ak.to_numpy(tree1["truth_pT_ll"].array())
+    data2 = ak.to_numpy(tree2["truth_pT_ll"].array())
+
+    plotter = UncertaintyPlotter(
+        source_path="./assets/evts_000_100.root",
+        target_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
+        hv_path="./assets/sherpa_evts.root",
+        store=tmp_path,
+        verbosity=0,
+    )
+
+    # Get data from plotter (should be concatenated)
+    target_data = plotter._get_data("pT_ll", is_target=True)
+
+    # Verify that data is concatenated correctly
+    # Note: data will be filtered by pass190, so we check that length is reasonable
+    assert len(target_data) > 0
+    # The concatenated data should have at least as many events as the smaller file
+    assert len(target_data) >= min(len(data1), len(data2))
+
+
+def test_multiple_target2_files(tmp_path):
+    """Test initialization and plotting with multiple target2 files"""
     plotter = UncertaintyPlotter(
         source_path="./assets/evts_000_100.root",
         target_path="./assets/truth_evts_000_100.root",
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
+        target2_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
         verbosity=0,
-        max_events=100,
     )
 
-    # Test default uncertainty groups
-    assert "Tracking" in plotter.uncertainty_groups
-    assert "Unfolding" in plotter.uncertainty_groups
-    assert plotter.uncertainty_groups["Tracking"] == [
-        "track-eff",
-        "jet-track-eff",
-        "track-fake",
-        "track-scale",
+    # Test that target2_path is set correctly
+    assert plotter.target2_path == [
+        "./assets/truth_evts_000_100.root",
+        "./assets/truth_evts_100_200.root",
     ]
-    assert plotter.uncertainty_groups["Unfolding"] == ["dd", "hv"]
+    assert plotter.dual_target_mode is True
 
-    # Test default hiding behavior
-    assert plotter.hide_individual_uncertainties is True
+    # Test that multiple target2 trees are stored
+    assert plotter.target2_trees is not None
+    assert len(plotter.target2_trees) == 2
+    assert plotter.target2_events_list is not None
+    assert len(plotter.target2_events_list) == 2
 
-    # Test plot generation with uncertainty merging
+    # Test that total events is sum of all files
+    assert plotter.target2_events == sum(plotter.target2_events_list)
+
+    # Test basic functionality with multiple target2 files
     results = plotter.plot("./assets/unc_wgts.npz")
 
     # Check that plots were generated
     assert len(results) > 0
 
-    # Verify that budget plots were also generated
-    budget_plots = [key for key in results.keys() if "uncert_budget" in key]
-    assert len(budget_plots) > 0
 
-
-def test_uncertainty_merging_quadrature_calculation(tmp_path):
-    """Test that uncertainties are properly merged in quadrature"""
+def test_multiple_target_files_backward_compatibility(tmp_path):
+    """Test that single string target_path still works (backward compatibility)"""
     plotter = UncertaintyPlotter(
         source_path="./assets/evts_000_100.root",
-        target_path="./assets/truth_evts_000_100.root",
+        target_path="./assets/truth_evts_000_100.root",  # Single string
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
-        max_events=100,
     )
 
-    # Create mock uncertainties to test quadrature merging
-    mock_var1 = np.array([1.0, 4.0, 9.0])  # std = [1, 2, 3]
-    mock_var2 = np.array([4.0, 9.0, 16.0])  # std = [2, 3, 4]
-    # std = [sqrt(5), sqrt(13), sqrt(25)]
-    expected_merged_var = np.array([5.0, 13.0, 25.0])
+    # Test that single target tree is used (not multiple)
+    assert plotter.target_trees is None
+    assert plotter.target_events_list is None
 
-    # Mock the active_systs with test data
-    plotter.active_systs = {
-        "track-eff": {"var": mock_var1, "name": "Track eff.", "color": "purple"},
-        "jet-track-eff": {"var": mock_var2, "name": "Jet track eff.", "color": "pink"},
-    }
+    # Test basic functionality still works
+    results = plotter.plot("./assets/unc_wgts.npz")
 
-    # Test the merging function directly
-    merged_uncert = plotter._merge_uncertainties(
-        "test_track", ["track-eff", "jet-track-eff"]
-    )
-
-    # Verify the merged uncertainty
-    assert merged_uncert is not None
-    assert merged_uncert["name"] == "Test_Track"
-    assert merged_uncert["color"] == "purple"  # Should inherit from first uncertainty
-    assert merged_uncert["stochastic"] is False
-    assert merged_uncert["plot_ratio"] is False
-    assert merged_uncert["merged_from"] == ["track-eff", "jet-track-eff"]
-
-    # Verify quadrature addition (variances are summed)
-    np.testing.assert_array_equal(merged_uncert["var"], expected_merged_var)
+    # Check that plots were generated
+    assert len(results) > 0
 
 
-def test_uncertainty_merging_with_missing_uncertainties(tmp_path):
-    """Test uncertainty merging when some uncertainties are missing"""
+def test_multiple_target_and_target2_files(tmp_path):
+    """Test with both target and target2 as multiple files"""
     plotter = UncertaintyPlotter(
         source_path="./assets/evts_000_100.root",
-        target_path="./assets/truth_evts_000_100.root",
+        target_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
+        target2_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
         verbosity=0,
-        max_events=100,
     )
 
-    # Mock the active_systs with only one uncertainty present
-    plotter.active_systs = {
-        "track-eff": {
-            "var": np.array([1.0, 4.0]),
-            "name": "Track eff.",
-            "color": "purple",
-        },
-        # "jet-track-eff" is missing
-    }
+    # Test that both have multiple trees
+    assert plotter.target_trees is not None
+    assert len(plotter.target_trees) == 2
+    assert plotter.target2_trees is not None
+    assert len(plotter.target2_trees) == 2
 
-    # Test merging with missing uncertainty
-    merged_uncert = plotter._merge_uncertainties(
-        "test_track", ["track-eff", "jet-track-eff"]
-    )
+    # Test basic functionality with both as multiple files
+    results = plotter.plot("./assets/unc_wgts.npz")
 
-    # Should still work with available uncertainties
-    assert merged_uncert is not None
-    assert merged_uncert["merged_from"] == ["track-eff"]  # Only available uncertainty
-    np.testing.assert_array_equal(merged_uncert["var"], np.array([1.0, 4.0]))
-
-    # Test with no available uncertainties
-    merged_uncert_none = plotter._merge_uncertainties(
-        "test_empty", ["missing1", "missing2"]
-    )
-    assert merged_uncert_none is None
+    # Check that plots were generated
+    assert len(results) > 0
 
 
-def test_uncertainty_merging_state_management(tmp_path):
-    """Test that uncertainty merging properly manages state (hiding/restoration)"""
+def test_multiple_target_files_weights(tmp_path):
+    """Test that weights are properly loaded from multiple target files"""
     plotter = UncertaintyPlotter(
         source_path="./assets/evts_000_100.root",
-        target_path="./assets/truth_evts_000_100.root",
+        target_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
         hv_path="./assets/sherpa_evts.root",
-        data_path="./assets/data_evts.root",
         store=tmp_path,
         verbosity=0,
-        max_events=100,
     )
 
-    # Mock active_systs with test uncertainties
-    original_uncerts = {
-        "track-eff": {"var": np.array([1.0]), "name": "Track eff.", "color": "purple"},
-        "jet-track-eff": {
-            "var": np.array([4.0]),
-            "name": "Jet track eff.",
-            "color": "pink",
-        },
-        "other-syst": {"var": np.array([9.0]), "name": "Other", "color": "green"},
-    }
-    plotter.active_systs = original_uncerts.copy()
+    # Get target weights (should be concatenated from all files)
+    target_weights = plotter._get_target_weights_efficiently()
 
-    # Test applying uncertainty merging
-    plotter._apply_uncertainty_merging()
+    # Verify weights are loaded
+    assert len(target_weights) > 0
+    # Should have weights from both files combined
+    assert len(target_weights) >= plotter.target_events_list[0]
 
-    # Verify that merged uncertainty was added
-    assert "Tracking" in plotter.active_systs
-    assert plotter.active_systs["Tracking"]["name"] == "Tracking"
 
-    # Verify that individual uncertainties were hidden (if hiding is enabled)
-    if plotter.hide_individual_uncertainties:
-        assert "track-eff" not in plotter.active_systs
-        assert "jet-track-eff" not in plotter.active_systs
-        # Other uncertainties should still be present
-        assert "other-syst" in plotter.active_systs
+def test_multiple_target_files_pass190_flags(tmp_path):
+    """Test that pass190 flags are properly handled for multiple target files"""
+    plotter = UncertaintyPlotter(
+        source_path="./assets/evts_000_100.root",
+        target_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
+        hv_path="./assets/sherpa_evts.root",
+        store=tmp_path,
+        verbosity=0,
+    )
 
-    # Test restoration
-    plotter._remove_merged_uncertainties()
+    # Get pass190 flags (should be a list for multiple trees)
+    pass190_flags = plotter._get_cached_pass190_flags("target")
 
-    # Verify that merged uncertainty was removed
-    assert "Tracking" not in plotter.active_systs
+    # Verify flags are a list when multiple trees are used
+    assert isinstance(pass190_flags, list)
+    assert len(pass190_flags) == 2
 
-    # Verify that individual uncertainties were restored
-    assert "track-eff" in plotter.active_systs
-    assert "jet-track-eff" in plotter.active_systs
-    assert "other-syst" in plotter.active_systs
+    # Each element should be a numpy array
+    for flags in pass190_flags:
+        assert isinstance(flags, np.ndarray)
+        assert len(flags) > 0
 
-    # Verify original state is preserved
-    assert plotter.active_systs["track-eff"]["name"] == "Track eff."
-    assert plotter.active_systs["jet-track-eff"]["name"] == "Jet track eff."
-    assert plotter.active_systs["other-syst"]["name"] == "Other"
+
+def test_multiple_target_files_kinematic_cuts(tmp_path):
+    """Test that kinematic cuts work correctly with multiple target files"""
+    plotter = UncertaintyPlotter(
+        source_path="./assets/evts_000_100.root",
+        target_path=[
+            "./assets/truth_evts_000_100.root",
+            "./assets/truth_evts_100_200.root",
+        ],
+        hv_path="./assets/sherpa_evts.root",
+        store=tmp_path,
+        verbosity=0,
+    )
+
+    # Apply kinematic cuts
+    plotter.apply_kinematic_cuts(1)  # Region 1: pT_ll > 350, pT_trackj2 > 50
+
+    # Get pass190 flags after cuts (should still be a list)
+    pass190_flags = plotter._get_cached_pass190_flags("target")
+    assert isinstance(pass190_flags, list)
+    assert len(pass190_flags) == 2
+
+    # Test that data respects kinematic cuts
+    target_pT_ll = plotter._get_data("pT_ll", is_target=True)
+    if len(target_pT_ll) > 0:
+        assert np.all(target_pT_ll > 350)

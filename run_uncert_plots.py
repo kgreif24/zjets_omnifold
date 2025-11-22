@@ -16,7 +16,13 @@ import uncertainty_plotter
 parser = argparse.ArgumentParser(description="Run plotting functions")
 parser.add_argument("--mc", type=str, help="The path to MC root file")
 parser.add_argument(
-    "--target", type=str, help="The path to target, either truth pseuodata or truth gen"
+    "--target",
+    type=str,
+    nargs="+",
+    help=(
+        "The path(s) to target file(s), either truth pseudodata or truth gen. "
+        "If multiple paths are provided, data will be concatenated from all files."
+    ),
 )
 parser.add_argument("--hv", type=str, help="The path to the sherpa MC file")
 parser.add_argument(
@@ -66,8 +72,12 @@ parser.add_argument(
 parser.add_argument(
     "--target2",
     type=str,
+    nargs="+",
     default=None,
-    help="Path to second target file for dual truth-level generator comparison",
+    help=(
+        "Path(s) to second target file(s) for dual truth-level generator comparison. "
+        "If multiple paths are provided, data will be concatenated from all files."
+    ),
 )
 parser.add_argument(
     "--data_comparison_mode",
