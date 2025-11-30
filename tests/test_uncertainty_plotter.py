@@ -4,7 +4,6 @@ test_uncertainty_plotter.py - Test suite for the UncertaintyPlotter class
 
 import os
 import numpy as np
-import awkward as ak
 from uncertainty_plotter import UncertaintyPlotter
 
 
@@ -219,67 +218,21 @@ def test_efficient_weight_loading(tmp_path):
     # The exact implementation depends on the weight loading optimization
 
 
-def test_multiple_target_files(tmp_path):
-    """Test initialization and plotting with multiple target files"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-    )
+def test_multiple_target_files_error(tmp_path):
+    """Test that passing multiple target files raises an error"""
+    import pytest
 
-    # Test that multiple target trees are stored
-    assert plotter.target_trees is not None
-    assert len(plotter.target_trees) == 2
-    assert plotter.target_events_list is not None
-    assert len(plotter.target_events_list) == 2
-
-    # Test that total events is sum of all files
-    assert plotter.target_events == sum(plotter.target_events_list)
-
-    # Test basic functionality with multiple target files
-    results = plotter.plot("./assets/unc_wgts.npz")
-
-    # Check that plots were generated
-    assert len(results) > 0
-    png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
-    assert len(png_files) > 0
-
-
-def test_multiple_target_files_data_concatenation(tmp_path):
-    """Test that data from multiple target files is properly concatenated"""
-    import uproot
-
-    # Load data from individual files to compare
-    tree1 = uproot.open("./assets/truth_evts_000_100.root")["OmniTree"]
-    tree2 = uproot.open("./assets/truth_evts_100_200.root")["OmniTree"]
-
-    data1 = ak.to_numpy(tree1["truth_pT_ll"].array())
-    data2 = ak.to_numpy(tree2["truth_pT_ll"].array())
-
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-    )
-
-    # Get data from plotter (should be concatenated)
-    target_data = plotter._get_data("pT_ll", is_target=True)
-
-    # Verify that data is concatenated correctly
-    # Note: data will be filtered by pass190, so we check that length is reasonable
-    assert len(target_data) > 0
-    # The concatenated data should have at least as many events as the smaller file
-    assert len(target_data) >= min(len(data1), len(data2))
+    with pytest.raises(ValueError, match="target_path must be a single ROOT file"):
+        UncertaintyPlotter(
+            source_path="./assets/evts_000_100.root",
+            target_path=[
+                "./assets/truth_evts_000_100.root",
+                "./assets/truth_evts_100_200.root",
+            ],
+            hv_path="./assets/sherpa_evts.root",
+            store=tmp_path,
+            verbosity=0,
+        )
 
 
 def test_multiple_target2_files(tmp_path):
@@ -317,129 +270,3 @@ def test_multiple_target2_files(tmp_path):
 
     # Check that plots were generated
     assert len(results) > 0
-
-
-def test_multiple_target_files_backward_compatibility(tmp_path):
-    """Test that single string target_path still works (backward compatibility)"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path="./assets/truth_evts_000_100.root",  # Single string
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-    )
-
-    # Test that single target tree is used (not multiple)
-    assert plotter.target_trees is None
-    assert plotter.target_events_list is None
-
-    # Test basic functionality still works
-    results = plotter.plot("./assets/unc_wgts.npz")
-
-    # Check that plots were generated
-    assert len(results) > 0
-
-
-def test_multiple_target_and_target2_files(tmp_path):
-    """Test with both target and target2 as multiple files"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        target2_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        verbosity=0,
-    )
-
-    # Test that both have multiple trees
-    assert plotter.target_trees is not None
-    assert len(plotter.target_trees) == 2
-    assert plotter.target2_trees is not None
-    assert len(plotter.target2_trees) == 2
-
-    # Test basic functionality with both as multiple files
-    results = plotter.plot("./assets/unc_wgts.npz")
-
-    # Check that plots were generated
-    assert len(results) > 0
-
-
-def test_multiple_target_files_weights(tmp_path):
-    """Test that weights are properly loaded from multiple target files"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-    )
-
-    # Get target weights (should be concatenated from all files)
-    target_weights = plotter._get_target_weights_efficiently()
-
-    # Verify weights are loaded
-    assert len(target_weights) > 0
-    # Should have weights from both files combined
-    assert len(target_weights) >= plotter.target_events_list[0]
-
-
-def test_multiple_target_files_pass190_flags(tmp_path):
-    """Test that pass190 flags are properly handled for multiple target files"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-    )
-
-    # Get pass190 flags (should be a list for multiple trees)
-    pass190_flags = plotter._get_cached_pass190_flags("target")
-
-    # Verify flags are a list when multiple trees are used
-    assert isinstance(pass190_flags, list)
-    assert len(pass190_flags) == 2
-
-    # Each element should be a numpy array
-    for flags in pass190_flags:
-        assert isinstance(flags, np.ndarray)
-        assert len(flags) > 0
-
-
-def test_multiple_target_files_kinematic_cuts(tmp_path):
-    """Test that kinematic cuts work correctly with multiple target files"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path=[
-            "./assets/truth_evts_000_100.root",
-            "./assets/truth_evts_100_200.root",
-        ],
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-    )
-
-    # Apply kinematic cuts
-    plotter.apply_kinematic_cuts(1)  # Region 1: pT_ll > 350, pT_trackj2 > 50
-
-    # Get pass190 flags after cuts (should still be a list)
-    pass190_flags = plotter._get_cached_pass190_flags("target")
-    assert isinstance(pass190_flags, list)
-    assert len(pass190_flags) == 2
-
-    # Test that data respects kinematic cuts
-    target_pT_ll = plotter._get_data("pT_ll", is_target=True)
-    if len(target_pT_ll) > 0:
-        assert np.all(target_pT_ll > 350)

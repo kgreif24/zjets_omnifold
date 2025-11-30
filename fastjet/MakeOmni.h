@@ -32,12 +32,14 @@ public :
    string weightFilename;
    vector<string> weightBranchNames;
    int nEns;
+   int nBootstrapData;
    TString saveName;
    int kinematicRegion;
 
    // HistoGroups
    vector<HistoGroup> centralHistoGroups;
    vector<HistoGroup> ensHistoGroups;
+   vector<HistoGroup> bootstrapHistoGroups;
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
@@ -155,7 +157,7 @@ public :
    TBranch        *b_npdgId_tracks;   //!
    TBranch        *b_pdgId_tracks;   //!
 
-   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int kinematic_region = 0);
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int nBootstrapData = 0, int kinematic_region = 0);
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -168,18 +170,20 @@ public :
    virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight, bool flip_z = false);
    virtual void     FillLund(shared_ptr<TH1D>& hz, shared_ptr<TH1D>& hdr, shared_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
    virtual float    GetMassFromPID(int pdgId);
+   static vector<string> DetectWeightNames(string filename);
 };
 
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int kinematic_region) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int nBootstrapData, int kinematic_region) : fChain(0) 
 {
 
    // Store instance variables
    weightFilename = weightFile; // Store the weight file name
    weightBranchNames = weightNames; // Store the weight branch names
    nEns = nEnsembles; // Store the number of ensembles
+   this->nBootstrapData = nBootstrapData; // Store the number of bootstrap data weights
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
    kinematicRegion = kinematic_region; // Store the kinematic region
@@ -193,9 +197,14 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
       }
    }
 
-   // Initialize the ensemble histograms for the nominal ensemble
+   // Initialize the ensemble histograms
    for (int i = 0; i < nEns; ++i) {
-      ensHistoGroups.push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-", kinematicRegion));
+      ensHistoGroups.push_back(HistoGroup("weights_ensemble_" + to_string(i) + "-", kinematicRegion));
+   }
+
+   // Initialize the bootstrap data histograms
+   for (int i = 0; i < nBootstrapData; ++i) {
+      bootstrapHistoGroups.push_back(HistoGroup("weights_bootstrap_data_" + to_string(i) + "-", kinematicRegion));
    }
 
    // Initialize the tree

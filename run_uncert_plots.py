@@ -18,11 +18,8 @@ parser.add_argument("--mc", type=str, help="The path to MC root file")
 parser.add_argument(
     "--target",
     type=str,
-    nargs="+",
-    help=(
-        "The path(s) to target file(s), either truth pseudodata or truth gen. "
-        "If multiple paths are provided, data will be concatenated from all files."
-    ),
+    help="The path to target file, either truth pseudodata or truth gen. "
+    "Must be a single ROOT file.",
 )
 parser.add_argument("--hv", type=str, help="The path to the sherpa MC file")
 parser.add_argument(

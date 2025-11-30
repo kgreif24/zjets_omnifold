@@ -11,7 +11,7 @@ defaults: &default_plot
   binlow: 0
   binhigh: 200
   ylim: null
-  ylabel: "A.U."
+  ylabel: '$d\sigma$ [fb]'
   rlim:
     - 0.5
     - 1.5
@@ -625,6 +625,7 @@ plots:
     verbosity_level: 0
     multifold: false
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
+    linear_yscale: true
 
   sum_pT_tracks:
     <<: *default_plot
@@ -643,6 +644,7 @@ plots:
     verbosity_level: 0
     multifold: false
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
+    linear_yscale: true
 
   pT_tracks:
     <<: *default_plot
@@ -804,26 +806,6 @@ plots:
     multifold: false
     ibu: false
 
-  # hLund_z_R04:
-  #   <<: *default_plot
-  #   key: "hLund_z_R04"
-  #   xlabel: "$z_{j1}$ Anti-kt R=0.4 [GeV]"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
-  # hLund_dR_R04:
-  #   <<: *default_plot
-  #   key: "hLund_dR_R04"
-  #   xlabel: '$\Delta R_{j1}$ Anti-kt R=0.4 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
   hm1_R06:
     <<: *default_plot
     key: "hm1_R06"
@@ -855,26 +837,6 @@ plots:
     multifold: false
     ibu: false
 
-  # hLund_z_R06:
-  #   <<: *default_plot
-  #   key: "hLund_z_R06"
-  #   xlabel: '$z_{j1}$ Anti-kt R=0.6 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
-  # hLund_dR_R06:
-  #   <<: *default_plot
-  #   key: "hLund_dR_R06"
-  #   xlabel: '$\Delta R_{j1}$ Anti-kt R=0.6 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
   hm1_R10:
     <<: *default_plot
     key: "hm1_R10"
@@ -905,26 +867,6 @@ plots:
     type: "fastjet"
     multifold: false
     ibu: false
-
-  # hLund_z_R10:
-  #   <<: *default_plot
-  #   key: "hLund_z_R10"
-  #   xlabel: '$z_{j1}$ Anti-kt R=1.0 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
-  # hLund_dR_R10:
-  #   <<: *default_plot
-  #   key: "hLund_dR_R10"
-  #   xlabel: '$\Delta R_{j1}$ Anti-kt R=1.0 [GeV]'
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
 
   hm1_CA04:
     <<: *default_plot
@@ -1036,42 +978,6 @@ plots:
     type: "fastjet"
     multifold: false
     ibu: false
-
-  # hLund_plane_R04:
-  #   <<: *default_plot
-  #   key: "hLund_plane_R04"
-  #   xlabel: '$\Delta R_{j1}$'
-  #   ylabel: '$z_{j1}$'
-  #   title: "Anti-kt R=0.4 Jets"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
-  # hLund_plane_R06:
-  #   <<: *default_plot
-  #   key: "hLund_plane_R06"
-  #   xlabel: '$\Delta R_{j1}$'
-  #   ylabel: '$z_{j1}$'
-  #   title: "Anti-kt R=0.6 Jets"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
-
-  # hLund_plane_R10:
-  #   <<: *default_plot
-  #   key: "hLund_plane_R10"
-  #   xlabel: '$\Delta R_{j1}$'
-  #   ylabel: '$z_{j1}$'
-  #   title: "Anti-kt R=1.0 Jets"
-  #   verbosity_level: 3
-  #   w1_eval: false
-  #   type: "fastjet"
-  #   multifold: false
-  #   ibu: false
 
   hTEEC_collinear:
     <<: *default_plot

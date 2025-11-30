@@ -10,6 +10,8 @@ import os
 import sys
 import argparse
 import glob
+import tempfile
+import zipfile
 import uproot
 import awkward as ak
 import numpy as np
@@ -426,10 +428,25 @@ df_mc.to_hdf(args.output, key="weights", mode="w", format="table")
 df_hv = pd.DataFrame(hv_weights)
 df_hv.to_hdf(args.output, key="hv_weights", mode="a", format="table")
 
-# Also save results in .npz format
+# Also save results in .npz format (UNCOMPRESSED for compatibility with cnpy)
 # Generate .npz filename by replacing HDF5 extension
 npz_output = os.path.splitext(args.output)[0] + ".npz"
 # Save all weights (MC and HV) to a single .npz file
-# Use the same field names as in the dictionaries
-np.savez_compressed(npz_output, **all_weights, **hv_weights)
-print(f"Saved weights to {npz_output}")
+# Use uncompressed format to avoid issues with cnpy library
+# Save to temporary .npz first, then re-save uncompressed
+with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
+    tmp_npz = tmp.name
+    np.savez(tmp_npz, **all_weights, **hv_weights)
+
+# Re-save as uncompressed zip file
+with zipfile.ZipFile(tmp_npz, "r") as z_in:
+    with zipfile.ZipFile(npz_output, "w", compression=zipfile.ZIP_STORED) as z_out:
+        for item in z_in.infolist():
+            # Copy each file without compression
+            data = z_in.read(item.filename)
+            z_out.writestr(item, data, compress_type=zipfile.ZIP_STORED)
+
+# Clean up temporary file
+os.remove(tmp_npz)
+
+print(f"Saved weights to {npz_output} (uncompressed format)")

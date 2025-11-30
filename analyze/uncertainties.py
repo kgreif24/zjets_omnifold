@@ -58,6 +58,23 @@ class UncertaintyCalculator:
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
 
+        # Hardcode the theory uncertainties, since we will only ever care about
+        # the total theory uncertainty and don't need to visualize the budget
+        self.madgraph_uncertainties = [
+            "w_QCD_dd",
+            "w_PDF_CT18nnlo",
+            "w_Alpha_s1",
+            "w_Var2Down",
+            "w_Var1Down",
+            "w_MPIDown",
+            "w_RenDown",
+        ]
+        self.sherpa_uncertainties = [
+            "PS_ME_QCD_dd",
+            "PS_ME_PDF_CT18nnlo",
+            "PS_ME_Alpha_s1",
+        ]
+
     @staticmethod
     def _get_default_definitions() -> Dict[str, Dict]:
         """Get default uncertainty definitions.
@@ -463,4 +480,43 @@ class UncertaintyCalculator:
         """
         syst_vars, _ = self.calculate_uncertainties(all_hists, measured_key)
         total_var = np.sum(list(syst_vars.values()), axis=0)
+        return np.sqrt(total_var)
+
+    def get_total_theory_uncertainty(
+        self,
+        all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+        measured_key: str = "target",
+        is_madgraph: bool = True,
+    ) -> np.ndarray:
+        """Calculate total MadGraph uncertainty (square root of sum of variances).
+
+        Arguments:
+        ----------
+        all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
+            Dictionary mapping histogram names to tuples of (hist, hist_var, bins).
+        measured_key : str, optional
+            Key in all_hists for the measured/unfolded distribution
+            (default: "target").
+        is_madgraph : bool, optional
+            Whether the theory uncertainties are MadGraph uncertainties.
+            If set to False, the theory uncertainties are Sherpa uncertainties.
+            (default: True).
+
+        Returns:
+        --------
+        np.ndarray : Total MadGraph uncertainty (standard deviation) array.
+        """
+
+        central_hist, central_hist_var, _ = all_hists[measured_key]
+        syst_vars = [central_hist_var]
+        if is_madgraph:
+            weight_names = self.madgraph_uncertainties
+        else:
+            weight_names = self.sherpa_uncertainties
+        for weight_name in weight_names:
+            if weight_name in all_hists:
+                syst_hist, _, _ = all_hists[weight_name]
+                syst_var = np.abs(syst_hist - central_hist) ** 2
+                syst_vars.append(syst_var)
+        total_var = np.sum(syst_vars, axis=0)
         return np.sqrt(total_var)

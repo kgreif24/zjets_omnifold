@@ -1,10 +1,12 @@
 """uncertainty_plotter.py - This module provides a subclass of the Plotter
-class that builds uncertainty plots. It will only make plots comparing
-truth pseudodata to re-weighted truth level MC, as uncertainties are only
-defined in this context.
+class that builds uncertainty plots. It can be run in two modes:
+    1. Compare truth pseudodata to re-weighted truth level MC
+    2. Compare data to truth generators
+The data comparison mode removes method bias and flips the ratio calculation.
+It also supports dual target mode for comparing against two truth-level generators.
 
 Author: Kevin Greif
-Last updated 03.28.2025
+Last updated 11.22.2025
 python3
 """
 
@@ -13,6 +15,7 @@ import numpy as np
 import uproot
 import awkward as ak
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import plotter
 from analyze import uncertainties as uncert_module
 
@@ -20,9 +23,11 @@ from analyze import uncertainties as uncert_module
 class UncertaintyPlotter(plotter.Plotter):
     """
     UncertaintyPlotter is a subclass of Plotter that is specialized for
-    building uncertainty plots. It will only make plots comparing truth
-    pseudodata to re-weighted truth level MC, as uncertainties are only
-    defined in this context.
+    building uncertainty plots. It can be run in two modes:
+    1. Compare truth pseudodata to re-weighted truth level MC
+    2. Compare data to truth generators
+    The data comparison mode removes method bias and flips the ratio calculation.
+    It also supports dual target mode for comparing against two truth-level generators.
     """
 
     def __init__(
@@ -45,8 +50,8 @@ class UncertaintyPlotter(plotter.Plotter):
         Arguments:
             source_path (str): Path to the source file containing the Omnifold
                 weights.
-            target_path (str or list of str): Path(s) to the target file(s) containing
-                the target weights. If a list, data will be concatenated from all files.
+            target_path (str): Path to the target file containing the target weights.
+                Must be a single ROOT file.
             hv_path (str): Path to the file containing the sherpa sample reweighted
                 to look like MG that is used for the hidden variable uncertainty.
             store (str): Path to the directory where the plots will be stored.
@@ -62,34 +67,23 @@ class UncertaintyPlotter(plotter.Plotter):
                 flips ratio calculations. Default is False.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
-        # Normalize target_path to list for consistent handling
-        if isinstance(target_path, str):
-            target_path_list = [target_path]
-        else:
-            target_path_list = target_path
+        # Ensure target_path is a single string (not a list)
+        if isinstance(target_path, list):
+            raise ValueError(
+                "target_path must be a single ROOT file path (string). "
+                "Multiple target files are not supported. "
+                "Use target2_path for multiple files if needed."
+            )
 
-        # Use first target path for parent class initialization
-        # (backward compatibility)
+        # Initialize parent class with single target path
         super().__init__(
             source_path,
-            target_path_list[0],
+            target_path,
             store,
             use_truth=True,
             root_files=root_files,
             **kwargs,
         )
-
-        # Store multiple target trees if provided
-        if len(target_path_list) > 1:
-            self.target_trees = [
-                uproot.open(path)["OmniTree"] for path in target_path_list
-            ]
-            # When multiple files are provided, use all events from all files
-            self.target_events_list = [tree.num_entries for tree in self.target_trees]
-            self.target_events = sum(self.target_events_list)
-        else:
-            self.target_trees = None
-            self.target_events_list = None
 
         # Store new functionality flags
         self.target2_path = target2_path
@@ -98,6 +92,9 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Create UncertaintyCalculator instance
         self.uncertainty_calculator = uncert_module.UncertaintyCalculator()
+
+        # Hardcode luminosity
+        self.luminosity = 140.1  # fb^-1
 
         # Get the sherpa tree
         if "hv" in self.uncertainty_calculator.uncertainty_definitions:
@@ -137,6 +134,7 @@ class UncertaintyPlotter(plotter.Plotter):
                     tree.num_entries for tree in self.target2_trees
                 ]
                 self.target2_events = sum(self.target2_events_list)
+                print(f"In all target2 files, there are {self.target2_events} events")
             else:
                 self.target2_trees = None
                 self.target2_events_list = None
@@ -193,28 +191,26 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Load weights from numpy file
         weights_file = np.load(of_weights)
-
-        # Efficiently load and process all weights
-        final_weights = self._load_and_process_weights_efficiently(weights_file)
+        weights_dict = self._load_and_process_weights_efficiently(weights_file)
 
         # Get target weights efficiently
-        target = self._get_target_weights_efficiently()
-
-        # Package into use weights dict
-        weights_dict = {
-            "target": target,
-            **final_weights,
-        }
+        # (get MG weights if in data comparison mode)
+        mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
+        target_weights = self._get_target_weights_efficiently(
+            get_mg_weights=mg_weight_names if self.data_comparison_mode else None
+        )
 
         # Get second target weights if in dual target mode
+        target2_weights = {}
         if self.dual_target_mode:
-            target2 = self._get_weights_target2("weight_mc")
-            target2_pass190 = self._get_cached_pass190_flags("target2")
-            if isinstance(target2_pass190, list):
-                # Concatenate flags from multiple trees
-                target2_pass190 = np.concatenate(target2_pass190)
-            target2 = target2[target2_pass190 == 1]
-            weights_dict["target2"] = target2
+            # Get sherpa uncertainty weights if in data comparison mode
+            sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
+            get_sherpa_weights = (
+                sherpa_weight_names if self.data_comparison_mode else None
+            )
+            target2_weights = self._get_target2_weights_efficiently(
+                get_sherpa_weights=get_sherpa_weights
+            )
 
         # If we have track level observables, need to repeat the weights
         # for each track in the event
@@ -222,79 +218,59 @@ class UncertaintyPlotter(plotter.Plotter):
             print("Calculating track level weights!")
 
             # Process all weights in batch for efficiency
-            # Remove ensemble, bootstrap_data, and hv weights from the systematic
-            # dictionary because they are handled separately
-            source_weights_dict = final_weights.copy()
-            source_weights_dict.pop("ensemble")
-            if "bootstrap_data" in source_weights_dict:
-                source_weights_dict.pop("bootstrap_data")
+            # Remove hv weights from the systematic dictionary because they are
+            # handled separately (they come from sherpa tree, not source tree)
+            source_weights_dict = weights_dict.copy()
             if "weights_hv" in source_weights_dict:
                 source_weights_dict.pop("weights_hv")
 
-            # Process all source weights at once
+            # Process all source weights at once (including ensemble and bootstrap_data)
             weights_dict_trk = self._get_track_weights_batch(source_weights_dict)
 
-            # Process target and hv weights separately
-            target_trk = self._get_track_weights(
-                target,
-                tree_type="target",
-            )
-            weights_dict_trk["target"] = target_trk
+            # Process hv weights
             if "hv" in self.uncertainty_calculator.uncertainty_definitions:
                 hv_trk = self._get_track_weights(
-                    final_weights["weights_hv"],
+                    weights_dict["weights_hv"],
                     tree_type="sherpa",
                 )
                 weights_dict_trk["weights_hv"] = hv_trk
 
-            # Process ensemble weights efficiently
-            if final_weights["ensemble"].size > 0:
-                ensemble_weights_trk = np.zeros(
-                    (
-                        len(weights_dict_trk["central"]),
-                        final_weights["ensemble"].shape[1],
-                    )
-                )
-                for i in tqdm.tqdm(range(final_weights["ensemble"].shape[1])):
-                    ensemble_weights_trk[:, i] = self._get_track_weights(
-                        final_weights["ensemble"][:, i],
-                        tree_type="source",
-                    )
-                weights_dict_trk["ensemble"] = ensemble_weights_trk
-            else:
-                weights_dict_trk["ensemble"] = np.zeros(
-                    (len(weights_dict_trk["central"]), 0)
-                )
+            # Process target weights
+            target_trk = self._get_track_weights(
+                weights_dict["target"],
+                tree_type="target",
+            )
+            weights_dict_trk["target"] = target_trk
 
-            # Process bootstrap_data weights efficiently
-            if (
-                "bootstrap_data" in final_weights
-                and final_weights["bootstrap_data"].size > 0
-            ):
-                bootstrap_weights_trk = np.zeros(
-                    (
-                        len(weights_dict_trk["central"]),
-                        final_weights["bootstrap_data"].shape[1],
-                    )
-                )
-                for i in tqdm.tqdm(range(final_weights["bootstrap_data"].shape[1])):
-                    bootstrap_weights_trk[:, i] = self._get_track_weights(
-                        final_weights["bootstrap_data"][:, i],
-                        tree_type="source",
-                    )
-                weights_dict_trk["bootstrap_data"] = bootstrap_weights_trk
-            else:
-                weights_dict_trk["bootstrap_data"] = np.zeros(
-                    (len(weights_dict_trk["central"]), 0)
-                )
+            # Process target theory weights if they exist
+            mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
+            if self.data_comparison_mode:
+                for weight_name in mg_weight_names:
+                    if weight_name in weights_dict:
+                        th_trk = self._get_track_weights(
+                            weights_dict[weight_name],
+                            tree_type="target",
+                        )
+                        weights_dict_trk[weight_name] = th_trk
 
             # Process target2 weights if in dual target mode
             if self.dual_target_mode:
                 target2_trk = self._get_track_weights(
-                    target2,
+                    weights_dict["target2"],
                     tree_type="target2",
                 )
                 weights_dict_trk["target2"] = target2_trk
+
+                # Process target2 theory weights if they exist
+                sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
+                if self.data_comparison_mode:
+                    for weight_name in sherpa_weight_names:
+                        if weight_name in weights_dict:
+                            th_trk = self._get_track_weights(
+                                weights_dict[weight_name],
+                                tree_type="target2",
+                            )
+                            weights_dict_trk[weight_name] = th_trk
 
         # Loop through plots and make histograms
         return_dict = {}
@@ -317,18 +293,25 @@ class UncertaintyPlotter(plotter.Plotter):
             all_hists["nominal"] = (source_hist, source_hist_var, bins)
 
             # Build target histograms
-            target_hist, _, _ = self._get_histogram(
-                nominal_plot,
-                weights=use_weight_dict["target"],
-                is_target=True,
-                root_index=1,  # This only effects histogram for fastjet observables
-            )
-            if self.dual_target_mode:
-                target2_hist, _, _ = self._get_histogram_target2(
+            target_hists = {}
+            for wgt_name, wgts in target_weights.items():
+                target_hists[wgt_name] = self._get_histogram(
                     nominal_plot,
-                    weights=use_weight_dict["target2"],
-                    root_index=4,  # This only effects histogram for fastjet observables
+                    weights=wgts,
+                    is_target=True,
+                    root_index=1,  # Only effects histogram for fastjet observables
                 )
+            # Need to also add central value target histogram to all_hists
+            all_hists["target"] = target_hists["target"]
+
+            if self.dual_target_mode:
+                target2_hists = {}
+                for wgt_name, wgts in target2_weights.items():
+                    target2_hists[wgt_name] = self._get_histogram_target2(
+                        nominal_plot,
+                        weights=wgts,
+                        root_index=4,  # Only effects histogram for fastjet observables
+                    )
 
             # Build ensemble histograms for NN stability uncertainty
             if "nn-stability" in self.uncertainty_calculator.uncertainty_definitions:
@@ -425,15 +408,38 @@ class UncertaintyPlotter(plotter.Plotter):
                 all_hists, measured_key="nominal"
             )
 
+            # Calculate theory uncertainties for targets if in data comparison mode
+            target_var = None
+            target2_var = None
+            if self.data_comparison_mode:
+                # Calculate MadGraph theory uncertainty for target
+                target_var = self.uncertainty_calculator.get_total_theory_uncertainty(
+                    target_hists, measured_key="target", is_madgraph=True
+                )
+
+                # Calculate Sherpa theory uncertainty for target2 if in dual target mode
+                if self.dual_target_mode:
+                    target2_var = (
+                        self.uncertainty_calculator.get_total_theory_uncertainty(
+                            target2_hists,
+                            measured_key="target2",
+                            is_madgraph=False,
+                        )
+                    )
+
             # Make and save plot
             fig = self._build_uncert_plot(
                 plot,
                 bins,
                 source_hist,
-                target_hist,
+                target_hists["target"][0],
                 syst_vars,
                 color=color,
-                target2_hist=target2_hist if self.dual_target_mode else None,
+                target2_hist=(
+                    target2_hists["target2"][0] if self.dual_target_mode else None
+                ),
+                target_var=target_var,
+                target2_var=target2_var,
             )
             extension = ".pdf" if self.use_pdf else ".png"
             store_name = self.store / (plot["key"] + extension)
@@ -446,10 +452,12 @@ class UncertaintyPlotter(plotter.Plotter):
                 plot,
                 bins,
                 source_hist,
-                target_hist,
+                target_hists["target"][0],
                 syst_vars,
                 syst_info,
-                target2_hist=target2_hist if self.dual_target_mode else None,
+                target2_hist=(
+                    target2_hists["target2"][0] if self.dual_target_mode else None
+                ),
             )
             budget_name = plot["key"] + "_uncert_budget" + extension
             budget_store_name = self.store / budget_name
@@ -515,20 +523,32 @@ class UncertaintyPlotter(plotter.Plotter):
     def _get_weights_target2(self, weights):
         """_get_weights_target2 - Get weights from the second target tree(s).
 
+        If a weight branch doesn't exist in one of the trees, just use the
+        "weight_mc" branch instead of failing
+
         Arguments:
             weights (str): Branch name to get weights from
 
         Returns:
             weights (np.array): Array of weights from target2 tree(s), concatenated
-                if multiple trees are provided
+                if multiple trees are provided. If a branch is missing in a tree,
+                uses ones for that tree.
         """
         if self.target2_trees is not None:
             # Concatenate weights from multiple trees
             all_weights = []
             for tree, max_events in zip(self.target2_trees, self.target2_events_list):
-                all_weights.append(
-                    ak.to_numpy(tree[weights].array(entry_stop=max_events))
-                )
+                # Check if the branch exists in this tree
+                if weights in tree.keys():
+                    tree_weights = ak.to_numpy(
+                        tree[weights].array(entry_stop=max_events)
+                    )
+                else:
+                    # Branch doesn't exist, use "weight_mc" branch
+                    tree_weights = ak.to_numpy(
+                        tree["weight_mc"].array(entry_stop=max_events)
+                    )
+                all_weights.append(tree_weights)
             return np.concatenate(all_weights)
         else:
             return ak.to_numpy(
@@ -650,6 +670,8 @@ class UncertaintyPlotter(plotter.Plotter):
         syst_vars,
         color="blue",
         target2_hist=None,
+        target_var=None,
+        target2_var=None,
     ):
         """_build_uncert_plot - Produce an uncertainty plot for a given observable.
         This plot will compare the source histogram to the target histogram, and
@@ -664,6 +686,10 @@ class UncertaintyPlotter(plotter.Plotter):
             syst_vars (dict): Dictionary mapping uncertainty keys to variance arrays.
             color (str): Color to use for the histogram and ratio plots.
             target2_hist (np.array, optional): Array of second target histogram values.
+            target_var (np.array, optional): Total theory uncertainty for target
+                histogram. Only used in data_comparison_mode.
+            target2_var (np.array, optional): Total theory uncertainty for target2
+                histogram. Only used in data_comparison_mode with dual_target_mode.
 
         Returns:
             fig (matplotlib.figure.Figure): Figure object for the plot.
@@ -673,27 +699,36 @@ class UncertaintyPlotter(plotter.Plotter):
         if self.data_comparison_mode:
             # In data comparison mode, we compare data to truth generators
             # No method bias calculation, and ratio is target/data
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-            ratio = norm_target_hist / source_hist  # Flipped ratio
+            ratio = target_hist / source_hist  # Flipped ratio
             mbias = None
             rel_mbias = None
         else:
             # Standard pseudodata vs target comparison
             # Need to normalize target histogram to match source histogram
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-            ratio = source_hist / norm_target_hist
-            mbias = (source_hist - norm_target_hist) ** 2
-            rel_mbias = np.sqrt(mbias) / norm_target_hist
+            ratio = source_hist / target_hist
+            mbias = (source_hist - target_hist) ** 2
+            rel_mbias = np.sqrt(mbias) / target_hist
 
         # Calculate total variance and uncertainty from syst_vars
         total_var = np.sum(list(syst_vars.values()), axis=0)
         total_uncert = np.sqrt(total_var)
         rel_total_uncert = total_uncert / source_hist
 
+        # Calculate relative uncertainties for ratio plots in data_comparison_mode
+        rel_ratio_uncert = None
+        rel_ratio2_uncert = None
+        if self.data_comparison_mode:
+            # For ratio = norm_target_hist / source_hist, uncertainty includes:
+            # - Data uncertainty: rel_total_uncert
+            # - Target theory uncertainty: target_var / norm_target_hist
+            if target_var is not None:
+                rel_target_uncert = target_var / target_hist
+                rel_ratio_uncert = np.sqrt(rel_total_uncert**2 + rel_target_uncert**2)
+            else:
+                rel_ratio_uncert = rel_total_uncert
+
         # Duplicate last bins for all step plots
-        plot_target_hist = np.append(norm_target_hist, norm_target_hist[-1])
+        plot_target_hist = np.append(target_hist, target_hist[-1])
         if rel_mbias is not None:
             rel_mbias = np.append(rel_mbias, rel_mbias[-1])
 
@@ -716,27 +751,80 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Densities
         if self.data_comparison_mode:
+            # Calculate bin widths for uncertainty boxes
+            bin_widths = 2 * bin_errors
+
             # In data comparison mode: target as purple points, data as black points
+            # Plot target as purple points first to get y-values
+            target_y_values = plot_target_hist[:-1]  # Remove the duplicated last bin
             ax.errorbar(
                 bin_centers,
-                plot_target_hist[:-1],  # Remove the duplicated last bin for errorbar
+                target_y_values,
                 fmt="o",
-                label="Sherpa",
+                label="MadGraph",
                 color="purple",
+                zorder=2,  # In front of boxes
             )
+
+            # Plot theory uncertainty boxes for target (behind the points)
+            if target_var is not None:
+                box_height = 2 * target_var
+                for x, y, h, w in zip(
+                    bin_centers, target_y_values, box_height, bin_widths
+                ):
+                    # Center the box on the point: bottom = y - h/2
+                    box = Rectangle(
+                        (x - w / 2, y - h / 2),
+                        w,
+                        h,
+                        alpha=0.3,
+                        facecolor="purple",
+                        edgecolor=None,
+                        zorder=1,  # Behind the points
+                    )
+                    ax.add_patch(box)
 
             # Add second target if in dual target mode
             if self.dual_target_mode and target2_hist is not None:
-                norm_factor2 = np.sum(source_hist) / np.sum(target2_hist)
-                norm_target2_hist = norm_factor2 * target2_hist
-                ratio2 = norm_target2_hist / source_hist
+                ratio2 = target2_hist / source_hist
+
+                # Calculate relative uncertainty for target2 ratio
+                # Includes data uncertainty and target2 theory uncertainty
+                if target2_var is not None:
+                    rel_target2_uncert = target2_var / target2_hist
+                    rel_ratio2_uncert = np.sqrt(
+                        rel_total_uncert**2 + rel_target2_uncert**2
+                    )
+                else:
+                    rel_ratio2_uncert = rel_total_uncert
+
+                # Plot target2 as orange points first to get y-values
                 ax.errorbar(
                     bin_centers,
-                    norm_target2_hist,
+                    target2_hist,
                     fmt="o",
-                    label="MadGraph",
+                    label="Sherpa",
                     color="orange",
+                    zorder=2,  # In front of boxes
                 )
+
+                # Plot theory uncertainty boxes for target2 (behind the points)
+                if target2_var is not None:
+                    box_height = 2 * target2_var
+                    for x, y, h, w in zip(
+                        bin_centers, target2_hist, box_height, bin_widths
+                    ):
+                        # Center the box on the point: bottom = y - h/2
+                        box = Rectangle(
+                            (x - w / 2, y - h / 2),
+                            w,
+                            h,
+                            alpha=0.3,
+                            facecolor="orange",
+                            edgecolor=None,
+                            zorder=1,  # Behind the points
+                        )
+                        ax.add_patch(box)
 
             ax.errorbar(
                 bin_centers,
@@ -746,6 +834,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 fmt="+",
                 label="Data",
                 color="black",
+                zorder=3,  # In front of everything
             )
         else:
             # Standard mode: target as dashed line, unfolded as colored points
@@ -789,21 +878,29 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Ratios
         rax.axhline(1, color="black", linestyle="--")
+        # Use combined uncertainty (data + theory) in data_comparison_mode
+        ratio_uncert = (
+            rel_ratio_uncert if rel_ratio_uncert is not None else rel_total_uncert
+        )
         rax.errorbar(
             bin_centers,
             ratio,
             xerr=bin_errors,
-            yerr=rel_total_uncert,
-            fmt="o",
+            yerr=ratio_uncert,
+            fmt="+",
             color="purple" if self.data_comparison_mode else color,
         )
         if self.data_comparison_mode and self.dual_target_mode:
+            # Use combined uncertainty (data + target2 theory) for target2
+            ratio2_uncert = (
+                rel_ratio2_uncert if rel_ratio2_uncert is not None else rel_total_uncert
+            )
             rax.errorbar(
                 bin_centers,
                 ratio2,
                 xerr=bin_errors,
-                yerr=rel_total_uncert,
-                fmt="o",
+                yerr=ratio2_uncert,
+                fmt="+",
                 color="orange",
             )
         rax.set_ylim(0.5, 1.5)
@@ -1091,31 +1188,74 @@ class UncertaintyPlotter(plotter.Plotter):
 
         return self._cached_sherpa_weights
 
-    def _get_target_weights_efficiently(self):
+    def _get_target_weights_efficiently(self, get_mg_weights=None):
         """Efficiently get and cache target weights to avoid repeated loading."""
         if not hasattr(self, "_cached_target_weights"):
-            if self.target_trees is not None:
-                # Concatenate weights from multiple trees
-                all_weights = []
-                for tree, max_events in zip(self.target_trees, self.target_events_list):
-                    tree_weights = ak.to_numpy(
-                        tree["weight_mc"].array(entry_stop=max_events)
-                    )
-                    all_weights.append(tree_weights)
-                self._cached_target_weights = np.concatenate(all_weights)
-            else:
-                self._cached_target_weights = self._get_weights(
-                    "weight_mc", is_target=True
-                )
+            self._cached_target_weights = self._get_weights("weight_mc", is_target=True)
             target_pass190 = self._get_cached_pass190_flags("target")
-            if isinstance(target_pass190, list):
-                # Concatenate flags from multiple trees
-                target_pass190 = np.concatenate(target_pass190)
             self._cached_target_weights = self._cached_target_weights[
                 target_pass190 == 1
             ]
+            # Divide by luminosity to get cross section
+            self._cached_target_weights /= self.luminosity
+        result = {"target": self._cached_target_weights}
+        if get_mg_weights is not None:
+            if not hasattr(self, "_cached_mg_weights"):
+                self._cached_mg_weights = {}
+                for weight_name in get_mg_weights:
+                    wgts = self._get_weights(weight_name, is_target=True)
+                    target_pass190 = self._get_cached_pass190_flags("target")
+                    wgts = wgts[target_pass190 == 1]
+                    # Note MG theory weights are multiplied by the weight_mc branch!
+                    wgts *= self._cached_target_weights
+                    self._cached_mg_weights[weight_name] = wgts
+                result.update(**self._cached_mg_weights)
+        return result
 
-        return self._cached_target_weights
+    def _get_target2_weights_efficiently(self, get_sherpa_weights=None):
+        """Efficiently get and cache target2 weights to avoid repeated loading.
+        Handles multiple ROOT files by concatenating weights.
+
+        Arguments:
+            get_sherpa_weights (list, optional): List of weight names to load from
+                sherpa_uncertainties. If provided, loads these weights and adds
+                them to the result.
+
+        Returns:
+            dict: Dictionary containing "target2" key and optionally theory
+                uncertainty weight keys.
+        """
+        if not hasattr(self, "_cached_target2_weights"):
+            target2_weights = self._get_weights_target2("weight_mc")
+            target2_pass190 = self._get_cached_pass190_flags("target2")
+            if isinstance(target2_pass190, list):
+                # Concatenate flags from multiple trees
+                target2_pass190 = np.concatenate(target2_pass190)
+            target2_weights = target2_weights[target2_pass190 == 1]
+            # Divide by luminosity to get cross section
+            target2_weights /= self.luminosity
+            self._cached_target2_weights = target2_weights
+
+        result = {"target2": self._cached_target2_weights}
+
+        if get_sherpa_weights is not None:
+            if not hasattr(self, "_cached_sherpa_weights"):
+                self._cached_sherpa_weights = {}
+                for weight_name in get_sherpa_weights:
+                    # Get weights from target2 tree(s) - handles multiple trees
+                    wgts = self._get_weights_target2(weight_name)
+                    target2_pass190 = self._get_cached_pass190_flags("target2")
+                    if isinstance(target2_pass190, list):
+                        # Concatenate flags from multiple trees
+                        target2_pass190 = np.concatenate(target2_pass190)
+                    wgts = wgts[target2_pass190 == 1]
+                    # Note Sherpa theory weights ARE NOT multiplied by weight_mc!
+                    # Divide by luminosity to get cross section
+                    wgts /= self.luminosity
+                    self._cached_sherpa_weights[weight_name] = wgts
+                result.update(**self._cached_sherpa_weights)
+
+        return result
 
     def _get_track_weights_batch(self, weights_dict, tree_type="source"):
         """Process multiple weight arrays to track level in a single operation.
@@ -1124,49 +1264,78 @@ class UncertaintyPlotter(plotter.Plotter):
         1. Loading track data only once
         2. Processing all weights in batch
         3. Avoiding repeated track data access
+        4. Handling both 1D and 2D weight arrays (e.g., ensemble, bootstrap_data)
 
         Arguments:
-            weights_dict (dict): Dictionary containing weight arrays to process
+            weights_dict (dict): Dictionary containing weight arrays to process.
+                Can contain 1D arrays (n_events,) or 2D arrays (n_events, n_members).
             tree_type (str): Type of tree to use for track data
 
         Returns:
-            dict: Dictionary with track-level weights
+            dict: Dictionary with track-level weights. 1D arrays become 1D track arrays,
+                2D arrays become 2D track arrays (n_tracks, n_members).
         """
         # Get track data once
         track_data = self._get_cached_track_data(tree_type=tree_type)
 
         # Process all weights at once
         result = {}
+        n_tracks = None  # Will be determined from first processed weight
+
+        # First pass: process all non-empty weights
         for name, weights in weights_dict.items():
             if weights.size > 0:  # Only process non-empty arrays
-                weights_ak, _ = ak.broadcast_arrays(ak.from_numpy(weights), track_data)
-                result[name] = ak.to_numpy(ak.flatten(weights_ak, axis=None))
-            else:
-                result[name] = np.array([])
+                # Check if this is a 2D array (e.g., ensemble, bootstrap_data)
+                if weights.ndim == 2 and weights.shape[1] > 0:
+                    # Process each column and stack them back into a 2D array
+                    n_members = weights.shape[1]
+                    track_weights_list = []
+                    for i in tqdm.tqdm(range(n_members), desc=f"Processing {name}"):
+                        weights_1d = weights[:, i]
+                        weights_ak, _ = ak.broadcast_arrays(
+                            ak.from_numpy(weights_1d), track_data
+                        )
+                        track_weights_list.append(
+                            ak.to_numpy(ak.flatten(weights_ak, axis=None))
+                        )
+                    # Stack columns back into 2D array: (n_tracks, n_members)
+                    result[name] = np.column_stack(track_weights_list)
+                    # Store track count from first processed weight
+                    if n_tracks is None:
+                        n_tracks = len(result[name])
+                else:
+                    # Process 1D array as before
+                    weights_ak, _ = ak.broadcast_arrays(
+                        ak.from_numpy(weights), track_data
+                    )
+                    result[name] = ak.to_numpy(ak.flatten(weights_ak, axis=None))
+                    # Store track count from first processed weight
+                    if n_tracks is None:
+                        n_tracks = len(result[name])
+
+        # Second pass: handle empty arrays using track count from first pass
+        # If no weights were processed, get track count from track_data
+        if n_tracks is None:
+            n_tracks = len(track_data) if hasattr(track_data, "__len__") else 0
+
+        for name, weights in weights_dict.items():
+            if weights.size == 0:  # Handle empty arrays
+                # Preserve 2D structure if original was 2D
+                if weights.ndim == 2:
+                    n_cols = weights.shape[1] if len(weights.shape) > 1 else 0
+                    result[name] = np.zeros((n_tracks, n_cols))
+                else:
+                    result[name] = np.array([])
 
         return result
 
     def _get_cached_pass190_flags(self, tree_type="source"):
-        """Override to handle additional tree types: sherpa, target2, data.
-        Also handles multiple target trees by returning a list of flags.
-        """
+        """Override to handle additional tree types: sherpa, target2."""
         if tree_type in self._pass190_cache:
             return self._pass190_cache[tree_type]
 
-        if tree_type == "source":
+        if tree_type in ["source", "target"]:
             return super()._get_cached_pass190_flags(tree_type)
-        elif tree_type == "target":
-            if self.target_trees is not None:
-                # Return list of flags for multiple trees
-                flags_list = []
-                pull_key = "truth_pass190" if self.use_truth else "pass190"
-                for tree, max_events in zip(self.target_trees, self.target_events_list):
-                    flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
-                    flags_list.append(flags)
-                self._pass190_cache[tree_type] = flags_list
-                return flags_list
-            else:
-                return super()._get_cached_pass190_flags(tree_type)
         elif tree_type == "sherpa":
             tree = self.sherpa_tree
             max_events = self.sherpa_events
@@ -1196,130 +1365,10 @@ class UncertaintyPlotter(plotter.Plotter):
         else:
             raise ValueError(f"Unknown tree_type: {tree_type}")
 
-    def _get_data(self, key, is_target=False):
-        """Override to handle multiple target trees by concatenating data."""
-        if is_target and self.target_trees is not None:
-            # Concatenate data from multiple target trees
-            all_data = []
-            pass190_flags_list = self._get_cached_pass190_flags("target")
-            for tree, max_events, pass190 in zip(
-                self.target_trees, self.target_events_list, pass190_flags_list
-            ):
-                tree_data = self._get_filtered_data(
-                    tree,
-                    key,
-                    pass190,
-                    use_truth=self.use_truth,
-                    max_events=max_events,
-                )
-                all_data.append(tree_data)
-            return np.concatenate(all_data)
-        else:
-            return super()._get_data(key, is_target=is_target)
-
-    def _get_weights(
-        self, weights, is_target=False, use_train=False, array_name="nominal-central"
-    ):
-        """Override to handle multiple target trees when loading weights."""
-        if is_target and self.target_trees is not None:
-            # Handle multiple target trees
-            max_events = self.target_events
-
-            # Numpy array case
-            if type(weights) is np.ndarray:
-                if len(weights) > max_events:
-                    weights = weights[:max_events]
-
-            # Path to .npz case
-            elif weights.endswith(".npz"):
-                # Load ROOT weights from all trees
-                key = "weight_mc" if self.use_truth else "weight"
-                all_root_weights = []
-                for tree, max_events_tree in zip(
-                    self.target_trees, self.target_events_list
-                ):
-                    tree_weights = ak.to_numpy(
-                        tree[key].array(entry_stop=max_events_tree)
-                    )
-                    all_root_weights.append(tree_weights)
-                root_weights = np.concatenate(all_root_weights)
-
-                # Load weights from file
-                weights = np.load(weights)
-                if array_name in weights.files:
-                    assert not use_train
-                    weights = weights[array_name]
-                elif use_train:
-                    weights = weights["train"]
-                else:
-                    weights = weights["test"]
-
-                # Truncate if needed
-                if len(weights) > max_events:
-                    weights = weights[:max_events]
-
-                # Multiply by ROOT weights if needed
-                if "weights" not in array_name:
-                    print(f"Multiplying weights by ROOT weights for {array_name}")
-                    weights *= root_weights
-
-            # Branch name case
-            else:
-                all_weights = []
-                for tree, max_events_tree in zip(
-                    self.target_trees, self.target_events_list
-                ):
-                    tree_weights = ak.to_numpy(
-                        tree[weights].array(entry_stop=max_events_tree)
-                    )
-                    all_weights.append(tree_weights)
-                weights = np.concatenate(all_weights)
-
-            return weights
-        else:
-            return super()._get_weights(
-                weights,
-                is_target=is_target,
-                use_train=use_train,
-                array_name=array_name,
-            )
-
     def apply_kinematic_cuts(self, region):
-        """Override to handle multiple target trees when applying kinematic cuts."""
-        # Get kinematic region masks for source
-        source_mask = self.get_kinematic_region(
-            self.source_tree, region, evts=self.source_events, use_truth=self.use_truth
-        )
-
-        # Handle target trees (single or multiple)
-        if self.target_trees is not None:
-            target_masks = []
-            for tree, max_events in zip(self.target_trees, self.target_events_list):
-                tree_mask = self.get_kinematic_region(
-                    tree, region, evts=max_events, use_truth=self.use_truth
-                )
-                target_masks.append(tree_mask)
-        else:
-            target_mask = self.get_kinematic_region(
-                self.target_tree,
-                region,
-                evts=self.target_events,
-                use_truth=self.use_truth,
-            )
-
-        # Apply masks to cached pass190 flags
-        source_pass190 = self._get_cached_pass190_flags("source")
-        self._pass190_cache["source"] = np.logical_and(source_pass190, source_mask)
-
-        if self.target_trees is not None:
-            target_pass190_list = self._get_cached_pass190_flags("target")
-            updated_target_pass190 = []
-            for pass190, mask in zip(target_pass190_list, target_masks):
-                updated_target_pass190.append(np.logical_and(pass190, mask))
-            self._pass190_cache["target"] = updated_target_pass190
-        else:
-            target_pass190 = self._get_cached_pass190_flags("target")
-            self._pass190_cache["target"] = np.logical_and(target_pass190, target_mask)
+        """Override to handle target2 trees when applying kinematic cuts."""
+        # Call parent method to handle source and target trees
+        super().apply_kinematic_cuts(region)
 
     def _ensure_kinematic_cuts_applied(self):
         """Override to apply kinematic cuts to all trees including additional ones
@@ -1387,31 +1436,15 @@ class UncertaintyPlotter(plotter.Plotter):
             self._kinematic_cuts_applied = True
 
     def _get_cached_track_data(self, tree_type="source"):
-        """Override to handle additional tree types and multiple target trees."""
+        """Override to handle additional tree types: sherpa, target2."""
         cache_key = tree_type
         if cache_key in self._track_data_cache:
             return self._track_data_cache[cache_key]
 
         pull_key = "truth_pT_tracks" if self.use_truth else "pT_tracks"
 
-        if tree_type == "source":
+        if tree_type in ["source", "target"]:
             return super()._get_cached_track_data(tree_type)
-        elif tree_type == "target":
-            if self.target_trees is not None:
-                # Concatenate track data from multiple trees
-                all_track_data = []
-                pass190_flags_list = self._get_cached_pass190_flags("target")
-                for tree, max_events, pass190 in zip(
-                    self.target_trees, self.target_events_list, pass190_flags_list
-                ):
-                    tree_track_data = tree[pull_key].array(entry_stop=max_events)
-                    tree_track_data = tree_track_data[pass190 == 1]
-                    all_track_data.append(tree_track_data)
-                track_data = ak.concatenate(all_track_data, axis=0)
-                self._track_data_cache[cache_key] = track_data
-                return track_data
-            else:
-                return super()._get_cached_track_data(tree_type)
         elif tree_type == "sherpa":
             tree = self.sherpa_tree
             max_events = self.sherpa_events
