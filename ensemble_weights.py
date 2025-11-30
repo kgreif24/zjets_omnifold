@@ -157,16 +157,24 @@ def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
 
     if "muon" in gn:
         if gn == "muon-effreco":
-            weight = ak.to_numpy(t_mc["syst_recoSFDown"].array()) * nominal_weight
+            nominal_sf = ak.to_numpy(t_mc["mu_recoSF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_recoSFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
             usepass = reco_pass
         elif gn == "muon-effiso":
-            weight = ak.to_numpy(t_mc["syst_isoSFDown"].array()) * nominal_weight
+            nominal_sf = ak.to_numpy(t_mc["mu_isoSF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_isoSFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
             usepass = reco_pass
         elif gn == "muon-efftrk":
-            weight = ak.to_numpy(t_mc["syst_TTVASFDown"].array()) * nominal_weight
+            nominal_sf = ak.to_numpy(t_mc["mu_TTVASF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_TTVASFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
             usepass = reco_pass
         elif gn == "muon-efftrig":
-            weight = ak.to_numpy(t_mc["syst_trigSFDown"].array()) * nominal_weight
+            nominal_sf = ak.to_numpy(t_mc["singleMuonTrigSF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_trigSFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
             usepass = reco_pass
         elif gn == "muon-id":
             weight = nominal_weight
