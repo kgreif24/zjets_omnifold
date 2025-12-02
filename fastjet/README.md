@@ -62,8 +62,8 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
 - `--nEns <N>`: Number of ensemble variations (default: 0)
 - `--kinematic_region <N>`: Kinematic region selection (-1=no pass190 requirement, 0=analysis volume, 1=high-pT, 2=high-mass, 3=high-mass-jet)
 - `-- track_variations`: Evaluate these systematicsly varied track containers, in addition to the nominal. Options are:syst_pTScale,syst_Fake,syst_TrackFilter,syst_JetTrackFilter, or simply `-- track_variations`  to include all 4. 
--- `--is_data`:  Process file as if it is data. avoids reading in truth quatities. Conflict if you submit --is_data and --isTruth. Assumes `--noTruth`
--- `--do_IBU`: Instead of histogram and TProfile outputs, save a TTree containing select branches.
+- `--is_data`:  Process file as if it is data. avoids reading in truth quatities. Conflict if you submit --is_data and --isTruth. Assumes `--noTruth`
+- `--do_IBU`: Instead of histogram and TProfile outputs, save a TTree containing select branches.
 
 ### Example Commands
 
