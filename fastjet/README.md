@@ -277,6 +277,7 @@ export OMP_NUM_THREADS=1
 ## Submitting jobs to Condor via lxplus
 
 Jobs can be submitted to Condor using the script `Condor/Matt_Condor_Script.py`, executed from the `fastjets` directory.
+Submissio will request 8 cpu, 32GB and "nextweek" runtime
 The submission syntax and options are the same as for the standard `./doHisto.out` call, with the exception of two new
 commands:
 
