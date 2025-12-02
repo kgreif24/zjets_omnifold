@@ -61,6 +61,9 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
 - `--maxEvents <N>`: Maximum number of events to process (default: 5,000,000)
 - `--nEns <N>`: Number of ensemble variations (default: 0)
 - `--kinematic_region <N>`: Kinematic region selection (-1=no pass190 requirement, 0=analysis volume, 1=high-pT, 2=high-mass, 3=high-mass-jet)
+- `-- track_variations`: Evaluate these systematicsly varied track containers, in addition to the nominal. Options are:syst_pTScale,syst_Fake,syst_TrackFilter,syst_JetTrackFilter, or simply `-- track_variations`  to include all 4. 
+-- `--is_data`:  Process file as if it is data. avoids reading in truth quatities. Conflict if you submit --is_data and --isTruth. Assumes `--noTruth`
+-- `--do_IBU`: Instead of histogram and TProfile outputs, save a TTree containing select branches.
 
 ### Example Commands
 
@@ -106,8 +109,6 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
 ```
 
 
--- track_variations: options are: call just -- track_variations to use all 4, or call individually via syst_pTScale,syst_Fake,syst_TrackFilter,syst_JetTrackFilter
--- is_data: if the input is data. So as to avoid reading in truth quatities. Obviuos conflict if you submit --is_data and --isTruth
 
 #### Notes:
 - if no weight file is specified, the code will assume the weights are contained within the MC file itself.
@@ -273,15 +274,21 @@ export OMP_NUM_THREADS=1
 ./doHisto.out --maxEvents 1000 [options]
 ```
 
-## Submitting jebs to condor
+## Submitting jobs to Condor via lxplus
 
-Jobs can be submit to Condor via the script Condor/Matt_Condor_Script.py, run from the fastjets directory. Submission syntax and options remain the same as the standard ./doHisto.out call, with the exception of two new  commands:
-REQUIRED:
-- `--Identifier`: Unique id used to differentiate jobs. Files in /fastjet/Condor/Job_Files and /fastjet/logs will follow this naming convention.
-Optional:
-- `verbosity`: Verbosity of condor submission script, NOT verbosity of doHisto.out.  (bool; True/False.  Default: True.)
+Jobs can be submitted to Condor using the script `Condor/Matt_Condor_Script.py`, executed from the `fastjets` directory.
+The submission syntax and options are the same as for the standard `./doHisto.out` call, with the exception of two new
+commands:
 
-Example use, submitted from the fastjet directory:
+**REQUIRED:**
+- `--Identifier`: A unique ID used to differentiate jobs. Files in `fastjets/Condor/Job_Files` and `fastjets/logs`
+  will follow this naming convention.
+
+**OPTIONAL:**
+- `--verbosity`: Verbosity level of the Condor submission script, *not* the verbosity of `doHisto.out`.
+  *(bool; True/False. Default: True)*
+
+**Example usage (run from the `fastjets` directory):**
 ```
 python3 Condor/Matt_Condor_Script.py  --identifier "MG_mc16aTrain_1Dec25" --verbose --file /eos/user/m/mbsmith/Omnifold_Data/slimmedSamples/Final/MGFxFx/ZjetOmnifold_May19_MGPy8FxFx_MC16a_WithTracks_slim_Systematics_Train_15Oct25.root  --do_IBU --track_variations syst_pTScale,syst_Fake,syst_TrackFilter,syst_JetTrackFilter --weight_names nominal --kinematic_region -1 --outFile /eos/user/m/mbsmith/Omnifold_Data/jet_studies/output_MG_mc16aTrain_1Dec25.root
 ```
