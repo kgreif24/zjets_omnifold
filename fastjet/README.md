@@ -56,10 +56,11 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
 - `--outFile <path>`: Output ROOT file path
 
 ### Optional Arguments
+- `--noTruth`: Required if files have no truth information. 
 - `--truth`: Process truth-level data (default: reconstruction-level)
 - `--maxEvents <N>`: Maximum number of events to process (default: 5,000,000)
 - `--nEns <N>`: Number of ensemble variations (default: 0)
-- `--kinematic_region <N>`: Kinematic region selection (0=all, 1=high-pT, 2=high-mass, 3=high-mass-jet)
+- `--kinematic_region <N>`: Kinematic region selection (-1=no pass190 requirement, 0=analysis volume, 1=high-pT, 2=high-mass, 3=high-mass-jet)
 
 ### Example Commands
 
@@ -70,6 +71,7 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
   --weight_file /path/to/weights.npz \
   --weight_names nominal,hv,dd \
   --outFile output.root
+  --noTruth
 ```
 
 #### Truth-Level Analysis with Ensemble
@@ -102,6 +104,10 @@ lsetup "views LCG_108 x86_64-el9-gcc15-opt"
   --weight_names weight_mc,\*w_QCD_dd,\*w_Alpha_s1 \
   --outFile mc_output.root
 ```
+
+
+-- track_variations: options are: call just -- track_variations to use all 4, or call individually via syst_pTScale,syst_Fake,syst_TrackFilter,syst_JetTrackFilter
+-- is_data: if the input is data. So as to avoid reading in truth quatities. Obviuos conflict if you submit --is_data and --isTruth
 
 #### Notes:
 - if no weight file is specified, the code will assume the weights are contained within the MC file itself.

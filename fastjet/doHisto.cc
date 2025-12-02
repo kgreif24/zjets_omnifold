@@ -13,11 +13,14 @@ int main(int argc, char* argv[]){
 	vector<TString> fileNames;
 	string weight_file = "None";
 	vector<string> weight_names;
+  vector<string> trackVariations = {""}; //"" is nominal
 	TString outFile;
 	bool isTruth = false;
 	int maxEvents = 5000000;
 	int nEns = 0;
 	int kinematic_region = 0;
+  bool do_IBU = false;
+  bool is_data = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 		if (arg == "--file") {
@@ -87,6 +90,12 @@ int main(int argc, char* argv[]){
     if (arg == "--truth") {
         isTruth = true;
     }
+    if (arg == "--do_IBU") {
+        do_IBU = true;
+    }
+    if (arg == "--is_data") {
+        is_data = true;
+    }
 		if (arg == "--maxEvents") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				maxEvents = std::stoi(argv[i+1]);
@@ -105,6 +114,23 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
+    if (arg == "--track_variations") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				string systList = string(argv[i+1]);
+				// Parse comma separated list into vector
+				size_t pos = 0;
+				string token;
+				while ((pos = systList.find(",")) != string::npos) {
+					token = systList.substr(0, pos);
+					trackVariations.push_back(token+"_");
+					systList.erase(0, pos + 1);
+				}
+				trackVariations.push_back(systList+"_"); // Add the last token
+				i++; // Move to the next arg
+			} else {
+        trackVariations = {"", "syst_pTScale_","syst_Fake_","syst_TrackFilter_","syst_JetTrackFilter_"};
+			}
+		}
     }
 
 	// Set up the chain
@@ -120,13 +146,23 @@ int main(int argc, char* argv[]){
 		}
 		cout << endl;
 	}
-	cout << "Using truth: " << isTruth << endl;
+  if (trackVariations.size() > 1) {
+		cout << "Evaluating track systematic variations: ";
+		for (long unsigned int i=0;i< trackVariations.size();i++) {
+      if (i == 0) cout << "nominal ";
+			else cout << trackVariations[i] << " ";
+		}
+		cout << endl;
+	}
+  if (do_IBU) cout << "Making branches for IBU "<< endl;
+	else cout << "Use truth: " << isTruth << endl;
+  if (is_data) cout << "Input is data "<< endl;
 	cout << "Has entries: " << myChain->GetEntries() << endl;
 	cout << "Max events: " << maxEvents << endl;
 	cout << "Kinematic region: " << kinematic_region << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, kinematic_region);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, kinematic_region, trackVariations, do_IBU, is_data);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;
