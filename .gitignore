@@ -19,3 +19,7 @@ fastjet/obj
 fastjet/out
 fastjet/copies
 experiments
+fastjets/Condor/Job_Files/*
+!fastjets/Condor/Job_Files/README.md
+fastjets/logs/*
+!fastjets/logs/README.md

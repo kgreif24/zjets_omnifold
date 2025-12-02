@@ -272,3 +272,16 @@ For debugging, run with single thread and with few events:
 export OMP_NUM_THREADS=1
 ./doHisto.out --maxEvents 1000 [options]
 ```
+
+## Submitting jebs to condor
+
+Jobs can be submit to Condor via the script Condor/Matt_Condor_Script.py, run from the fastjets directory. Submission syntax and options remain the same as the standard ./doHisto.out call, with the exception of two new  commands:
+REQUIRED:
+- `--Identifier`: Unique id used to differentiate jobs. Files in /fastjet/Condor/Job_Files and /fastjet/logs will follow this naming convention.
+Optional:
+- `verbosity`: Verbosity of condor submission script, NOT verbosity of doHisto.out.  (bool; True/False.  Default: True.)
+
+Example use, submitted from the fastjet directory:
+```
+python3 Condor/Matt_Condor_Script.py  --identifier "MG_mc16aTrain_1Dec25" --verbose --file /eos/user/m/mbsmith/Omnifold_Data/slimmedSamples/Final/MGFxFx/ZjetOmnifold_May19_MGPy8FxFx_MC16a_WithTracks_slim_Systematics_Train_15Oct25.root  --do_IBU --track_variations syst_pTScale,syst_Fake,syst_TrackFilter,syst_JetTrackFilter --weight_names nominal --kinematic_region -1 --outFile /eos/user/m/mbsmith/Omnifold_Data/jet_studies/output_MG_mc16aTrain_1Dec25.root
+```

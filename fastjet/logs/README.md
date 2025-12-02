@@ -1,0 +1,1 @@
+Output directory for Condor job log files.
