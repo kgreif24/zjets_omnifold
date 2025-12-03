@@ -101,7 +101,7 @@ class UncertaintyPlotter(plotter.Plotter):
             self.sherpa_path = hv_path
             self.sherpa_tree = uproot.open(hv_path)["OmniTree"]
             self.sherpa_events = self.sherpa_tree.num_entries
-            if self.sherpa_events > self.max_events:
+            if self.max_events > 0 and self.sherpa_events > self.max_events:
                 self.sherpa_events = self.max_events
 
         # Verify that we have the correct number of root files
@@ -140,7 +140,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 self.target2_events_list = None
                 self.target2_tree = uproot.open(target2_path_list[0])["OmniTree"]
                 self.target2_events = self.target2_tree.num_entries
-                if self.target2_events > self.max_events:
+                if self.max_events > 0 and self.target2_events > self.max_events:
                     self.target2_events = self.max_events
 
         # Hardcode symlog x ticks
@@ -225,61 +225,67 @@ class UncertaintyPlotter(plotter.Plotter):
                 source_weights_dict.pop("weights_hv")
 
             # Process all source weights at once (including ensemble and bootstrap_data)
-            weights_dict_trk = self._get_track_weights_batch(source_weights_dict)
+            source_weights_trk = self._get_track_weights_batch(source_weights_dict)
 
             # Process hv weights
             if "hv" in self.uncertainty_calculator.uncertainty_definitions:
-                hv_trk = self._get_track_weights(
+                source_weights_trk["weights_hv"] = self._get_track_weights(
                     weights_dict["weights_hv"],
                     tree_type="sherpa",
                 )
-                weights_dict_trk["weights_hv"] = hv_trk
 
             # Process target weights
-            target_trk = self._get_track_weights(
-                weights_dict["target"],
+            target_weights_trk = {}
+            target_weights_trk["target"] = self._get_track_weights(
+                target_weights["target"],
                 tree_type="target",
             )
-            weights_dict_trk["target"] = target_trk
 
             # Process target theory weights if they exist
             mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
             if self.data_comparison_mode:
                 for weight_name in mg_weight_names:
-                    if weight_name in weights_dict:
-                        th_trk = self._get_track_weights(
-                            weights_dict[weight_name],
+                    if weight_name in target_weights:
+                        target_weights_trk[weight_name] = self._get_track_weights(
+                            target_weights[weight_name],
                             tree_type="target",
                         )
-                        weights_dict_trk[weight_name] = th_trk
 
             # Process target2 weights if in dual target mode
             if self.dual_target_mode:
-                target2_trk = self._get_track_weights(
-                    weights_dict["target2"],
+                target2_weights_trk = {}
+                target2_weights_trk["target2"] = self._get_track_weights(
+                    target2_weights["target2"],
                     tree_type="target2",
                 )
-                weights_dict_trk["target2"] = target2_trk
 
                 # Process target2 theory weights if they exist
                 sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
                 if self.data_comparison_mode:
                     for weight_name in sherpa_weight_names:
                         if weight_name in weights_dict:
-                            th_trk = self._get_track_weights(
+                            target2_weights_trk[weight_name] = self._get_track_weights(
                                 weights_dict[weight_name],
                                 tree_type="target2",
                             )
-                            weights_dict_trk[weight_name] = th_trk
 
         # Loop through plots and make histograms
         return_dict = {}
         for plot in self.plots:
 
             # Pick weight dict
-            use_weight_dict = (
-                weights_dict_trk if plot["type"] == "track" else weights_dict
+            use_weight_source = (
+                source_weights_trk if plot["type"] == "track" else source_weights_dict
             )
+            use_weight_target = (
+                target_weights_trk if plot["type"] == "track" else target_weights
+            )
+            if self.dual_target_mode:
+                use_weight_target2 = (
+                    target2_weights_trk if plot["type"] == "track" else target2_weights
+                )
+            else:
+                use_weight_target2 = None
 
             # Build measured histogram and begin compiling uncertainty dict
             all_hists = {}
@@ -288,13 +294,13 @@ class UncertaintyPlotter(plotter.Plotter):
                 nominal_plot["key"] = "nominal-" + nominal_plot["key"]
             source_hist, source_hist_var, bins = self._get_histogram(
                 nominal_plot,
-                weights=(use_weight_dict["central"]),
+                weights=(use_weight_source["central"]),
             )
             all_hists["nominal"] = (source_hist, source_hist_var, bins)
 
             # Build target histograms
             target_hists = {}
-            for wgt_name, wgts in target_weights.items():
+            for wgt_name, wgts in use_weight_target.items():
                 target_hists[wgt_name] = self._get_histogram(
                     nominal_plot,
                     weights=wgts,
@@ -306,7 +312,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             if self.dual_target_mode:
                 target2_hists = {}
-                for wgt_name, wgts in target2_weights.items():
+                for wgt_name, wgts in use_weight_target2.items():
                     target2_hists[wgt_name] = self._get_histogram_target2(
                         nominal_plot,
                         weights=wgts,
@@ -315,14 +321,16 @@ class UncertaintyPlotter(plotter.Plotter):
 
             # Build ensemble histograms for NN stability uncertainty
             if "nn-stability" in self.uncertainty_calculator.uncertainty_definitions:
-                if use_weight_dict["ensemble"].size > 0:
-                    for i in range(use_weight_dict["ensemble"].shape[1]):
-                        member_weights = use_weight_dict["ensemble"][:, i]
+                if use_weight_source["ensemble"].size > 0:
+                    for i in range(use_weight_source["ensemble"].shape[1]):
+                        member_weights = use_weight_source["ensemble"][:, i]
                         member_plot = plot.copy()
                         # Only modify key for fastjet observables
                         # (to load from correct ROOT file)
                         if member_plot["type"] == "fastjet":
-                            member_plot["key"] = "nominal-" + str(i) + "-" + plot["key"]
+                            member_plot["key"] = (
+                                "weights_ensemble_" + str(i) + "-" + plot["key"]
+                            )
                         member_hist, member_hist_var, _ = self._get_histogram(
                             member_plot,
                             weights=member_weights,
@@ -337,17 +345,17 @@ class UncertaintyPlotter(plotter.Plotter):
             # Build ensemble histograms for data stat uncertainty
             if "data-stat" in self.uncertainty_calculator.uncertainty_definitions:
                 if (
-                    "bootstrap_data" in use_weight_dict
-                    and use_weight_dict["bootstrap_data"].size > 0
+                    "bootstrap_data" in use_weight_source
+                    and use_weight_source["bootstrap_data"].size > 0
                 ):
-                    for i in range(use_weight_dict["bootstrap_data"].shape[1]):
-                        member_weights = use_weight_dict["bootstrap_data"][:, i]
+                    for i in range(use_weight_source["bootstrap_data"].shape[1]):
+                        member_weights = use_weight_source["bootstrap_data"][:, i]
                         member_plot = plot.copy()
                         # Only modify key for fastjet observables
                         # (to load from correct ROOT file)
                         if member_plot["type"] == "fastjet":
                             member_plot["key"] = (
-                                "bootstrap_data-" + str(i) + "-" + plot["key"]
+                                "weights_bootstrap_data_" + str(i) + "-" + plot["key"]
                             )
                         member_hist, member_hist_var, _ = self._get_histogram(
                             member_plot,
@@ -370,9 +378,9 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 # Get weights from weight dict using "weights_" prefix
                 weight_key = f"weights_{syst_key}"
-                if weight_key not in use_weight_dict:
+                if weight_key not in use_weight_source:
                     continue
-                wgts = use_weight_dict[weight_key]
+                wgts = use_weight_source[weight_key]
                 syst_plot = plot.copy()
                 if syst_plot["type"] == "fastjet":
                     syst_plot["key"] = syst_key + "-" + plot["key"]
@@ -394,7 +402,7 @@ class UncertaintyPlotter(plotter.Plotter):
                         target_plot["key"] = "target_dd-" + plot["key"]
                     all_hists["target_dd"] = self._get_histogram(
                         target_plot,
-                        weights=use_weight_dict["target_dd"],
+                        weights=use_weight_source["target_dd"],
                         is_target=False,
                     )
                 else:
@@ -1086,16 +1094,12 @@ class UncertaintyPlotter(plotter.Plotter):
         """
         # Get basic info
         central_weights = weights_file["weights_nominal"]
-        nraw_events = len(central_weights)
-        max_events_nominal = min(nraw_events, self.max_events)
-        if "hv" in self.uncertainty_calculator.uncertainty_definitions:
-            max_events_sherpa = min(self.sherpa_events, self.max_events)
 
         # Pre-allocate result dictionary
         result = {}
 
         # Process central weights
-        central_weights = central_weights[:max_events_nominal]
+        central_weights = central_weights[: self.source_events]
         source_pass190 = self._get_cached_pass190_flags("source")
         central_weights = central_weights[source_pass190 == 1]
         result["central"] = central_weights
@@ -1110,7 +1114,7 @@ class UncertaintyPlotter(plotter.Plotter):
         if ens_names:
             # Load all ensemble weights at once
             ensemble_weights = np.array(
-                [weights_file[name][:max_events_nominal] for name in ens_names]
+                [weights_file[name][: self.source_events] for name in ens_names]
             ).T  # Shape: (n_events, n_ensemble)
 
             # Apply filter to all ensemble weights at once
@@ -1125,7 +1129,7 @@ class UncertaintyPlotter(plotter.Plotter):
         ]
         if dbootstrap_names:
             dbootstrap_weights = np.array(
-                [weights_file[name][:max_events_nominal] for name in dbootstrap_names]
+                [weights_file[name][: self.source_events] for name in dbootstrap_names]
             ).T
             # Apply filter to all bootstrap weights at once
             dbootstrap_weights = dbootstrap_weights[source_pass190 == 1, :]
@@ -1145,17 +1149,17 @@ class UncertaintyPlotter(plotter.Plotter):
             if weight_key in weights_file.files:
                 if syst_key == "hv":
                     sherpa_pass190 = self._get_cached_pass190_flags("sherpa")
-                    syst_weights = weights_file[weight_key][:max_events_sherpa][
+                    syst_weights = weights_file[weight_key][: self.sherpa_events][
                         sherpa_pass190 == 1
                     ]
                 else:
-                    syst_weights = weights_file[weight_key][:max_events_nominal][
+                    syst_weights = weights_file[weight_key][: self.source_events][
                         source_pass190 == 1
                     ]
                 result[weight_key] = syst_weights
             # If the weight key is "dd", we need to get the target_dd weights
             if weight_key == "weights_dd":
-                target_dd = weights_file["target_dd"][:max_events_nominal][
+                target_dd = weights_file["target_dd"][: self.source_events][
                     source_pass190 == 1
                 ]
                 result["target_dd"] = target_dd

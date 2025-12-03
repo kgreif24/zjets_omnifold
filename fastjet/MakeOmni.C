@@ -92,20 +92,20 @@ vector<string> MakeOmni::DetectWeightNames(string filename) {
             continue;
          }
          
-      // Skip bootstrap MC weights (handled separately if needed)
-      if (key.find("weights_bootstrap_mc_") == 0) {
-         continue;
-      }
-      
-      // Skip weights_hv - this re-weights a different dataset and should be
-      // specified explicitly via --weight_names if needed
-      if (key == "weights_hv") {
-         continue;
-      }
-      
-      // Include all other weights (weights_nominal, weights_dd, 
-      // weights_trackEffMain, etc., and target_dd)
-      detected_names.push_back(key);
+         // Skip bootstrap MC weights (handled separately if needed)
+         if (key.find("weights_bootstrap_mc_") == 0) {
+            continue;
+         }
+         
+         // Skip weights_hv - this re-weights a different dataset and should be
+         // specified explicitly via --weight_names if needed
+         if (key == "weights_hv") {
+            continue;
+         }
+         
+         // Include all other weights (weights_nominal, weights_dd, 
+         // weights_trackEffMain, etc., and target_dd)
+         detected_names.push_back(key);
       }
       
       // Sort for consistent ordering
@@ -242,14 +242,26 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       // Initialize central weight histograms
       for (size_t w = 0; w < weightBranchNames.size(); ++w) {
          const auto& weight_name = weightBranchNames[w];
-         if (weight_name != "weight" && weight_name != "weight_mc") {
-            // Drop "weights_" prefix from weight name
-            string weight_name_stripped = weight_name.substr(7);
-            thread_central_histos[t].push_back(HistoGroup(weight_name_stripped + "-", kinematicRegion));
+         string group_prefix;
+         
+         // Determine histogram group name based on weight type
+         if (weight_name == "target_dd") {
+            group_prefix = "target_dd-";
+         } else if (weight_name == "weight" || weight_name == "weight_mc") {
+            group_prefix = "nominal-";
          } else {
-            thread_central_histos[t].push_back(HistoGroup("nominal-", kinematicRegion));
+            // Drop "weights_" prefix if present, otherwise use full name
+            const string weights_prefix = "weights_";
+            if (weight_name.find(weights_prefix) == 0) {
+               group_prefix = weight_name.substr(weights_prefix.length()) + "-";
+            } else {
+               group_prefix = weight_name + "-";
+            }
          }
+         
+         thread_central_histos[t].push_back(HistoGroup(group_prefix, kinematicRegion));
          group_count++;
+         
          if (group_count % progress_interval == 0) {
             std::cout << "    Progress: " << group_count << "/" << total_groups << " groups initialized (" 
                       << (100 * group_count / total_groups) << "%)" << std::endl;
@@ -291,8 +303,8 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       Float_t pT_ll, pT_l1, pT_l2, eta_l1, eta_l2, phi_l1, phi_l2, y_ll;
       Float_t pT_trackj1, y_trackj1, phi_trackj1, m_trackj1;
       Float_t pT_trackj2, y_trackj2, phi_trackj2, m_trackj2;
-      Int_t Ntracks, npT_tracks;
-      vector<Double_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
+      Int_t Ntracks;
+      vector<Float_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
       vector<Long_t> pdgId_tracks_vec;
    };
    
@@ -301,14 +313,16 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    for (Long64_t jentry=0; jentry<nentries;jentry++) {
       Long64_t ientry = LoadTree(jentry);
       if (ientry < 0) continue;
-      nb = fChain->GetEntry(jentry);   nbytes += nb;
+      nb = fChain->GetEntry(jentry);
+      nbytes += nb;
       
       // Store the event data
       EventData evt;
       evt.entry = jentry;
       evt.weight = weight;
       evt.weight_mc = weight_mc;
-      evt.target_dd = target_dd;
+      // Only copy target_dd if the branch was loaded
+      evt.target_dd = (b_target_dd != nullptr) ? target_dd : 0.0;
       evt.pass190 = pass190;
       evt.pT_ll = pT_ll;
       evt.pT_l1 = pT_l1;
@@ -327,14 +341,25 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       evt.phi_trackj2 = phi_trackj2;
       evt.m_trackj2 = m_trackj2;
       evt.Ntracks = Ntracks;
-      evt.npT_tracks = npT_tracks;
+
+      // Copy track vectors (ROOT file stores these as vectors, not fixed arrays)
+      // Use reserve and assign for safer copying
+      evt.pT_tracks_vec.clear();
+      evt.pT_tracks_vec.reserve(pT_tracks.size());
+      evt.pT_tracks_vec.assign(pT_tracks.begin(), pT_tracks.end());
       
-      // Copy track arrays
-      evt.pT_tracks_vec.assign(pT_tracks, pT_tracks + npT_tracks);
-      evt.eta_tracks_vec.assign(eta_tracks, eta_tracks + npT_tracks);
-      evt.phi_tracks_vec.assign(phi_tracks, phi_tracks + npT_tracks);
+      evt.eta_tracks_vec.clear();
+      evt.eta_tracks_vec.reserve(eta_tracks.size());
+      evt.eta_tracks_vec.assign(eta_tracks.begin(), eta_tracks.end());
+      
+      evt.phi_tracks_vec.clear();
+      evt.phi_tracks_vec.reserve(phi_tracks.size());
+      evt.phi_tracks_vec.assign(phi_tracks.begin(), phi_tracks.end());
+      
       if (isTruth) {
-         evt.pdgId_tracks_vec.assign(pdgId_tracks, pdgId_tracks + npT_tracks);
+         evt.pdgId_tracks_vec.clear();
+         evt.pdgId_tracks_vec.reserve(pdgId_tracks.size());
+         evt.pdgId_tracks_vec.assign(pdgId_tracks.begin(), pdgId_tracks.end());
       }
       
       event_data.push_back(evt);
@@ -388,7 +413,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
          // Create vector of PseudoJets from all tracks in event
          vector<PseudoJet> particles;
-         for (int i=0; i<evt.npT_tracks; i++){ 
+         for (int i=0; i<evt.Ntracks; i++){ 
             TLorentzVector constit_tlv;
             // Which track 3 vectors to use depend on whether we are processing truth or reco
             // Truth files use double precision while reco files use float precision
@@ -441,7 +466,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          }
 
          // Apply kinematic region cuts here
-         if (kinematicRegion == 1 && (evt.pT_trackj2 < 50 || evt.pT_ll < 350)) {
+         if (kinematicRegion == 0 && (evt.pT_ll < 200)) {
+            continue;
+         } else if (kinematicRegion == 1 && (evt.pT_trackj2 < 50 || evt.pT_ll < 350)) {
             continue;
          } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2)) {
             continue;
@@ -503,27 +530,31 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             if (i < centralHistoGroups.size()) {
                // Central weights
                if (weightBranchNames[i] == "weight") {
-                  use_weight = evt.weight;
+                  use_weight = evt.weight / 140.1 ;  // Divide by luminosity to get cross section
                } else if (weightBranchNames[i] == "weight_mc") {
-                  use_weight = evt.weight_mc;
+                  use_weight = evt.weight_mc / 140.1;  // Divide by luminosity to get cross section
                } else if (weightBranchNames[i] == "target_dd") {
                   // target_dd can come from npz file (if specified) or ROOT tree
                   if (central_weights[i].size() > 0) {
-                     use_weight = central_weights[i][jentry] * evt.weight_mc;
+                     use_weight = central_weights[i][jentry];
+                  } else if (b_target_dd != nullptr) {
+                     // Branch was loaded from ROOT tree
+                     use_weight = evt.target_dd / 140.1;  // Divide by luminosity to get cross section
                   } else {
-                     use_weight = evt.target_dd;
+                     // Branch doesn't exist - use 0.0 as fallback (or could skip event)
+                     use_weight = 0.0;
                   }
                } else {
-                  use_weight = central_weights[i][jentry] * evt.weight_mc;
+                  use_weight = central_weights[i][jentry];
                }
             } else if (i < centralHistoGroups.size() + ensHistoGroups.size()) {
                // Ensemble weights
                unsigned int ens_idx = i - centralHistoGroups.size();
-               use_weight = ens_weights[ens_idx][jentry] * evt.weight_mc;
+               use_weight = ens_weights[ens_idx][jentry];
             } else {
                // Bootstrap data weights
                unsigned int bootstrap_idx = i - centralHistoGroups.size() - ensHistoGroups.size();
-               use_weight = bootstrap_data_weights[bootstrap_idx][jentry] * evt.weight_mc;
+               use_weight = bootstrap_data_weights[bootstrap_idx][jentry];
             }
 
             // Get thread-local histogram group
@@ -555,7 +586,6 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             histoGroup.hmjj_R04->Fill(R04_mjj, use_weight);
             histoGroup.hdyjj_R04->Fill(R04_dyjj, use_weight);
             FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
-            // FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
             // // R=0.6 jets
             if (R06_jets.size() > 0) {
@@ -563,7 +593,6 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
             }
             FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
-            // FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
 
             // R=1.0 jets
             if (R10_jets.size() > 0) {
@@ -571,7 +600,6 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
             }
             FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
-            // FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
 
             // CA R=0.4 jets
             if (CA04_jets.size() > 0) {

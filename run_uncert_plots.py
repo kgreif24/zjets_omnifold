@@ -50,7 +50,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_events",
     type=int,
-    default=5000000,
+    default=-1,
     help="The maximum number of events to use for plotting",
 )
 parser.add_argument(

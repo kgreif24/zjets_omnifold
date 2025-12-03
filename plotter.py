@@ -68,7 +68,7 @@ class Plotter:
                 for details.
             use_pdf (bool): Flag to use pdf files for plotting. Default is False.
             max_events (int): Maximum number of events to include in plotting.
-                Default is 5e6.
+                Default is -1, which uses all events.
             root_files (list of str): List of root files to load histograms of
                 fastjet observables from. In order [source_start, source_end, target].
                 Defaults to None, in which case there should be no fastjet observables
@@ -112,10 +112,10 @@ class Plotter:
 
         # Find number of events to use in plotting
         self.source_events = self.source_tree.num_entries
-        if self.source_events > max_events:
+        if max_events > 0 and self.source_events > max_events:
             self.source_events = max_events
         self.target_events = self.target_tree.num_entries
-        if self.target_events > max_events:
+        if max_events > 0 and self.target_events > max_events:
             self.target_events = max_events
 
         # Store kinematic region for later application

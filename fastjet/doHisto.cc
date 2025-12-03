@@ -16,7 +16,7 @@ int main(int argc, char* argv[]){
 	vector<string> weight_names;
 	TString outFile;
 	bool isTruth = false;
-	int maxEvents = 5000000;
+	int maxEvents = -1;
 	int nEns = 0;
 	int nBootstrapData = 0;
 	int kinematic_region = 0;
