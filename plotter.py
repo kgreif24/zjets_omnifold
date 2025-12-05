@@ -109,6 +109,7 @@ class Plotter:
         self._root_object_cache = {}
         self._pass190_cache = {}
         self._track_data_cache = {}
+        self._filtered_data_cache = {}
 
         # Find number of events to use in plotting
         self.source_events = self.source_tree.num_entries
@@ -611,6 +612,7 @@ class Plotter:
             self._cleanup_root_cache()
             self._pass190_cache.clear()
             self._track_data_cache.clear()
+            self._filtered_data_cache.clear()
 
     def _get_weights(
         self, weights, is_target=False, use_train=False, array_name="nominal-central"
@@ -725,6 +727,9 @@ class Plotter:
         If the data is track level, it will be flattened to a 1D array
         before returning.
 
+        This method caches the filtered/flattened data to avoid repeated
+        disk reads for the same observable.
+
         Args:
             key (str): Key to get data for
             is_target (bool): If true, pull from the target tree instead of source
@@ -732,6 +737,17 @@ class Plotter:
         Returns:
             (np.array): The data as a numpy array
         """
+        # Determine tree type for cache key
+        tree_type = "target" if is_target else "source"
+
+        # Create cache key: (key, tree_type, use_truth)
+        # Note: use_truth affects the key prefix in _get_filtered_data
+        cache_key = (key, tree_type, self.use_truth)
+
+        # Return cached data if available
+        if cache_key in self._filtered_data_cache:
+            return self._filtered_data_cache[cache_key]
+
         if is_target:
             tree = self.target_tree
             pass190_flags = self._get_cached_pass190_flags("target")
@@ -741,13 +757,19 @@ class Plotter:
             pass190_flags = self._get_cached_pass190_flags("source")
             max_events = self.source_events
 
-        return self._get_filtered_data(
+        # Load and filter data
+        data = self._get_filtered_data(
             tree,
             key,
             pass190_flags,
             use_truth=self.use_truth,
             max_events=max_events,
         )
+
+        # Cache the result
+        self._filtered_data_cache[cache_key] = data
+
+        return data
 
     def _add_ratios(self, fig):
         """_add_ratios - This function adds ratio pads to a given matplotlib figure.
@@ -777,7 +799,7 @@ class Plotter:
             print("Applying kinematic cuts for region:", self._kinematic_region)
             if self.verbosity >= 3:
                 print(
-                    "Verbosity is greater than 3, please ensure fastjet"
+                    "Verbosity is greater than 2, please ensure fastjet"
                     " observables are calculated in the limited phase space!"
                 )
             self.apply_kinematic_cuts(self._kinematic_region)

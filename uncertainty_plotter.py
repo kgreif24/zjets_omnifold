@@ -39,6 +39,7 @@ class UncertaintyPlotter(plotter.Plotter):
         root_files=None,
         target2_path=None,
         data_comparison_mode=False,
+        normalize_targets=False,
         **kwargs,
     ):
         """
@@ -65,6 +66,8 @@ class UncertaintyPlotter(plotter.Plotter):
             data_comparison_mode (bool): If True, compares data measurement to truth
                 generators instead of pseudodata to target. Removes method bias and
                 flips ratio calculations. Default is False.
+            normalize_targets (bool): If True, normalizes the target histograms to match
+                the source histograms. Default is False.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         # Ensure target_path is a single string (not a list)
@@ -89,6 +92,7 @@ class UncertaintyPlotter(plotter.Plotter):
         self.target2_path = target2_path
         self.data_comparison_mode = data_comparison_mode
         self.dual_target_mode = target2_path is not None
+        self.normalize_targets = normalize_targets
 
         # Create UncertaintyCalculator instance
         self.uncertainty_calculator = uncert_module.UncertaintyCalculator()
@@ -272,10 +276,11 @@ class UncertaintyPlotter(plotter.Plotter):
         # Loop through plots and make histograms
         return_dict = {}
         for plot in self.plots:
+            print(f"Plotting {plot['key']}")
 
             # Pick weight dict
             use_weight_source = (
-                source_weights_trk if plot["type"] == "track" else source_weights_dict
+                source_weights_trk if plot["type"] == "track" else weights_dict
             )
             use_weight_target = (
                 target_weights_trk if plot["type"] == "track" else target_weights
@@ -301,23 +306,41 @@ class UncertaintyPlotter(plotter.Plotter):
             # Build target histograms
             target_hists = {}
             for wgt_name, wgts in use_weight_target.items():
-                target_hists[wgt_name] = self._get_histogram(
+                target_hist_tuple = self._get_histogram(
                     nominal_plot,
                     weights=wgts,
                     is_target=True,
                     root_index=1,  # Only effects histogram for fastjet observables
                 )
+                if self.normalize_targets:
+                    norm_factor = np.sum(source_hist) / np.sum(target_hist_tuple[0])
+                    target_hist_tuple = (
+                        target_hist_tuple[0] * norm_factor,
+                        target_hist_tuple[1] * norm_factor**2,
+                        target_hist_tuple[2],
+                    )
+                target_hists[wgt_name] = target_hist_tuple
             # Need to also add central value target histogram to all_hists
             all_hists["target"] = target_hists["target"]
 
             if self.dual_target_mode:
                 target2_hists = {}
                 for wgt_name, wgts in use_weight_target2.items():
-                    target2_hists[wgt_name] = self._get_histogram_target2(
+                    target2_hist_tuple = self._get_histogram_target2(
                         nominal_plot,
                         weights=wgts,
                         root_index=4,  # Only effects histogram for fastjet observables
                     )
+                    if self.normalize_targets:
+                        norm_factor = np.sum(source_hist) / np.sum(
+                            target2_hist_tuple[0]
+                        )
+                        target2_hist_tuple = (
+                            target2_hist_tuple[0] * norm_factor,
+                            target2_hist_tuple[1] * norm_factor**2,
+                            target2_hist_tuple[2],
+                        )
+                    target2_hists[wgt_name] = target2_hist_tuple
 
             # Build ensemble histograms for NN stability uncertainty
             if "nn-stability" in self.uncertainty_calculator.uncertainty_definitions:
@@ -387,10 +410,18 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 if syst_key == "hv":
                     hv_plot = syst_plot.copy()
-                    all_hists[syst_key] = self._get_sherpa_histogram(
+                    hv_hist_tuple = self._get_sherpa_histogram(
                         hv_plot,
                         weights=wgts,
                     )
+                    if self.normalize_targets:
+                        norm_factor = np.sum(source_hist) / np.sum(hv_hist_tuple[0])
+                        hv_hist_tuple = (
+                            hv_hist_tuple[0] * norm_factor,
+                            hv_hist_tuple[1] * norm_factor**2,
+                            hv_hist_tuple[2],
+                        )
+                    all_hists[syst_key] = hv_hist_tuple
                 elif syst_key == "dd":
                     all_hists[syst_key] = self._get_histogram(
                         syst_plot,
@@ -503,14 +534,22 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Else we can load the data and weights from the sherpa tree
         else:
-            # Get sherpa data using shared method
-            sherpa_data = self._get_filtered_data(
-                self.sherpa_tree,
-                plot_dict["key"],
-                self._get_cached_pass190_flags("sherpa"),
-                use_truth=True,
-                max_events=self.sherpa_events,
-            )
+            # Check cache first
+            # use_truth is always True for sherpa
+            cache_key = (plot_dict["key"], "sherpa", True)
+            if cache_key in self._filtered_data_cache:
+                sherpa_data = self._filtered_data_cache[cache_key]
+            else:
+                # Get sherpa data using shared method
+                sherpa_data = self._get_filtered_data(
+                    self.sherpa_tree,
+                    plot_dict["key"],
+                    self._get_cached_pass190_flags("sherpa"),
+                    use_truth=True,
+                    max_events=self.sherpa_events,
+                )
+                # Cache the result
+                self._filtered_data_cache[cache_key] = sherpa_data
 
             # Create histogram using shared method
             sherpa_hist, bins = self._create_histogram_from_data(
@@ -635,6 +674,9 @@ class UncertaintyPlotter(plotter.Plotter):
     def _get_data_target2(self, key):
         """_get_data_target2 - Get data from the second target tree(s).
 
+        This method caches the filtered/flattened data to avoid repeated
+        disk reads for the same observable.
+
         Arguments:
             key (str): Key to get data for
 
@@ -642,6 +684,12 @@ class UncertaintyPlotter(plotter.Plotter):
             np.array: The data as a numpy array, concatenated if multiple trees
                 are provided
         """
+        # Check cache first
+        # use_truth is always True for target2
+        cache_key = (key, "target2", True)
+        if cache_key in self._filtered_data_cache:
+            return self._filtered_data_cache[cache_key]
+
         if self.target2_trees is not None:
             # Concatenate data from multiple trees
             all_data = []
@@ -659,15 +707,19 @@ class UncertaintyPlotter(plotter.Plotter):
                     max_events=max_events,
                 )
                 all_data.append(tree_data)
-            return np.concatenate(all_data)
+            data = np.concatenate(all_data)
         else:
-            return self._get_filtered_data(
+            data = self._get_filtered_data(
                 self.target2_tree,
                 key,
                 self._get_cached_pass190_flags("target2"),
                 use_truth=True,
                 max_events=self.target2_events,
             )
+
+        # Cache the result
+        self._filtered_data_cache[cache_key] = data
+        return data
 
     def _build_uncert_plot(
         self,
@@ -1385,7 +1437,7 @@ class UncertaintyPlotter(plotter.Plotter):
             print("Applying kinematic cuts for region:", self._kinematic_region)
             if self.verbosity >= 3:
                 print(
-                    "Verbosity is greater than 3, please ensure fastjet"
+                    "Verbosity is greater than 2, please ensure fastjet"
                     " observables are calculated in the limited phase space!"
                 )
 

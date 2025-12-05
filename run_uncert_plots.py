@@ -51,7 +51,10 @@ parser.add_argument(
     "--max_events",
     type=int,
     default=-1,
-    help="The maximum number of events to use for plotting",
+    help=(
+        "The maximum number of events to use for plotting. "
+        "If set, recommended to run with --normalize_targets."
+    ),
 )
 parser.add_argument(
     "--color",
@@ -84,6 +87,11 @@ parser.add_argument(
         "removes method bias)"
     ),
 )
+parser.add_argument(
+    "--normalize_targets",
+    action="store_true",
+    help="Normalize the target histograms to match the source histograms",
+)
 args = parser.parse_args()
 
 # Validate arguments
@@ -102,6 +110,7 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     root_files=args.root_files,
     target2_path=args.target2,
     data_comparison_mode=args.data_comparison_mode,
+    normalize_targets=args.normalize_targets,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,

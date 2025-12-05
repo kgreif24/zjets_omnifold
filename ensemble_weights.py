@@ -123,6 +123,8 @@ def group_name_to_write_name(gn, idx=None):
         return "weights_muonEffTrack"
     elif gn == "muon-efftrig":
         return "weights_muonEffTrig"
+    elif gn == "prw":
+        return "weights_pileup"
     else:
         raise ValueError(f"Group name {gn} not recognized!")
 
@@ -372,6 +374,17 @@ for gn in args.group_names:
         )
         write_name = group_name_to_write_name(gn)
         all_weights[write_name] = central_weights
+
+        # Add the luminosity uncertainty weights if this is the nominal group
+        if gn == "nominal":
+            lumi_weights = norm_weights(
+                central_weights,
+                truth_pass200,
+                ratio_mc,
+                n_data_nominal,
+                args.luminosity * (1.0 - 0.0083),  # 0.83% luminosity uncertainty
+            )
+            all_weights["weights_lumi"] = lumi_weights
 
     # Only save ensemble weights for specific group names
     if gn in ["nominal", "dbootstrap", "mcbootstrap"]:

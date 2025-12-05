@@ -162,6 +162,12 @@ class UncertaintyCalculator:
                 "stochastic": False,
                 "prefix": None,
             },
+            "pileup": {
+                "name": "Pileup",
+                "color": "brown",
+                "stochastic": False,
+                "prefix": None,
+            },
             "dd": {
                 "name": "Data driven",
                 "color": "red",
@@ -178,6 +184,12 @@ class UncertaintyCalculator:
                 "name": "MC stat",
                 "color": "green",
                 "stochastic": True,
+                "prefix": None,
+            },
+            "lumi": {
+                "name": "Luminosity",
+                "color": "pink",
+                "stochastic": False,
                 "prefix": None,
             },
             "data-stat": {
