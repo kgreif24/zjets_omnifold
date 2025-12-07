@@ -350,7 +350,10 @@ class OfTrain:
                 target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
-            use_syst_kw = None
+            # Theory systematics also modify the truth MC!!
+            use_syst_kw = (
+                self.config.syst_kw if "theory" in self.config.syst_kw else None
+            )
             use_truth = True
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
@@ -381,6 +384,7 @@ class OfTrain:
                 )
 
         # Build the data module
+        use_theory = True if "theory" in use_syst_kw and self.step == 2 else False
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -399,6 +403,7 @@ class OfTrain:
             max_events_target=self.config.max_events_target,
             syst_kw=use_syst_kw,
             data_bootstrap_path=self.data_bootstrap_path,
+            theory_mode=use_theory,
         )
 
     def run(self):
@@ -456,9 +461,7 @@ class OfTrain:
             best_checkpoint = self._find_best_checkpoint()
             # If one doesn't exist, just return and let next process re-attempt training
             if not best_checkpoint:
-                rank_zero_info(
-                    "No checkpoints found on timeout, not making symlink."
-                )
+                rank_zero_info("No checkpoints found on timeout, not making symlink.")
                 return
             if os.path.lexists(best_model_link):
                 os.remove(best_model_link)
@@ -568,7 +571,10 @@ if __name__ == "__main__":
         "--split_seed", type=int, default=222, help="The seed to use for the data split"
     )
     parser.add_argument(
-        "--data_bootstrap_path", type=str, default=None, help="The path to the data bootstrap"
+        "--data_bootstrap_path",
+        type=str,
+        default=None,
+        help="The path to the data bootstrap",
     )
     args, unknown = parser.parse_known_args()
 

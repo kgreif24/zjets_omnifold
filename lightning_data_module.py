@@ -3,7 +3,7 @@ It builds OfDatasets from the input ROOT files and provides dataloaders for trai
 and testing.
 
 Author: Kevin Greif
-Last updated 11/15/2024
+Last updated 12/05/2025
 python3
 """
 
@@ -66,6 +66,7 @@ class LOfData(L.LightningDataModule):
         use_truth=False,
         syst_kw=None,
         data_bootstrap_path=None,
+        theory_mode=False,
         **kwargs,
     ):
         """__init__ - This method initializes the LOfData class. It takes
@@ -114,6 +115,8 @@ class LOfData(L.LightningDataModule):
                 activated for this data module.
             data_bootstrap_path {str} - The path to the data bootstrap in this training
                 If None, no bootstrap will be used.
+            theory_weight_mode {bool} - Set to true if we are using theory systematics
+                to modify the weights. Defaults to False.
             **kwargs - Passed to the OfDataset classes
         """
 
@@ -138,6 +141,7 @@ class LOfData(L.LightningDataModule):
         self.use_truth = use_truth
         self.syst_kw = syst_kw
         self.data_bootstrap_path = data_bootstrap_path
+        self.theory_mode = theory_mode
 
         # Find total number of events in source and target, and get the pass190 filters
         # for the source dataset
@@ -560,8 +564,11 @@ class LOfData(L.LightningDataModule):
         net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load and multiply root weights by the systematic weights if needed
-        if self.syst_kw is not None and which_file == "source":
-            assert not self.use_truth
+        # Note theory systematics also modify the truth MC so we have an override
+        # "theory_mode" which makes it so both the source and target weights
+        # are modified by the theory systematics. This is used in step 2 trainings only.
+        if (self.syst_kw is not None and which_file == "source") or self.theory_mode:
+            assert (not self.use_truth) or self.theory_mode
             if "msf" in self.syst_kw:
                 nom_sf = ak.to_numpy(
                     tree["singleMuonTrigSF"].array(entry_stop=max_read)
@@ -591,6 +598,38 @@ class LOfData(L.LightningDataModule):
                         ak.to_numpy(tree["syst_prwDown"].array(entry_stop=max_read))
                         / nom_sf
                     )
+                root_weights *= syst_weights
+            elif "theory" in self.syst_kw:
+                if self.syst_kw == "theory_qcd":
+                    syst_weights = ak.to_numpy(
+                        tree["w_QCD_dd"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_pdf":
+                    syst_weights = ak.to_numpy(
+                        tree["w_PDF_CT18nnlo"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_alphas":
+                    syst_weights = ak.to_numpy(
+                        tree["w_Alpha_s1"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_pssoft":
+                    syst_weights = ak.to_numpy(
+                        tree["w_Var1Down"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_psjet":
+                    syst_weights = ak.to_numpy(
+                        tree["w_Var2Down"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_mpi":
+                    syst_weights = ak.to_numpy(
+                        tree["w_MPIDown"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_psscale":
+                    syst_weights = ak.to_numpy(
+                        tree["w_RenDown"].array(entry_stop=max_read)
+                    )
+                else:
+                    raise ValueError(f"Systematic {self.syst_kw} not recognized!")
                 root_weights *= syst_weights
 
         # Load weights from the path
