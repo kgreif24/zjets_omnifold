@@ -305,7 +305,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       Float_t pT_trackj2, y_trackj2, phi_trackj2, m_trackj2;
       Int_t Ntracks;
       vector<Float_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
-      vector<Long_t> pdgId_tracks_vec;
+      vector<Long64_t> pdgId_tracks_vec;
    };
    
    vector<EventData> event_data;
@@ -342,24 +342,45 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       evt.m_trackj2 = m_trackj2;
       evt.Ntracks = Ntracks;
 
-      // Copy track vectors (ROOT file stores these as vectors, not fixed arrays)
-      // Use reserve and assign for safer copying
-      evt.pT_tracks_vec.clear();
-      evt.pT_tracks_vec.reserve(pT_tracks.size());
-      evt.pT_tracks_vec.assign(pT_tracks.begin(), pT_tracks.end());
-      
-      evt.eta_tracks_vec.clear();
-      evt.eta_tracks_vec.reserve(eta_tracks.size());
-      evt.eta_tracks_vec.assign(eta_tracks.begin(), eta_tracks.end());
-      
-      evt.phi_tracks_vec.clear();
-      evt.phi_tracks_vec.reserve(phi_tracks.size());
-      evt.phi_tracks_vec.assign(phi_tracks.begin(), phi_tracks.end());
-      
-      if (isTruth) {
-         evt.pdgId_tracks_vec.clear();
-         evt.pdgId_tracks_vec.reserve(pdgId_tracks.size());
-         evt.pdgId_tracks_vec.assign(pdgId_tracks.begin(), pdgId_tracks.end());
+      // Copy track data based on format (vector or array)
+      if (trackFormat == "vector") {
+         // Copy from vector format
+         evt.pT_tracks_vec.clear();
+         evt.pT_tracks_vec.reserve(pT_tracks.size());
+         evt.pT_tracks_vec.assign(pT_tracks.begin(), pT_tracks.end());
+         
+         evt.eta_tracks_vec.clear();
+         evt.eta_tracks_vec.reserve(eta_tracks.size());
+         evt.eta_tracks_vec.assign(eta_tracks.begin(), eta_tracks.end());
+         
+         evt.phi_tracks_vec.clear();
+         evt.phi_tracks_vec.reserve(phi_tracks.size());
+         evt.phi_tracks_vec.assign(phi_tracks.begin(), phi_tracks.end());
+         
+         if (isTruth) {
+            evt.pdgId_tracks_vec.clear();
+            evt.pdgId_tracks_vec.reserve(pdgId_tracks.size());
+            evt.pdgId_tracks_vec.assign(pdgId_tracks.begin(), pdgId_tracks.end());
+         }
+      } else {
+         // Copy from array format (using Ntracks to determine how many to copy)
+         evt.pT_tracks_vec.clear();
+         evt.pT_tracks_vec.reserve(Ntracks);
+         evt.pT_tracks_vec.assign(pT_tracks_array, pT_tracks_array + Ntracks);
+         
+         evt.eta_tracks_vec.clear();
+         evt.eta_tracks_vec.reserve(Ntracks);
+         evt.eta_tracks_vec.assign(eta_tracks_array, eta_tracks_array + Ntracks);
+         
+         evt.phi_tracks_vec.clear();
+         evt.phi_tracks_vec.reserve(Ntracks);
+         evt.phi_tracks_vec.assign(phi_tracks_array, phi_tracks_array + Ntracks);
+         
+         if (isTruth) {
+            evt.pdgId_tracks_vec.clear();
+            evt.pdgId_tracks_vec.reserve(Ntracks);
+            evt.pdgId_tracks_vec.assign(pdgId_tracks_array, pdgId_tracks_array + Ntracks);
+         }
       }
       
       event_data.push_back(evt);

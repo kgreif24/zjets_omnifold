@@ -119,7 +119,7 @@ class UncertaintyPlotter(plotter.Plotter):
             assert self.root_files[1] is not None, "Must have a target root file"
             assert self.root_files[2] is not None, "Must have a hv root file"
             if self.dual_target_mode:
-                assert self.root_files[4] is not None, "Must have a target2 root file"
+                assert self.root_files[3] is not None, "Must have a target2 root file"
 
         # Initialize second target if provided
         if self.dual_target_mode:
@@ -306,40 +306,56 @@ class UncertaintyPlotter(plotter.Plotter):
             # Build target histograms
             target_hists = {}
             for wgt_name, wgts in use_weight_target.items():
+                target_plot = plot.copy()
+                if target_plot["type"] == "fastjet":
+                    target_plot["key"] = (
+                        self._theory_weight_name_to_hist_name(wgt_name)
+                        + "-"
+                        + plot["key"]
+                    )
                 target_hist_tuple = self._get_histogram(
-                    nominal_plot,
+                    target_plot,
                     weights=wgts,
                     is_target=True,
                     root_index=1,  # Only effects histogram for fastjet observables
                 )
-                if self.normalize_targets:
+                if self.normalize_targets and wgt_name == "target":
                     norm_factor = np.sum(source_hist) / np.sum(target_hist_tuple[0])
-                    target_hist_tuple = (
-                        target_hist_tuple[0] * norm_factor,
-                        target_hist_tuple[1] * norm_factor**2,
-                        target_hist_tuple[2],
-                    )
+                else:
+                    norm_factor = 1.0
+                target_hist_tuple = (
+                    target_hist_tuple[0] * norm_factor,
+                    target_hist_tuple[1] * norm_factor**2,
+                    target_hist_tuple[2],
+                )
                 target_hists[wgt_name] = target_hist_tuple
-            # Need to also add central value target histogram to all_hists
-            all_hists["target"] = target_hists["target"]
 
             if self.dual_target_mode:
                 target2_hists = {}
                 for wgt_name, wgts in use_weight_target2.items():
+                    target2_plot = plot.copy()
+                    if target2_plot["type"] == "fastjet":
+                        target2_plot["key"] = (
+                            self._theory_weight_name_to_hist_name(wgt_name)
+                            + "-"
+                            + plot["key"]
+                        )
                     target2_hist_tuple = self._get_histogram_target2(
-                        nominal_plot,
+                        target2_plot,
                         weights=wgts,
-                        root_index=4,  # Only effects histogram for fastjet observables
+                        root_index=3,  # Only effects histogram for fastjet observables
                     )
-                    if self.normalize_targets:
+                    if self.normalize_targets and wgt_name == "target2":
                         norm_factor = np.sum(source_hist) / np.sum(
                             target2_hist_tuple[0]
                         )
-                        target2_hist_tuple = (
-                            target2_hist_tuple[0] * norm_factor,
-                            target2_hist_tuple[1] * norm_factor**2,
-                            target2_hist_tuple[2],
-                        )
+                    else:
+                        norm_factor = 1.0
+                    target2_hist_tuple = (
+                        target2_hist_tuple[0] * norm_factor,
+                        target2_hist_tuple[1] * norm_factor**2,
+                        target2_hist_tuple[2],
+                    )
                     target2_hists[wgt_name] = target2_hist_tuple
 
             # Build ensemble histograms for NN stability uncertainty
@@ -410,18 +426,10 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 if syst_key == "hv":
                     hv_plot = syst_plot.copy()
-                    hv_hist_tuple = self._get_sherpa_histogram(
+                    all_hists[syst_key] = self._get_sherpa_histogram(
                         hv_plot,
                         weights=wgts,
                     )
-                    if self.normalize_targets:
-                        norm_factor = np.sum(source_hist) / np.sum(hv_hist_tuple[0])
-                        hv_hist_tuple = (
-                            hv_hist_tuple[0] * norm_factor,
-                            hv_hist_tuple[1] * norm_factor**2,
-                            hv_hist_tuple[2],
-                        )
-                    all_hists[syst_key] = hv_hist_tuple
                 elif syst_key == "dd":
                     all_hists[syst_key] = self._get_histogram(
                         syst_plot,
@@ -607,7 +615,7 @@ class UncertaintyPlotter(plotter.Plotter):
         plot_dict,
         weights=None,
         density=False,
-        root_index=4,
+        root_index=3,
     ):
         """_get_histogram_target2 - Get histogram from the second target tree(s).
         Always returns the variance of the histogram. Handles multiple trees by
@@ -1533,3 +1541,40 @@ class UncertaintyPlotter(plotter.Plotter):
                 return track_data
         else:
             raise ValueError(f"Unknown tree_type: {tree_type}")
+
+    def _theory_weight_name_to_hist_name(self, weight_name):
+        """_theory_weight_name_to_hist_name - Convert a theory weight name to a
+        histogram name.
+
+        Arguments:
+            weight_name (str): The name of the theory weight.
+
+        Returns:
+            str: The name of the histogram.
+        """
+        if weight_name == "target":
+            return "nominal"
+        elif weight_name == "target2":
+            return "nominal"
+        elif weight_name == "w_QCD_dd":
+            return "theoryQCD"
+        elif weight_name == "w_PDF_CT18nnlo":
+            return "theoryPDF"
+        elif weight_name == "w_Alpha_s1":
+            return "theoryAlphaS"
+        elif weight_name == "w_Var1Down":
+            return "theoryPSsoft"
+        elif weight_name == "w_Var2Down":
+            return "theoryPSjet"
+        elif weight_name == "w_MPIDown":
+            return "theoryMPI"
+        elif weight_name == "w_RenDown":
+            return "theoryPSscale"
+        elif weight_name == "PS_ME_QCD_dd":
+            return "theoryQCD"
+        elif weight_name == "PS_ME_PDF_CT18nnlo":
+            return "theoryPDF"
+        elif weight_name == "PS_ME_Alpha_s1":
+            return "theoryAlphaS"
+        else:
+            raise ValueError(f"Weight name {weight_name} not recognized!")

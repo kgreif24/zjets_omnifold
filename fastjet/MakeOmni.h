@@ -35,6 +35,7 @@ public :
    int nBootstrapData;
    TString saveName;
    int kinematicRegion;
+   string trackFormat; // "vector" or "array" - format of track data in ROOT file
 
    // HistoGroups
    vector<HistoGroup> centralHistoGroups;
@@ -88,18 +89,28 @@ public :
    Int_t           Ntracks_trackj2;
    Int_t           NtrackJets20;
    Int_t           weight_bs[100];   //[nweight_bs]
+   
+   // Track data storage - supports both vector and array formats
+   // Vector format (for ROOT files with vector<float> branches)
    vector<Float_t> pT_tracks;
    vector<Float_t> eta_tracks;
    vector<Float_t> phi_tracks;
-   vector<Float_t> trackJetIndex_tracks;
-   vector<Long_t> pdgId_tracks;
+   vector<Long64_t> trackJetIndex_tracks;
+   vector<Long64_t> pdgId_tracks;
    
    // Pointers to vectors (required by ROOT for vector branches)
    vector<Float_t> *p_pT_tracks;
    vector<Float_t> *p_eta_tracks;
    vector<Float_t> *p_phi_tracks;
-   vector<Float_t> *p_trackJetIndex_tracks;
-   vector<Long_t> *p_pdgId_tracks;
+   vector<Long64_t> *p_trackJetIndex_tracks;
+   vector<Long64_t> *p_pdgId_tracks;
+   
+   // Array format (for ROOT files with fixed-size arrays)
+   Double_t        pT_tracks_array[309];   //[npT_tracks]
+   Double_t        eta_tracks_array[309];
+   Double_t        phi_tracks_array[309];
+   Long64_t        trackJetIndex_tracks_array[309];
+   Long64_t        pdgId_tracks_array[309];
 
    // List of branches
    TBranch        *b_weight;   //!
@@ -152,7 +163,7 @@ public :
    TBranch        *b_trackJetIndex_tracks;   //!
    TBranch        *b_pdgId_tracks;   //!
 
-   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int nBootstrapData = 0, int kinematic_region = 0);
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int nBootstrapData = 0, int kinematic_region = 0, string track_format = "vector");
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -171,7 +182,7 @@ public :
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int nBootstrapData, int kinematic_region) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int nBootstrapData, int kinematic_region, string track_format) : fChain(0) 
 {
 
    // Store instance variables
@@ -182,6 +193,7 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
    kinematicRegion = kinematic_region; // Store the kinematic region
+   trackFormat = track_format; // Store the track format ("vector" or "array")
 
    // Initialize histogram groups
    for (const auto& weight_name : weightBranchNames) {
@@ -262,19 +274,25 @@ void MakeOmni::Init(TTree *tree)
    // Don't use SetMakeClass(1) as it can cause issues with vector branches
    // fChain->SetMakeClass(1);
    
-   // Initialize vectors to ensure they're in a valid state before ROOT reads into them
-   pT_tracks.clear();
-   eta_tracks.clear();
-   phi_tracks.clear();
-   trackJetIndex_tracks.clear();
-   pdgId_tracks.clear();
-   
-   // Initialize pointers to point to the vectors (required by ROOT for vector branches)
-   p_pT_tracks = &pT_tracks;
-   p_eta_tracks = &eta_tracks;
-   p_phi_tracks = &phi_tracks;
-   p_trackJetIndex_tracks = &trackJetIndex_tracks;
-   p_pdgId_tracks = &pdgId_tracks;
+   // Initialize track data storage based on format
+   if (trackFormat == "vector") {
+      // Initialize vectors to ensure they're in a valid state before ROOT reads into them
+      pT_tracks.clear();
+      eta_tracks.clear();
+      phi_tracks.clear();
+      trackJetIndex_tracks.clear();
+      pdgId_tracks.clear();
+      
+      // Initialize pointers to point to the vectors (required by ROOT for vector branches)
+      p_pT_tracks = &pT_tracks;
+      p_eta_tracks = &eta_tracks;
+      p_phi_tracks = &phi_tracks;
+      p_trackJetIndex_tracks = &trackJetIndex_tracks;
+      p_pdgId_tracks = &pdgId_tracks;
+   } else {
+      // For array format, arrays are already allocated, no initialization needed
+      // Arrays will be read directly by ROOT
+   }
 
    // Set branch addresses that are used for both truth and reco data
    fChain->SetBranchAddress("weight", &weight, &b_weight);
@@ -322,23 +340,34 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("truth_tau1_trackj2", &tau1_trackj2, &b_tau1_trackj2);
       fChain->SetBranchAddress("truth_tau2_trackj2", &tau2_trackj2, &b_tau2_trackj2);
       fChain->SetBranchAddress("truth_tau3_trackj2", &tau3_trackj2, &b_tau3_trackj2);
-      // Enable vector branches explicitly
-      fChain->SetBranchStatus("truth_pT_tracks", 1);
-      fChain->SetBranchStatus("truth_eta_tracks", 1);
-      fChain->SetBranchStatus("truth_phi_tracks", 1);
-      fChain->SetBranchStatus("truth_trackJetIndex_tracks", 1);
-      fChain->SetBranchStatus("truth_pdgId_tracks", 1);
-      
-      // For vector branches, ROOT requires a pointer to the vector
-      fChain->SetBranchAddress("truth_pT_tracks", &p_pT_tracks, &b_pT_tracks);
-      fChain->SetBranchAddress("truth_eta_tracks", &p_eta_tracks, &b_eta_tracks);
-      fChain->SetBranchAddress("truth_phi_tracks", &p_phi_tracks, &b_phi_tracks);
-      fChain->SetBranchAddress("truth_trackJetIndex_tracks", &p_trackJetIndex_tracks, &b_trackJetIndex_tracks);
       fChain->SetBranchAddress("truth_Ntracks", &Ntracks, &b_Ntracks);
       fChain->SetBranchAddress("truth_Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("truth_Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
       fChain->SetBranchAddress("truth_NtrackJets20", &NtrackJets20, &b_NtrackJets20);
-      fChain->SetBranchAddress("truth_pdgId_tracks", &p_pdgId_tracks, &b_pdgId_tracks);
+      
+      // Set up track branches based on format
+      if (trackFormat == "vector") {
+         // Enable vector branches explicitly
+         fChain->SetBranchStatus("truth_pT_tracks", 1);
+         fChain->SetBranchStatus("truth_eta_tracks", 1);
+         fChain->SetBranchStatus("truth_phi_tracks", 1);
+         fChain->SetBranchStatus("truth_trackJetIndex_tracks", 1);
+         fChain->SetBranchStatus("truth_pdgId_tracks", 1);
+         
+         // For vector branches, ROOT requires a pointer to the vector
+         fChain->SetBranchAddress("truth_pT_tracks", &p_pT_tracks, &b_pT_tracks);
+         fChain->SetBranchAddress("truth_eta_tracks", &p_eta_tracks, &b_eta_tracks);
+         fChain->SetBranchAddress("truth_phi_tracks", &p_phi_tracks, &b_phi_tracks);
+         fChain->SetBranchAddress("truth_trackJetIndex_tracks", &p_trackJetIndex_tracks, &b_trackJetIndex_tracks);
+         fChain->SetBranchAddress("truth_pdgId_tracks", &p_pdgId_tracks, &b_pdgId_tracks);
+      } else {
+         // For array format, use direct array addresses
+         fChain->SetBranchAddress("truth_pT_tracks", pT_tracks_array, &b_pT_tracks);
+         fChain->SetBranchAddress("truth_eta_tracks", eta_tracks_array, &b_eta_tracks);
+         fChain->SetBranchAddress("truth_phi_tracks", phi_tracks_array, &b_phi_tracks);
+         fChain->SetBranchAddress("truth_trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+         fChain->SetBranchAddress("truth_pdgId_tracks", pdgId_tracks_array, &b_pdgId_tracks);
+      }
    } else {
       fChain->SetBranchAddress("pass190", &pass190, &b_pass190);
       fChain->SetBranchAddress("pT_ll", &pT_ll, &b_pT_ll);
@@ -363,21 +392,31 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("tau1_trackj2", &tau1_trackj2, &b_tau1_trackj2);
       fChain->SetBranchAddress("tau2_trackj2", &tau2_trackj2, &b_tau2_trackj2);
       fChain->SetBranchAddress("tau3_trackj2", &tau3_trackj2, &b_tau3_trackj2);
-      // Enable vector branches explicitly
-      fChain->SetBranchStatus("pT_tracks", 1);
-      fChain->SetBranchStatus("eta_tracks", 1);
-      fChain->SetBranchStatus("phi_tracks", 1);
-      fChain->SetBranchStatus("trackJetIndex_tracks", 1);
-      
-      // For vector branches, ROOT requires a pointer to the vector
       fChain->SetBranchAddress("Ntracks", &Ntracks, &b_Ntracks);
       fChain->SetBranchAddress("Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
       fChain->SetBranchAddress("NtrackJets20", &NtrackJets20, &b_NtrackJets20);
-      fChain->SetBranchAddress("pT_tracks", &p_pT_tracks, &b_pT_tracks);
-      fChain->SetBranchAddress("eta_tracks", &p_eta_tracks, &b_eta_tracks);
-      fChain->SetBranchAddress("phi_tracks", &p_phi_tracks, &b_phi_tracks);
-      fChain->SetBranchAddress("trackJetIndex_tracks", &p_trackJetIndex_tracks, &b_trackJetIndex_tracks);
+      
+      // Set up track branches based on format
+      if (trackFormat == "vector") {
+         // Enable vector branches explicitly
+         fChain->SetBranchStatus("pT_tracks", 1);
+         fChain->SetBranchStatus("eta_tracks", 1);
+         fChain->SetBranchStatus("phi_tracks", 1);
+         fChain->SetBranchStatus("trackJetIndex_tracks", 1);
+         
+         // For vector branches, ROOT requires a pointer to the vector
+         fChain->SetBranchAddress("pT_tracks", &p_pT_tracks, &b_pT_tracks);
+         fChain->SetBranchAddress("eta_tracks", &p_eta_tracks, &b_eta_tracks);
+         fChain->SetBranchAddress("phi_tracks", &p_phi_tracks, &b_phi_tracks);
+         fChain->SetBranchAddress("trackJetIndex_tracks", &p_trackJetIndex_tracks, &b_trackJetIndex_tracks);
+      } else {
+         // For array format, use direct array addresses
+         fChain->SetBranchAddress("pT_tracks", pT_tracks_array, &b_pT_tracks);
+         fChain->SetBranchAddress("eta_tracks", eta_tracks_array, &b_eta_tracks);
+         fChain->SetBranchAddress("phi_tracks", phi_tracks_array, &b_phi_tracks);
+         fChain->SetBranchAddress("trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+      }
    }
    
    Notify();
