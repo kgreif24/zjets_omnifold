@@ -60,9 +60,8 @@ class UncertaintyPlotter(plotter.Plotter):
                 fastjet observables from. In order [source_end, target, hv, data].
                 Defaults to None, in which case there should be no fastjet observables
                 in the config.
-            target2_path (str or list of str, optional): Path(s) to the second target
-                file(s) for dual truth-level generator comparison. If a list, data will
-                be concatenated from all files. If provided, enables dual target mode.
+            target2_path (str, optional): Path to the second target file for dual
+                truth-level generator comparison. If provided, enables dual target mode.
             data_comparison_mode (bool): If True, compares data measurement to truth
                 generators instead of pseudodata to target. Removes method bias and
                 flips ratio calculations. Default is False.
@@ -123,29 +122,10 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Initialize second target if provided
         if self.dual_target_mode:
-            # Normalize target2_path to list for consistent handling
-            if isinstance(target2_path, str):
-                target2_path_list = [target2_path]
-            else:
-                target2_path_list = target2_path
-
-            if len(target2_path_list) > 1:
-                self.target2_trees = [
-                    uproot.open(path)["OmniTree"] for path in target2_path_list
-                ]
-                # When multiple files are provided, use all events from all files
-                self.target2_events_list = [
-                    tree.num_entries for tree in self.target2_trees
-                ]
-                self.target2_events = sum(self.target2_events_list)
-                print(f"In all target2 files, there are {self.target2_events} events")
-            else:
-                self.target2_trees = None
-                self.target2_events_list = None
-                self.target2_tree = uproot.open(target2_path_list[0])["OmniTree"]
-                self.target2_events = self.target2_tree.num_entries
-                if self.max_events > 0 and self.target2_events > self.max_events:
-                    self.target2_events = self.max_events
+            self.target2_tree = uproot.open(target2_path)["OmniTree"]
+            self.target2_events = self.target2_tree.num_entries
+            if self.max_events > 0 and self.target2_events > self.max_events:
+                self.target2_events = self.max_events
 
         # Hardcode symlog x ticks
         self.symlog_raw_xticks = np.array(
@@ -576,39 +556,17 @@ class UncertaintyPlotter(plotter.Plotter):
         return sherpa_hist, sherpa_hist_var, bins
 
     def _get_weights_target2(self, weights):
-        """_get_weights_target2 - Get weights from the second target tree(s).
-
-        If a weight branch doesn't exist in one of the trees, just use the
-        "weight_mc" branch instead of failing
+        """_get_weights_target2 - Get weights from the second target tree.
 
         Arguments:
             weights (str): Branch name to get weights from
 
         Returns:
-            weights (np.array): Array of weights from target2 tree(s), concatenated
-                if multiple trees are provided. If a branch is missing in a tree,
-                uses ones for that tree.
+            weights (np.array): Array of weights from target2 tree.
         """
-        if self.target2_trees is not None:
-            # Concatenate weights from multiple trees
-            all_weights = []
-            for tree, max_events in zip(self.target2_trees, self.target2_events_list):
-                # Check if the branch exists in this tree
-                if weights in tree.keys():
-                    tree_weights = ak.to_numpy(
-                        tree[weights].array(entry_stop=max_events)
-                    )
-                else:
-                    # Branch doesn't exist, use "weight_mc" branch
-                    tree_weights = ak.to_numpy(
-                        tree["weight_mc"].array(entry_stop=max_events)
-                    )
-                all_weights.append(tree_weights)
-            return np.concatenate(all_weights)
-        else:
-            return ak.to_numpy(
-                self.target2_tree[weights].array(entry_stop=self.target2_events)
-            )
+        return ak.to_numpy(
+            self.target2_tree[weights].array(entry_stop=self.target2_events)
+        )
 
     def _get_histogram_target2(
         self,
@@ -680,7 +638,7 @@ class UncertaintyPlotter(plotter.Plotter):
         return hist, variance, bins
 
     def _get_data_target2(self, key):
-        """_get_data_target2 - Get data from the second target tree(s).
+        """_get_data_target2 - Get data from the second target tree.
 
         This method caches the filtered/flattened data to avoid repeated
         disk reads for the same observable.
@@ -689,8 +647,7 @@ class UncertaintyPlotter(plotter.Plotter):
             key (str): Key to get data for
 
         Returns:
-            np.array: The data as a numpy array, concatenated if multiple trees
-                are provided
+            np.array: The data as a numpy array
         """
         # Check cache first
         # use_truth is always True for target2
@@ -698,32 +655,13 @@ class UncertaintyPlotter(plotter.Plotter):
         if cache_key in self._filtered_data_cache:
             return self._filtered_data_cache[cache_key]
 
-        if self.target2_trees is not None:
-            # Concatenate data from multiple trees
-            all_data = []
-            pass190_flags_list = self._get_cached_pass190_flags("target2")
-            for i, (tree, max_events) in enumerate(
-                zip(self.target2_trees, self.target2_events_list)
-            ):
-                # Get the pass190 flags for this tree
-                tree_pass190 = pass190_flags_list[i]
-                tree_data = self._get_filtered_data(
-                    tree,
-                    key,
-                    tree_pass190,
-                    use_truth=True,
-                    max_events=max_events,
-                )
-                all_data.append(tree_data)
-            data = np.concatenate(all_data)
-        else:
-            data = self._get_filtered_data(
-                self.target2_tree,
-                key,
-                self._get_cached_pass190_flags("target2"),
-                use_truth=True,
-                max_events=self.target2_events,
-            )
+        data = self._get_filtered_data(
+            self.target2_tree,
+            key,
+            self._get_cached_pass190_flags("target2"),
+            use_truth=True,
+            max_events=self.target2_events,
+        )
 
         # Cache the result
         self._filtered_data_cache[cache_key] = data
@@ -1278,7 +1216,6 @@ class UncertaintyPlotter(plotter.Plotter):
 
     def _get_target2_weights_efficiently(self, get_sherpa_weights=None):
         """Efficiently get and cache target2 weights to avoid repeated loading.
-        Handles multiple ROOT files by concatenating weights.
 
         Arguments:
             get_sherpa_weights (list, optional): List of weight names to load from
@@ -1292,9 +1229,6 @@ class UncertaintyPlotter(plotter.Plotter):
         if not hasattr(self, "_cached_target2_weights"):
             target2_weights = self._get_weights_target2("weight_mc")
             target2_pass190 = self._get_cached_pass190_flags("target2")
-            if isinstance(target2_pass190, list):
-                # Concatenate flags from multiple trees
-                target2_pass190 = np.concatenate(target2_pass190)
             target2_weights = target2_weights[target2_pass190 == 1]
             # Divide by luminosity to get cross section
             target2_weights /= self.luminosity
@@ -1306,12 +1240,8 @@ class UncertaintyPlotter(plotter.Plotter):
             if not hasattr(self, "_cached_sherpa_weights"):
                 self._cached_sherpa_weights = {}
                 for weight_name in get_sherpa_weights:
-                    # Get weights from target2 tree(s) - handles multiple trees
                     wgts = self._get_weights_target2(weight_name)
                     target2_pass190 = self._get_cached_pass190_flags("target2")
-                    if isinstance(target2_pass190, list):
-                        # Concatenate flags from multiple trees
-                        target2_pass190 = np.concatenate(target2_pass190)
                     wgts = wgts[target2_pass190 == 1]
                     # Note Sherpa theory weights ARE NOT multiplied by weight_mc!
                     # Divide by luminosity to get cross section
@@ -1408,24 +1338,12 @@ class UncertaintyPlotter(plotter.Plotter):
             self._pass190_cache[tree_type] = flags
             return flags
         elif tree_type == "target2":
-            if self.target2_trees is not None:
-                # Return list of flags for multiple trees
-                flags_list = []
-                pull_key = "truth_pass190" if self.use_truth else "pass190"
-                for tree, max_events in zip(
-                    self.target2_trees, self.target2_events_list
-                ):
-                    flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
-                    flags_list.append(flags)
-                self._pass190_cache[tree_type] = flags_list
-                return flags_list
-            else:
-                tree = self.target2_tree
-                max_events = self.target2_events
-                pull_key = "truth_pass190" if self.use_truth else "pass190"
-                flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
-                self._pass190_cache[tree_type] = flags
-                return flags
+            tree = self.target2_tree
+            max_events = self.target2_events
+            pull_key = "truth_pass190" if self.use_truth else "pass190"
+            flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
+            self._pass190_cache[tree_type] = flags
+            return flags
         else:
             raise ValueError(f"Unknown tree_type: {tree_type}")
 
@@ -1465,36 +1383,18 @@ class UncertaintyPlotter(plotter.Plotter):
                     sherpa_pass190, sherpa_mask
                 )
 
-            # Apply kinematic cuts to target2 tree(s) if in dual target mode
+            # Apply kinematic cuts to target2 tree if in dual target mode
             if self.dual_target_mode:
-                if self.target2_trees is not None:
-                    target2_masks = []
-                    for tree, max_events in zip(
-                        self.target2_trees, self.target2_events_list
-                    ):
-                        tree_mask = self.get_kinematic_region(
-                            tree,
-                            self._kinematic_region,
-                            evts=max_events,
-                            use_truth=True,
-                        )
-                        target2_masks.append(tree_mask)
-                    target2_pass190_list = self._get_cached_pass190_flags("target2")
-                    updated_target2_pass190 = []
-                    for pass190, mask in zip(target2_pass190_list, target2_masks):
-                        updated_target2_pass190.append(np.logical_and(pass190, mask))
-                    self._pass190_cache["target2"] = updated_target2_pass190
-                else:
-                    target2_mask = self.get_kinematic_region(
-                        self.target2_tree,
-                        self._kinematic_region,
-                        evts=self.target2_events,
-                        use_truth=True,
-                    )
-                    target2_pass190 = self._get_cached_pass190_flags("target2")
-                    self._pass190_cache["target2"] = np.logical_and(
-                        target2_pass190, target2_mask
-                    )
+                target2_mask = self.get_kinematic_region(
+                    self.target2_tree,
+                    self._kinematic_region,
+                    evts=self.target2_events,
+                    use_truth=True,
+                )
+                target2_pass190 = self._get_cached_pass190_flags("target2")
+                self._pass190_cache["target2"] = np.logical_and(
+                    target2_pass190, target2_mask
+                )
 
             # Mark as applied to make this method idempotent
             self._kinematic_cuts_applied = True
@@ -1518,27 +1418,13 @@ class UncertaintyPlotter(plotter.Plotter):
             self._track_data_cache[cache_key] = track_data
             return track_data
         elif tree_type == "target2":
-            if self.target2_trees is not None:
-                # Concatenate track data from multiple trees
-                all_track_data = []
-                pass190_flags_list = self._get_cached_pass190_flags("target2")
-                for tree, max_events, pass190 in zip(
-                    self.target2_trees, self.target2_events_list, pass190_flags_list
-                ):
-                    tree_track_data = tree[pull_key].array(entry_stop=max_events)
-                    tree_track_data = tree_track_data[pass190 == 1]
-                    all_track_data.append(tree_track_data)
-                track_data = ak.concatenate(all_track_data, axis=0)
-                self._track_data_cache[cache_key] = track_data
-                return track_data
-            else:
-                tree = self.target2_tree
-                max_events = self.target2_events
-                pass190 = self._get_cached_pass190_flags("target2")
-                track_data = tree[pull_key].array(entry_stop=max_events)
-                track_data = track_data[pass190 == 1]
-                self._track_data_cache[cache_key] = track_data
-                return track_data
+            tree = self.target2_tree
+            max_events = self.target2_events
+            pass190 = self._get_cached_pass190_flags("target2")
+            track_data = tree[pull_key].array(entry_stop=max_events)
+            track_data = track_data[pass190 == 1]
+            self._track_data_cache[cache_key] = track_data
+            return track_data
         else:
             raise ValueError(f"Unknown tree_type: {tree_type}")
 

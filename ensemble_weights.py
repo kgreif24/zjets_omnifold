@@ -125,6 +125,20 @@ def group_name_to_write_name(gn, idx=None):
         return "weights_muonEffTrig"
     elif gn == "prw":
         return "weights_pileup"
+    elif gn == "theory_qcd":
+        return "weights_theoryQCD"
+    elif gn == "theory_pdf":
+        return "weights_theoryPDF"
+    elif gn == "theory_alphas":
+        return "weights_theoryAlphaS"
+    elif gn == "theory_pssoft":
+        return "weights_theoryPSsoft"
+    elif gn == "theory_psjet":
+        return "weights_theoryPSjet"
+    elif gn == "theory_mpi":
+        return "weights_theoryMPI"
+    elif gn == "theory_psscale":
+        return "weights_theoryPSscale"
     else:
         raise ValueError(f"Group name {gn} not recognized!")
 
@@ -237,6 +251,36 @@ def get_bs_n_data(campaign_path, run_name, ptll, ptll_cut=200):
     return np.sum(filtered_sample)
 
 
+def adjust_theory_weights(t, gn, root_weights):
+    """adjust_theory_weights - This function will adjust the theory weights to the
+    nominal weights.
+
+    Args:
+        t (uproot.TTree): The tree to get the weights from.
+        gn (str): The name of the run group.
+        root_weights (np.ndarray): The root weights to adjust.
+
+    Returns:
+        np.ndarray: The adjusted root weights.
+    """
+    if gn == "theory-qcd":
+        return root_weights * ak.to_numpy(t["w_QCD_dd"].array())
+    elif gn == "theory-pdf":
+        return root_weights * ak.to_numpy(t["w_PDF_CT18nnlo"].array())
+    elif gn == "theory-alphas":
+        return root_weights * ak.to_numpy(t["w_Alpha_s1"].array())
+    elif gn == "theory-pssoft":
+        return root_weights * ak.to_numpy(t["w_Var1Down"].array())
+    elif gn == "theory-psjet":
+        return root_weights * ak.to_numpy(t["w_Var2Down"].array())
+    elif gn == "theory-mpi":
+        return root_weights * ak.to_numpy(t["w_MPIDown"].array())
+    elif gn == "theory-psscale":
+        return root_weights * ak.to_numpy(t["w_RenDown"].array())
+    else:
+        raise ValueError(f"Systematic {gn} not recognized!")
+
+
 def norm_weights(weights, pass190, ratio, n_data, luminosity):
     """norm_weights - This function will normalize a set of weights to restore the
     event yield predicted by the MC given the number of data events.
@@ -298,17 +342,18 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Load indices for unshuffling MC test events and HV events
-indices_nominal = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices.npy")
-indices_hv = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices_hv.npy")
+indices_nominal = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+)
 
 # Load trees, n_data, and raw MC weights
 t = uproot.open(
     "/pscratch/sd/k/kgreif/zjets_plot_staging/"
-    "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_withdd.root"
+    "ZjetOmnifold_May19_MGPy8FxFxPlusNonStrong_withdd_Test_23Nov25_shuffled.root"
 )["OmniTree"]
 t_hv = uproot.open(
     "/pscratch/sd/k/kgreif/zjets_plot_staging/"
-    "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5.root"
+    "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
 )["OmniTree"]
 if args.use_data:
     t_data = uproot.open(
@@ -356,14 +401,18 @@ for gn in args.group_names:
         args.campaign_path,
         pull_gn,
         args.iteration,
-        indices=indices_nominal,
+        indices=indices_nominal if "theory" not in gn else None,
     )
     print(f"Got {len(pulled_weights)} weights for group {pull_gn}")
 
     # Calculate the central value weights
     if gn not in ["dbootstrap", "mcbootstrap"]:
         central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
-        central_weights *= nominal_root_weights
+        if "theory" in gn:
+            adjusted_root_weights = nominal_root_weights.copy()
+            central_weights *= adjust_theory_weights(t, gn, adjusted_root_weights)
+        else:
+            central_weights *= nominal_root_weights
         ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
         central_weights = norm_weights(
             central_weights,
@@ -422,7 +471,6 @@ if "hv" in args.group_names:
         args.campaign_path,
         "hv-data" if args.use_data else "hv",
         args.iteration,
-        indices=indices_hv,
     )
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
