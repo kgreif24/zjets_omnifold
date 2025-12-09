@@ -198,7 +198,9 @@ class OfEval:
         # For step two:
         if self.step == 2:
             self.use_truth = True
-            self.use_syst_kw = None
+            self.use_syst_kw = (
+                self.config.syst_kw if "theory" in self.config.syst_kw else None
+            )
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
@@ -275,6 +277,7 @@ class OfEval:
 
         # Build data module, note we do not split the data into pieces
         # and use distibuted evaluation for testing
+        use_theory = True if "theory" in self.use_syst_kw and self.step == 2 else False
         d_module_test = LOfData(
             source_file=self.test_source_file,
             target_file=self.test_target_file,
@@ -291,6 +294,7 @@ class OfEval:
             testing=True,
             use_truth=self.use_truth,
             syst_kw=self.use_syst_kw,
+            theory_mode=use_theory,
         )
 
         self.trainer.test(self.model, d_module_test)
@@ -305,6 +309,7 @@ class OfEval:
         """
 
         # Build data modules
+        use_theory = True if "theory" in self.use_syst_kw and self.step == 2 else False
         d_module_train = LOfData(
             source_file=self.train_source_file,
             target_file=self.train_target_file,
@@ -321,6 +326,7 @@ class OfEval:
             testing=False,
             use_truth=self.use_truth,
             syst_kw=self.use_syst_kw,
+            theory_mode=use_theory,
         )
         d_module_test = LOfData(
             source_file=self.test_source_file,
@@ -338,6 +344,7 @@ class OfEval:
             testing=True,
             use_truth=self.use_truth,
             syst_kw=self.use_syst_kw,
+            theory_mode=use_theory,
         )
 
         # Run predictions, note this only produces predictions for the source events

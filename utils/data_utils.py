@@ -179,7 +179,7 @@ def get_kinematics(
     prekey = ""
     muon_prekey, muon_postkey = "", ""
     if get_truth:
-        assert syst_kw is None, "Cannot run systematics on truth level data"
+        assert syst_kw is None or "theory" in syst_kw
         prekey = "truth_"
         muon_prekey = "truth_"
     # Note we only adjust the muon keys if we are running muon systematics
@@ -436,11 +436,11 @@ def run_track_systematics(
     # Set prekey
     prekey = ""
     if get_truth:
-        assert syst_kw is None, "Cannot run systematics on truth level data"
+        assert syst_kw is None or "theory" in syst_kw
         prekey = "truth_"
 
     # If syst_kw is None, just load the track jet indices and return
-    if syst_kw is None:
+    if syst_kw is None or "theory" in syst_kw:
         indices = tree[prekey + "trackJetIndex_tracks"].array(
             entry_start=start,
             entry_stop=stop,
@@ -516,8 +516,9 @@ def get_w1_obs(get_truth=False, syst_kw=None):
     """
 
     # Get pre and post keys
-    if get_truth:
-        assert syst_kw is None
+    if syst_kw is None:
+        prekey, postkey = "", ""
+    elif get_truth or "theory" in syst_kw:
         prekey, postkey = "truth_", ""
     else:
         prekey, postkey = get_syst_pre_and_post_keys(syst_kw)
@@ -659,6 +660,8 @@ def get_syst_pre_and_post_keys(syst_kw):
         return "syst_Fake_", ""
     elif syst_kw == "track_scale":
         return "syst_pTScale_", ""
+    elif "theory" in syst_kw:
+        return "", ""
     else:
         raise ValueError(f"Systematic {syst_kw} not recognized!")
 

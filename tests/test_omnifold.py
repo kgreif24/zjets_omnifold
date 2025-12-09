@@ -176,3 +176,22 @@ def test_restart(tmp_path):
     # Look for final checkpoint
     check_glob = glob.glob(f"{check_dir}/*.ckpt")
     assert len(check_glob) == 2
+
+
+def test_bootstrap_data(tmp_path):
+    # Create config object
+    config = OfConfig(config_name="./assets/test_of.yml")
+
+    # Overwrite the checkpoint dir with the tmp path
+    config.mod_config("checkpoint_dir", tmp_path)
+    config.mod_config("bootstrap_data", True)
+
+    # Write the config to a file
+    config.create_template(template_path=f"{tmp_path}/test_of.yml")
+    assert (tmp_path / "test_of.yml").exists()
+
+    # Make omnifolder object
+    of = Omnifolder(f"{tmp_path}/test_of.yml", use_slurm=False, index=1)
+    
+    # Check that the data bootstrap is generated
+    assert (tmp_path / "test-of" / "test-of-run_1" / "bootstrap_s101.npy").exists()

@@ -45,6 +45,7 @@ class OfTrain:
         seed=222,
         index=-1,
         unit_test=False,
+        data_bootstrap_path=None,
     ):
         """__init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
@@ -57,6 +58,8 @@ class OfTrain:
         index - The index of the ensemble to run. Add this number to the end of the
             group ID if it is not None
         unit_test - If true, trainer will just run a few steps of training and exit
+        data_bootstrap_path - The path to the data bootstrap in this training
+            If None, no bootstrap will be used.
 
         Returns:
         None
@@ -70,6 +73,7 @@ class OfTrain:
         self.step = step
         self.split_seed = seed
         self.unit_test = unit_test
+        self.data_bootstrap_path = data_bootstrap_path
 
         # Modify the group name if an index is provided
         if index != -1:
@@ -346,7 +350,10 @@ class OfTrain:
                 target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
-            use_syst_kw = None
+            # Theory systematics also modify the truth MC!!
+            use_syst_kw = (
+                self.config.syst_kw if "theory" in self.config.syst_kw else None
+            )
             use_truth = True
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
@@ -377,6 +384,7 @@ class OfTrain:
                 )
 
         # Build the data module
+        use_theory = True if "theory" in use_syst_kw and self.step == 2 else False
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -394,6 +402,8 @@ class OfTrain:
             use_truth=use_truth,
             max_events_target=self.config.max_events_target,
             syst_kw=use_syst_kw,
+            data_bootstrap_path=self.data_bootstrap_path,
+            theory_mode=use_theory,
         )
 
     def run(self):
@@ -451,9 +461,7 @@ class OfTrain:
             best_checkpoint = self._find_best_checkpoint()
             # If one doesn't exist, just return and let next process re-attempt training
             if not best_checkpoint:
-                rank_zero_info(
-                    "No checkpoints found on timeout, not making symlink."
-                )
+                rank_zero_info("No checkpoints found on timeout, not making symlink.")
                 return
             if os.path.lexists(best_model_link):
                 os.remove(best_model_link)
@@ -562,6 +570,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--split_seed", type=int, default=222, help="The seed to use for the data split"
     )
+    parser.add_argument(
+        "--data_bootstrap_path",
+        type=str,
+        default=None,
+        help="The path to the data bootstrap",
+    )
     args, unknown = parser.parse_known_args()
 
     # Build trainer
@@ -571,6 +585,7 @@ if __name__ == "__main__":
         args.step,
         seed=args.split_seed,
         index=args.index,
+        data_bootstrap_path=args.data_bootstrap_path,
     )
 
     # Override SIGUSR1 and SIGTERM signals to requeue
