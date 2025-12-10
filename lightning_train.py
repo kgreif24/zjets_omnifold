@@ -321,10 +321,15 @@ class OfTrain:
         weight_dir = f"{root_dir}/weights"
 
         # Find the data and weight files to use for this iteration and step
+        use_theory = (
+            (self.config.syst_kw is not None)
+            and ("theory" in self.config.syst_kw)
+            and (self.step == 2)
+        )
         # For step one:
         if self.step == 1:
-            use_syst_kw = self.config.syst_kw
             use_truth = False
+            use_syst_kw = self.config.syst_kw
             # If this is pre-training (iteration 0), use the MC train file
             # and Sherpa file
             if self.iteration == 0:
@@ -350,11 +355,11 @@ class OfTrain:
                 target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
-            # Theory systematics also modify the truth MC!!
-            use_syst_kw = (
-                self.config.syst_kw if "theory" in self.config.syst_kw else None
-            )
             use_truth = True
+            if use_theory:
+                use_syst_kw = self.config.syst_kw
+            else:
+                use_syst_kw = None
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
@@ -384,7 +389,6 @@ class OfTrain:
                 )
 
         # Build the data module
-        use_theory = True if "theory" in use_syst_kw and self.step == 2 else False
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
