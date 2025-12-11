@@ -321,15 +321,9 @@ class OfTrain:
         weight_dir = f"{root_dir}/weights"
 
         # Find the data and weight files to use for this iteration and step
-        use_theory = (
-            (self.config.syst_kw is not None)
-            and ("theory" in self.config.syst_kw)
-            and (self.step == 2)
-        )
         # For step one:
         if self.step == 1:
             use_truth = False
-            use_syst_kw = self.config.syst_kw
             # If this is pre-training (iteration 0), use the MC train file
             # and Sherpa file
             if self.iteration == 0:
@@ -356,10 +350,6 @@ class OfTrain:
         # For step two:
         if self.step == 2:
             use_truth = True
-            if use_theory:
-                use_syst_kw = self.config.syst_kw
-            else:
-                use_syst_kw = None
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
             if self.iteration == 0:
@@ -405,9 +395,8 @@ class OfTrain:
             testing=False,
             use_truth=use_truth,
             max_events_target=self.config.max_events_target,
-            syst_kw=use_syst_kw,
+            syst_kw=self.config.syst_kw if self.step == 1 else None,
             data_bootstrap_path=self.data_bootstrap_path,
-            theory_mode=use_theory,
         )
 
     def run(self):
