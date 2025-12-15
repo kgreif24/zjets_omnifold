@@ -562,9 +562,6 @@ class LOfData(L.LightningDataModule):
         net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load and multiply root weights by the systematic weights if needed
-        # Note theory systematics also modify the truth MC so we have an override
-        # "theory_mode" which makes it so both the source and target weights
-        # are modified by the theory systematics. This is used in step 2 trainings only.
         if self.syst_kw is not None and which_file == "source":
             assert not self.use_truth
             if "msf" in self.syst_kw:
