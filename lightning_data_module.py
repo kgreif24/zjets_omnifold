@@ -66,7 +66,6 @@ class LOfData(L.LightningDataModule):
         use_truth=False,
         syst_kw=None,
         data_bootstrap_path=None,
-        theory_mode=False,
         **kwargs,
     ):
         """__init__ - This method initializes the LOfData class. It takes
@@ -141,7 +140,6 @@ class LOfData(L.LightningDataModule):
         self.use_truth = use_truth
         self.syst_kw = syst_kw
         self.data_bootstrap_path = data_bootstrap_path
-        self.theory_mode = theory_mode
 
         # Find total number of events in source and target, and get the pass190 filters
         # for the source dataset
@@ -564,11 +562,8 @@ class LOfData(L.LightningDataModule):
         net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load and multiply root weights by the systematic weights if needed
-        # Note theory systematics also modify the truth MC so we have an override
-        # "theory_mode" which makes it so both the source and target weights
-        # are modified by the theory systematics. This is used in step 2 trainings only.
-        if (self.syst_kw is not None and which_file == "source") or self.theory_mode:
-            assert (not self.use_truth) or self.theory_mode
+        if self.syst_kw is not None and which_file == "source":
+            assert not self.use_truth
             if "msf" in self.syst_kw:
                 nom_sf = ak.to_numpy(
                     tree["singleMuonTrigSF"].array(entry_stop=max_read)

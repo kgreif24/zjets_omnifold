@@ -323,7 +323,6 @@ class OfTrain:
         # Find the data and weight files to use for this iteration and step
         # For step one:
         if self.step == 1:
-            use_syst_kw = self.config.syst_kw
             use_truth = False
             # If this is pre-training (iteration 0), use the MC train file
             # and Sherpa file
@@ -350,10 +349,6 @@ class OfTrain:
                 target_weight_file = self.config.top_sub_weights
         # For step two:
         if self.step == 2:
-            # Theory systematics also modify the truth MC!!
-            use_syst_kw = (
-                self.config.syst_kw if "theory" in self.config.syst_kw else None
-            )
             use_truth = True
             # If this is pre-training (iteration 0), use the MC train file and
             # Sherpa file
@@ -384,7 +379,6 @@ class OfTrain:
                 )
 
         # Build the data module
-        use_theory = True if "theory" in use_syst_kw and self.step == 2 else False
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -401,9 +395,8 @@ class OfTrain:
             testing=False,
             use_truth=use_truth,
             max_events_target=self.config.max_events_target,
-            syst_kw=use_syst_kw,
+            syst_kw=self.config.syst_kw if self.step == 1 else None,
             data_bootstrap_path=self.data_bootstrap_path,
-            theory_mode=use_theory,
         )
 
     def run(self):
