@@ -491,9 +491,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             continue;
          } else if (kinematicRegion == 1 && (evt.pT_trackj2 < 50 || evt.pT_ll < 350)) {
             continue;
-         } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2)) {
+         } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2 || evt.pT_ll < 200)) {
             continue;
-         } else if (kinematicRegion == 3 && evt.m_trackj1 < 32) {
+         } else if (kinematicRegion == 3 && (evt.m_trackj1 < 32 || evt.pT_ll < 200)) {
             continue;
          }
 

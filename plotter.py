@@ -49,6 +49,7 @@ class Plotter:
         root_files=None,
         ibu_bins=False,
         kinematic_region=0,
+        normalize_targets=True,
         syst_kw=None,
     ):
         """Initializes the Plotter class with the source and target paths
@@ -102,6 +103,7 @@ class Plotter:
         self.ibu_bins = ibu_bins
         self.kinematic_region = kinematic_region
         self.syst_kw = syst_kw
+        self.normalize_targets = normalize_targets
         self.syst_prekey, self.syst_postkey = du.get_syst_pre_and_post_keys(syst_kw)
 
         # Initialize ROOT file caching
@@ -127,12 +129,20 @@ class Plotter:
             config = yaml.safe_load(stream)
 
         # Loop through plots in config, keep only those that have verbosity less
-        # than or equal to configured level
-        self.plots = [
-            config["plots"][plot]
-            for plot in config["plots"]
-            if config["plots"][plot]["verbosity_level"] <= verbosity
-        ]
+        # than or equal to configured level, or if verbosity is 4, keep only
+        # the plots that have verbosity_level set to 4
+        if verbosity == 4:
+            self.plots = [
+                config["plots"][plot]
+                for plot in config["plots"]
+                if config["plots"][plot]["verbosity_level"] == 4
+            ]
+        else:
+            self.plots = [
+                config["plots"][plot]
+                for plot in config["plots"]
+                if config["plots"][plot]["verbosity_level"] <= verbosity
+            ]
 
         # Detect whether we have any track level or fastjet observables
         self.track_level = False
@@ -223,6 +233,13 @@ class Plotter:
                 is_target=True,
                 root_index=2,
             )
+
+            # Normalize target histogram if requested
+            if self.normalize_targets:
+                norm_factor_source = np.sum(source_end_hist) / np.sum(source_start_hist)
+                norm_factor_target = np.sum(source_end_hist) / np.sum(target_hist)
+                source_start_hist *= norm_factor_source
+                target_hist *= norm_factor_target
 
             # Calculate ratios
             start_ratio = source_start_hist / target_hist
@@ -858,23 +875,24 @@ class Plotter:
         if N > evts:
             N = evts
 
+        pT_ll = ak.to_numpy(tree[prekey + "pT_ll"].array(entry_stop=N))
+
         if region == -1:
             # No cuts, all events are used
             return np.ones(N, dtype=bool)
         elif region == 0:
             # Default: pT_ll > 200 GeV
-            pT_ll = ak.to_numpy(tree[prekey + "pT_ll"].array(entry_stop=N))
             return np.array(pT_ll > 200)
         elif region == 1:
             pT_j2 = ak.to_numpy(tree[prekey + "pT_trackj2"].array(entry_stop=N))
-            pT_ll = ak.to_numpy(tree[prekey + "pT_ll"].array(entry_stop=N))
             return np.logical_and(pT_j2 > 50, pT_ll > 350)
         elif region == 2:
             m_jj, dy_jj = du.get_jj_info(tree, use_truth=use_truth, stop=N)
-            return np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
+            cuts = np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
+            return np.logical_and(cuts, pT_ll > 200)
         elif region == 3:
             m_j1 = ak.to_numpy(tree[prekey + "pT_trackj1"].array(entry_stop=N))
-            return m_j1 > 32
+            return np.logical_and(m_j1 > 32, pT_ll > 200)
         else:
             raise ValueError(
                 f"Invalid kinematic region {region}. Must be one of -1, 0, 1, 2, or 3."

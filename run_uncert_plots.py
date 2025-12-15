@@ -72,11 +72,9 @@ parser.add_argument(
 parser.add_argument(
     "--target2",
     type=str,
-    nargs="+",
     default=None,
     help=(
         "Path(s) to second target file(s) for dual truth-level generator comparison. "
-        "If multiple paths are provided, data will be concatenated from all files."
     ),
 )
 parser.add_argument(

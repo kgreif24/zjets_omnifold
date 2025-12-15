@@ -285,6 +285,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             # Build target histograms
             target_hists = {}
+            target_nominal_hist = None
             for wgt_name, wgts in use_weight_target.items():
                 target_plot = plot.copy()
                 if target_plot["type"] == "fastjet":
@@ -299,19 +300,29 @@ class UncertaintyPlotter(plotter.Plotter):
                     is_target=True,
                     root_index=1,  # Only effects histogram for fastjet observables
                 )
-                if self.normalize_targets and wgt_name == "target":
-                    norm_factor = np.sum(source_hist) / np.sum(target_hist_tuple[0])
+                if wgt_name == "target":
+                    if self.normalize_targets:
+                        norm_factor = np.sum(source_hist) / np.sum(target_hist_tuple[0])
+                        target_hist_tuple = (
+                            target_hist_tuple[0] * norm_factor,
+                            target_hist_tuple[1] * norm_factor**2,
+                            target_hist_tuple[2],
+                        )
+                    target_nominal_hist = target_hist_tuple[0]
                 else:
-                    norm_factor = 1.0
-                target_hist_tuple = (
-                    target_hist_tuple[0] * norm_factor,
-                    target_hist_tuple[1] * norm_factor**2,
-                    target_hist_tuple[2],
-                )
+                    norm_factor = np.sum(target_nominal_hist) / np.sum(
+                        target_hist_tuple[0]
+                    )
+                    target_hist_tuple = (
+                        target_hist_tuple[0] * norm_factor,
+                        target_hist_tuple[1] * norm_factor**2,
+                        target_hist_tuple[2],
+                    )
                 target_hists[wgt_name] = target_hist_tuple
 
             if self.dual_target_mode:
                 target2_hists = {}
+                target2_nominal_hist = None
                 for wgt_name, wgts in use_weight_target2.items():
                     target2_plot = plot.copy()
                     if target2_plot["type"] == "fastjet":
@@ -325,17 +336,26 @@ class UncertaintyPlotter(plotter.Plotter):
                         weights=wgts,
                         root_index=3,  # Only effects histogram for fastjet observables
                     )
-                    if self.normalize_targets and wgt_name == "target2":
-                        norm_factor = np.sum(source_hist) / np.sum(
+                    if wgt_name == "target2":
+                        if self.normalize_targets:
+                            norm_factor = np.sum(source_hist) / np.sum(
+                                target2_hist_tuple[0]
+                            )
+                            target2_hist_tuple = (
+                                target2_hist_tuple[0] * norm_factor,
+                                target2_hist_tuple[1] * norm_factor**2,
+                                target2_hist_tuple[2],
+                            )
+                        target2_nominal_hist = target2_hist_tuple[0]
+                    else:
+                        norm_factor = np.sum(target2_nominal_hist) / np.sum(
                             target2_hist_tuple[0]
                         )
-                    else:
-                        norm_factor = 1.0
-                    target2_hist_tuple = (
-                        target2_hist_tuple[0] * norm_factor,
-                        target2_hist_tuple[1] * norm_factor**2,
-                        target2_hist_tuple[2],
-                    )
+                        target2_hist_tuple = (
+                            target2_hist_tuple[0] * norm_factor,
+                            target2_hist_tuple[1] * norm_factor**2,
+                            target2_hist_tuple[2],
+                        )
                     target2_hists[wgt_name] = target2_hist_tuple
 
             # Build ensemble histograms for NN stability uncertainty

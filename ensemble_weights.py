@@ -125,19 +125,19 @@ def group_name_to_write_name(gn, idx=None):
         return "weights_muonEffTrig"
     elif gn == "prw":
         return "weights_pileup"
-    elif gn == "theory_qcd":
+    elif gn == "theory-qcd":
         return "weights_theoryQCD"
-    elif gn == "theory_pdf":
+    elif gn == "theory-pdf":
         return "weights_theoryPDF"
-    elif gn == "theory_alphas":
+    elif gn == "theory-alphas":
         return "weights_theoryAlphaS"
-    elif gn == "theory_pssoft":
+    elif gn == "theory-pssoft":
         return "weights_theoryPSsoft"
-    elif gn == "theory_psjet":
+    elif gn == "theory-psjet":
         return "weights_theoryPSjet"
-    elif gn == "theory_mpi":
+    elif gn == "theory-mpi":
         return "weights_theoryMPI"
-    elif gn == "theory_psscale":
+    elif gn == "theory-psscale":
         return "weights_theoryPSscale"
     else:
         raise ValueError(f"Group name {gn} not recognized!")
@@ -339,22 +339,42 @@ parser.add_argument(
     help="The pt_ll threshold cut in GeV. Default is 200.",
     default=200.0,
 )
+parser.add_argument(
+    "--og_order",
+    action="store_true",
+    help="If set, unshuffle weights to the original order of the MG and Sherpa samples",
+    default=False,
+)
 args = parser.parse_args()
 
 # Load indices for unshuffling MC test events and HV events
-indices_nominal = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+nominal_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+if args.og_order:
+    nominal_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_og.npy"
+indices_nominal = np.load(nominal_path)
+indices_hv = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_hv.npy"
 )
 
+# Set paths to trees
+base_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/"
+nominal_path = (
+    base_path
+    + "ZjetOmnifold_May19_MGPy8FxFxPlusNonStrong_withdd_Test_23Nov25_shuffled.root"
+)
+hv_path = (
+    base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
+)
+if args.og_order:
+    base_path = "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files_v4/"
+    nominal_path = (
+        base_path + "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_withdd.root"
+    )
+    hv_path = base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5.root"
+
 # Load trees, n_data, and raw MC weights
-t = uproot.open(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/"
-    "ZjetOmnifold_May19_MGPy8FxFxPlusNonStrong_withdd_Test_23Nov25_shuffled.root"
-)["OmniTree"]
-t_hv = uproot.open(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/"
-    "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
-)["OmniTree"]
+t = uproot.open(nominal_path)["OmniTree"]
+t_hv = uproot.open(hv_path)["OmniTree"]
 if args.use_data:
     t_data = uproot.open(
         "/pscratch/sd/k/kgreif/zjets_plot_staging/"
@@ -391,6 +411,14 @@ for gn in args.group_names:
     if gn == "hv":
         continue
 
+    # Decide what indices to use
+    if args.og_order:
+        use_indices = indices_nominal
+    elif "theory" not in gn:
+        use_indices = indices_nominal
+    else:
+        use_indices = None
+
     # Pull the weights for a given group
     if args.use_data and gn != "dd":
         pull_gn = f"{gn}-data"
@@ -401,7 +429,7 @@ for gn in args.group_names:
         args.campaign_path,
         pull_gn,
         args.iteration,
-        indices=indices_nominal if "theory" not in gn else None,
+        indices=use_indices,
     )
     print(f"Got {len(pulled_weights)} weights for group {pull_gn}")
 
@@ -409,8 +437,8 @@ for gn in args.group_names:
     if gn not in ["dbootstrap", "mcbootstrap"]:
         central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
         if "theory" in gn:
-            adjusted_root_weights = nominal_root_weights.copy()
-            central_weights *= adjust_theory_weights(t, gn, adjusted_root_weights)
+            multiplier = adjust_theory_weights(t, gn, nominal_root_weights)
+            central_weights *= multiplier
         else:
             central_weights *= nominal_root_weights
         ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
@@ -471,6 +499,7 @@ if "hv" in args.group_names:
         args.campaign_path,
         "hv-data" if args.use_data else "hv",
         args.iteration,
+        indices=indices_hv if args.og_order else None,
     )
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
