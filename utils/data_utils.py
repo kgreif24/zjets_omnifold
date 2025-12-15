@@ -112,7 +112,7 @@ def get_masses(pdgids: ak.Array | np.ndarray) -> ak.Array | np.ndarray:
         # Use numpy array operations
         # Validate PDG IDs for numpy arrays
         assert np.all(
-            np.isin(pdgids, [13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, -999])
+            np.isin(pdgids, [13, 211, 321, 2212, 11, 3222, 3112, 3312, 3334, 999])
         )
         masses = np.zeros_like(pdgids, dtype=np.float32)
         masses[pdgids == 13] = 0.105658
