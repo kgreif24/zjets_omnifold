@@ -34,14 +34,15 @@ def test_w1(tmp_path):
         tmp_path,
         labels=("Test1", "Test2"),
         verbosity=2,
+        normalize_targets=False,
     )
     start, end = plotter.wasserstein_distance(
         "weight",
         "./assets/wgts.npz",
         np.ones(100),
     )
-    assert np.isclose(start, 352.057, atol=0.1)
-    assert np.isclose(end, 364.483, atol=0.1)
+    assert np.isclose(start, 375.650, atol=0.1)
+    assert np.isclose(end, 402.671, atol=0.1)
 
 
 def test_apply_kinematic_cuts(tmp_path):

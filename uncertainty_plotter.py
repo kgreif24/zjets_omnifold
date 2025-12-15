@@ -984,9 +984,11 @@ class UncertaintyPlotter(plotter.Plotter):
             rel_mbias = None
         else:
             # Find method bias
-            # Need to normalize target histogram to match source histogram
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
+            if self.normalize_targets:
+                norm_factor = np.sum(source_hist) / np.sum(target_hist)
+                norm_target_hist = norm_factor * target_hist
+            else:
+                norm_target_hist = target_hist
             mbias = (source_hist - norm_target_hist) ** 2
             rel_mbias = np.sqrt(mbias) / norm_target_hist
 

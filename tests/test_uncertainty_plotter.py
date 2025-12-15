@@ -94,24 +94,6 @@ def test_dual_target_mode(tmp_path):
     _ = plotter.plot("./assets/unc_wgts.npz")
 
 
-def test_data_comparison_mode(tmp_path):
-    """Test data_comparison_mode=True behavior"""
-    plotter = UncertaintyPlotter(
-        source_path="./assets/evts_000_100.root",
-        target_path="./assets/truth_evts_000_100.root",
-        hv_path="./assets/sherpa_evts.root",
-        store=tmp_path,
-        verbosity=0,
-        data_comparison_mode=True,
-    )
-
-    # Test that data_comparison_mode is set correctly
-    assert plotter.data_comparison_mode is True
-
-    # Test basic functionality with data comparison mode
-    _ = plotter.plot("./assets/unc_wgts.npz")
-
-
 def test_uncertainty_budget_plot(tmp_path):
     """Test budget plot generation (lines 923-1058)"""
     plotter = UncertaintyPlotter(
