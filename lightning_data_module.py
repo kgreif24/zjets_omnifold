@@ -3,7 +3,7 @@ It builds OfDatasets from the input ROOT files and provides dataloaders for trai
 and testing.
 
 Author: Kevin Greif
-Last updated 11/15/2024
+Last updated 12/05/2025
 python3
 """
 
@@ -114,6 +114,8 @@ class LOfData(L.LightningDataModule):
                 activated for this data module.
             data_bootstrap_path {str} - The path to the data bootstrap in this training
                 If None, no bootstrap will be used.
+            theory_weight_mode {bool} - Set to true if we are using theory systematics
+                to modify the weights. Defaults to False.
             **kwargs - Passed to the OfDataset classes
         """
 
@@ -591,6 +593,38 @@ class LOfData(L.LightningDataModule):
                         ak.to_numpy(tree["syst_prwDown"].array(entry_stop=max_read))
                         / nom_sf
                     )
+                root_weights *= syst_weights
+            elif "theory" in self.syst_kw:
+                if self.syst_kw == "theory_qcd":
+                    syst_weights = ak.to_numpy(
+                        tree["w_QCD_dd"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_pdf":
+                    syst_weights = ak.to_numpy(
+                        tree["w_PDF_CT18nnlo"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_alphas":
+                    syst_weights = ak.to_numpy(
+                        tree["w_Alpha_s1"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_pssoft":
+                    syst_weights = ak.to_numpy(
+                        tree["w_Var1Down"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_psjet":
+                    syst_weights = ak.to_numpy(
+                        tree["w_Var2Down"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_mpi":
+                    syst_weights = ak.to_numpy(
+                        tree["w_MPIDown"].array(entry_stop=max_read)
+                    )
+                elif self.syst_kw == "theory_psscale":
+                    syst_weights = ak.to_numpy(
+                        tree["w_RenDown"].array(entry_stop=max_read)
+                    )
+                else:
+                    raise ValueError(f"Systematic {self.syst_kw} not recognized!")
                 root_weights *= syst_weights
 
         # Load weights from the path

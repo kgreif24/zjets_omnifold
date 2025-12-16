@@ -32,12 +32,15 @@ public :
    string weightFilename;
    vector<string> weightBranchNames;
    int nEns;
+   int nBootstrapData;
    TString saveName;
    int kinematicRegion;
+   string trackFormat; // "vector" or "array" - format of track data in ROOT file
 
    // HistoGroups
    vector<HistoGroup> centralHistoGroups;
    vector<HistoGroup> ensHistoGroups;
+   vector<HistoGroup> bootstrapHistoGroups;
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
@@ -85,18 +88,29 @@ public :
    Int_t           Ntracks_trackj1;
    Int_t           Ntracks_trackj2;
    Int_t           NtrackJets20;
-   Int_t           nweight_bs;
    Int_t           weight_bs[100];   //[nweight_bs]
-   Int_t           npT_tracks;
-   Double_t        pT_tracks[309];   //[npT_tracks]
-   Int_t           neta_tracks;
-   Double_t        eta_tracks[309];   //[neta_tracks]
-   Int_t           nphi_tracks;
-   Double_t        phi_tracks[309];   //[nphi_tracks]
-   Int_t           ntrackJetIndex_tracks;
-   Double_t           trackJetIndex_tracks[309];   //[ntrackJetIndex_tracks]
-   Int_t           npdgId_tracks;
-   Long_t           pdgId_tracks[309];   //[npdgId_tracks]
+   
+   // Track data storage - supports both vector and array formats
+   // Vector format (for ROOT files with vector<float> branches)
+   vector<Float_t> pT_tracks;
+   vector<Float_t> eta_tracks;
+   vector<Float_t> phi_tracks;
+   vector<Long64_t> trackJetIndex_tracks;
+   vector<Long64_t> pdgId_tracks;
+   
+   // Pointers to vectors (required by ROOT for vector branches)
+   vector<Float_t> *p_pT_tracks;
+   vector<Float_t> *p_eta_tracks;
+   vector<Float_t> *p_phi_tracks;
+   vector<Long64_t> *p_trackJetIndex_tracks;
+   vector<Long64_t> *p_pdgId_tracks;
+   
+   // Array format (for ROOT files with fixed-size arrays)
+   Double_t        pT_tracks_array[309];   //[npT_tracks]
+   Double_t        eta_tracks_array[309];
+   Double_t        phi_tracks_array[309];
+   Long64_t        trackJetIndex_tracks_array[309];
+   Long64_t        pdgId_tracks_array[309];
 
    // List of branches
    TBranch        *b_weight;   //!
@@ -142,20 +156,14 @@ public :
    TBranch        *b_Ntracks_trackj1;   //!
    TBranch        *b_Ntracks_trackj2;   //!
    TBranch        *b_NtrackJets20;   //!
-   TBranch        *b_nweight_bs;   //!
    TBranch        *b_weight_bs;   //!
-   TBranch        *b_npT_tracks;   //!
    TBranch        *b_pT_tracks;   //!
-   TBranch        *b_neta_tracks;   //!
    TBranch        *b_eta_tracks;   //!
-   TBranch        *b_nphi_tracks;   //!
    TBranch        *b_phi_tracks;   //!
-   TBranch        *b_ntrackJetIndex_tracks;   //!
    TBranch        *b_trackJetIndex_tracks;   //!
-   TBranch        *b_npdgId_tracks;   //!
    TBranch        *b_pdgId_tracks;   //!
 
-   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int kinematic_region = 0);
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int nBootstrapData = 0, int kinematic_region = 0, string track_format = "vector");
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -168,34 +176,55 @@ public :
    virtual void     FillEEC(shared_ptr<TH1D>& h, const vector<double>& esum, const vector<double>& z, double Q2, double weight, bool flip_z = false);
    virtual void     FillLund(shared_ptr<TH1D>& hz, shared_ptr<TH1D>& hdr, shared_ptr<TH2D>& h2, const vector<double>& z, const vector<double>& dR, double weight);
    virtual float    GetMassFromPID(int pdgId);
+   static vector<string> DetectWeightNames(string filename);
 };
 
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int kinematic_region) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int nBootstrapData, int kinematic_region, string track_format) : fChain(0) 
 {
 
    // Store instance variables
    weightFilename = weightFile; // Store the weight file name
    weightBranchNames = weightNames; // Store the weight branch names
    nEns = nEnsembles; // Store the number of ensembles
+   this->nBootstrapData = nBootstrapData; // Store the number of bootstrap data weights
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
    kinematicRegion = kinematic_region; // Store the kinematic region
+   trackFormat = track_format; // Store the track format ("vector" or "array")
 
    // Initialize histogram groups
    for (const auto& weight_name : weightBranchNames) {
-      if (weight_name != "weight" && weight_name != "weight_mc") {
-         centralHistoGroups.push_back(HistoGroup(weight_name + "-", kinematicRegion));
+      string group_prefix;
+      
+      // Determine histogram group name based on weight type
+      if (weight_name == "target_dd") {
+         group_prefix = "target_dd-";
+      } else if (weight_name == "weight" || weight_name == "weight_mc") {
+         group_prefix = "nominal-";
       } else {
-         centralHistoGroups.push_back(HistoGroup("nominal-", kinematicRegion));
+         // Drop "weights_" prefix if present, otherwise use full name
+         const string weights_prefix = "weights_";
+         if (weight_name.find(weights_prefix) == 0) {
+            group_prefix = weight_name.substr(weights_prefix.length()) + "-";
+         } else {
+            group_prefix = weight_name + "-";
+         }
       }
+      
+      centralHistoGroups.push_back(HistoGroup(group_prefix, kinematicRegion));
    }
 
-   // Initialize the ensemble histograms for the nominal ensemble
+   // Initialize the ensemble histograms
    for (int i = 0; i < nEns; ++i) {
-      ensHistoGroups.push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-", kinematicRegion));
+      ensHistoGroups.push_back(HistoGroup("weights_ensemble_" + to_string(i) + "-", kinematicRegion));
+   }
+
+   // Initialize the bootstrap data histograms
+   for (int i = 0; i < nBootstrapData; ++i) {
+      bootstrapHistoGroups.push_back(HistoGroup("weights_bootstrap_data_" + to_string(i) + "-", kinematicRegion));
    }
 
    // Initialize the tree
@@ -242,12 +271,47 @@ void MakeOmni::Init(TTree *tree)
    if (!tree) return;
    fChain = tree;
    fCurrent = -1;
-   fChain->SetMakeClass(1);
+   // Don't use SetMakeClass(1) as it can cause issues with vector branches
+   // fChain->SetMakeClass(1);
+   
+   // Initialize track data storage based on format
+   if (trackFormat == "vector") {
+      // Initialize vectors to ensure they're in a valid state before ROOT reads into them
+      pT_tracks.clear();
+      eta_tracks.clear();
+      phi_tracks.clear();
+      trackJetIndex_tracks.clear();
+      pdgId_tracks.clear();
+      
+      // Initialize pointers to point to the vectors (required by ROOT for vector branches)
+      p_pT_tracks = &pT_tracks;
+      p_eta_tracks = &eta_tracks;
+      p_phi_tracks = &phi_tracks;
+      p_trackJetIndex_tracks = &trackJetIndex_tracks;
+      p_pdgId_tracks = &pdgId_tracks;
+   } else {
+      // For array format, arrays are already allocated, no initialization needed
+      // Arrays will be read directly by ROOT
+   }
 
    // Set branch addresses that are used for both truth and reco data
    fChain->SetBranchAddress("weight", &weight, &b_weight);
    fChain->SetBranchAddress("weight_mc", &weight_mc, &b_weight_mc);
-   fChain->SetBranchAddress("target_dd", &target_dd, &b_target_dd);
+   
+   // Only load target_dd branch if it's needed (in weightBranchNames) and exists
+   bool need_target_dd = false;
+   for (const auto& weight_name : weightBranchNames) {
+      if (weight_name == "target_dd") {
+         need_target_dd = true;
+         break;
+      }
+   }
+   if (need_target_dd && fChain->GetBranch("target_dd")) {
+      fChain->SetBranchAddress("target_dd", &target_dd, &b_target_dd);
+   } else {
+      b_target_dd = nullptr; // Mark that branch is not loaded
+   }
+   
    fChain->SetBranchAddress("EventNumber", &EventNumber, &b_EventNumber);
    fChain->SetBranchAddress("RunNumber", &RunNumber, &b_RunNumber);
 
@@ -276,20 +340,34 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("truth_tau1_trackj2", &tau1_trackj2, &b_tau1_trackj2);
       fChain->SetBranchAddress("truth_tau2_trackj2", &tau2_trackj2, &b_tau2_trackj2);
       fChain->SetBranchAddress("truth_tau3_trackj2", &tau3_trackj2, &b_tau3_trackj2);
-      fChain->SetBranchAddress("truth_pT_tracks", &pT_tracks, &b_pT_tracks);
-      fChain->SetBranchAddress("truth_eta_tracks", &eta_tracks, &b_eta_tracks);
-      fChain->SetBranchAddress("truth_phi_tracks", &phi_tracks, &b_phi_tracks);
-      fChain->SetBranchAddress("truth_trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
       fChain->SetBranchAddress("truth_Ntracks", &Ntracks, &b_Ntracks);
       fChain->SetBranchAddress("truth_Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("truth_Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
       fChain->SetBranchAddress("truth_NtrackJets20", &NtrackJets20, &b_NtrackJets20);
-      fChain->SetBranchAddress("ntruth_pT_tracks", &npT_tracks, &b_npT_tracks);
-      fChain->SetBranchAddress("ntruth_eta_tracks", &neta_tracks, &b_neta_tracks);
-      fChain->SetBranchAddress("ntruth_phi_tracks", &nphi_tracks, &b_nphi_tracks);
-      fChain->SetBranchAddress("ntruth_trackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
-      fChain->SetBranchAddress("ntruth_pdgId_tracks", &npdgId_tracks, &b_npdgId_tracks);
-      fChain->SetBranchAddress("truth_pdgId_tracks", &pdgId_tracks, &b_pdgId_tracks);
+      
+      // Set up track branches based on format
+      if (trackFormat == "vector") {
+         // Enable vector branches explicitly
+         fChain->SetBranchStatus("truth_pT_tracks", 1);
+         fChain->SetBranchStatus("truth_eta_tracks", 1);
+         fChain->SetBranchStatus("truth_phi_tracks", 1);
+         fChain->SetBranchStatus("truth_trackJetIndex_tracks", 1);
+         fChain->SetBranchStatus("truth_pdgId_tracks", 1);
+         
+         // For vector branches, ROOT requires a pointer to the vector
+         fChain->SetBranchAddress("truth_pT_tracks", &p_pT_tracks, &b_pT_tracks);
+         fChain->SetBranchAddress("truth_eta_tracks", &p_eta_tracks, &b_eta_tracks);
+         fChain->SetBranchAddress("truth_phi_tracks", &p_phi_tracks, &b_phi_tracks);
+         fChain->SetBranchAddress("truth_trackJetIndex_tracks", &p_trackJetIndex_tracks, &b_trackJetIndex_tracks);
+         fChain->SetBranchAddress("truth_pdgId_tracks", &p_pdgId_tracks, &b_pdgId_tracks);
+      } else {
+         // For array format, use direct array addresses
+         fChain->SetBranchAddress("truth_pT_tracks", pT_tracks_array, &b_pT_tracks);
+         fChain->SetBranchAddress("truth_eta_tracks", eta_tracks_array, &b_eta_tracks);
+         fChain->SetBranchAddress("truth_phi_tracks", phi_tracks_array, &b_phi_tracks);
+         fChain->SetBranchAddress("truth_trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+         fChain->SetBranchAddress("truth_pdgId_tracks", pdgId_tracks_array, &b_pdgId_tracks);
+      }
    } else {
       fChain->SetBranchAddress("pass190", &pass190, &b_pass190);
       fChain->SetBranchAddress("pT_ll", &pT_ll, &b_pT_ll);
@@ -318,14 +396,27 @@ void MakeOmni::Init(TTree *tree)
       fChain->SetBranchAddress("Ntracks_trackj1", &Ntracks_trackj1, &b_Ntracks_trackj1);
       fChain->SetBranchAddress("Ntracks_trackj2", &Ntracks_trackj2, &b_Ntracks_trackj2);
       fChain->SetBranchAddress("NtrackJets20", &NtrackJets20, &b_NtrackJets20);
-      fChain->SetBranchAddress("npT_tracks", &npT_tracks, &b_npT_tracks);
-      fChain->SetBranchAddress("neta_tracks", &neta_tracks, &b_neta_tracks);
-      fChain->SetBranchAddress("nphi_tracks", &nphi_tracks, &b_nphi_tracks);
-      fChain->SetBranchAddress("ntrackJetIndex_tracks", &ntrackJetIndex_tracks, &b_ntrackJetIndex_tracks);
-      fChain->SetBranchAddress("pT_tracks", &pT_tracks, &b_pT_tracks);
-      fChain->SetBranchAddress("eta_tracks", &eta_tracks, &b_eta_tracks);
-      fChain->SetBranchAddress("phi_tracks", &phi_tracks, &b_phi_tracks);
-      fChain->SetBranchAddress("trackJetIndex_tracks", &trackJetIndex_tracks, &b_trackJetIndex_tracks);
+      
+      // Set up track branches based on format
+      if (trackFormat == "vector") {
+         // Enable vector branches explicitly
+         fChain->SetBranchStatus("pT_tracks", 1);
+         fChain->SetBranchStatus("eta_tracks", 1);
+         fChain->SetBranchStatus("phi_tracks", 1);
+         fChain->SetBranchStatus("trackJetIndex_tracks", 1);
+         
+         // For vector branches, ROOT requires a pointer to the vector
+         fChain->SetBranchAddress("pT_tracks", &p_pT_tracks, &b_pT_tracks);
+         fChain->SetBranchAddress("eta_tracks", &p_eta_tracks, &b_eta_tracks);
+         fChain->SetBranchAddress("phi_tracks", &p_phi_tracks, &b_phi_tracks);
+         fChain->SetBranchAddress("trackJetIndex_tracks", &p_trackJetIndex_tracks, &b_trackJetIndex_tracks);
+      } else {
+         // For array format, use direct array addresses
+         fChain->SetBranchAddress("pT_tracks", pT_tracks_array, &b_pT_tracks);
+         fChain->SetBranchAddress("eta_tracks", eta_tracks_array, &b_eta_tracks);
+         fChain->SetBranchAddress("phi_tracks", phi_tracks_array, &b_phi_tracks);
+         fChain->SetBranchAddress("trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+      }
    }
    
    Notify();

@@ -7,11 +7,14 @@
 #include <TLorentzVector.h>
 #include <TMath.h>
 #include "jetHelpers.h"
-#include "cnpy.h"
+#include "cnpy/cnpy.h"
 #include <memory>
 #include <string>
 #include "indicators/progress_bar.hpp"
 #include <omp.h>
+#include <algorithm>
+#include <fstream>
+#include <stdexcept>
 using namespace fastjet;
 using namespace std;
 using namespace indicators;
@@ -44,14 +47,75 @@ float MakeOmni::GetMassFromPID(int pdgId) {
 
 vector<float> MakeOmni::LoadWeights(string filename, string key) {
 
-   // Access weights, assume we want the test weights
-   cnpy::npz_t npz_file = cnpy::npz_load(filename);
-   cnpy::NpyArray array = npz_file[key];
+   try {
+      // Load a single array from the npz file (more reliable than loading entire file)
+      // This uses the single-array version of npz_load which is more robust for large files
+      cnpy::NpyArray array = cnpy::npz_load(filename, key);
 
-   // Convert to vector<float> and return
-   vector<float> vec(array.data<float>(), array.data<float>() + array.num_vals);
-   return vec;
+      // Convert to vector<float> and return
+      vector<float> vec(array.data<float>(), array.data<float>() + array.num_vals);
+      return vec;
+      
+   } catch (const std::runtime_error& e) {
+      throw std::runtime_error("LoadWeights: Error loading '" + key + "' from " + filename + ": " + e.what());
+   } catch (const std::exception& e) {
+      throw std::runtime_error("LoadWeights: Unexpected error loading '" + key + "' from " + filename + ": " + e.what());
+   }
 
+}
+
+vector<string> MakeOmni::DetectWeightNames(string filename) {
+   vector<string> detected_names;
+   
+   // Check if file exists
+   ifstream file_check(filename);
+   if (!file_check.good()) {
+      throw std::runtime_error("DetectWeightNames: Cannot open file " + filename + ". Please check the file path.");
+   }
+   file_check.close();
+   
+   try {
+      // Load the npz file to get all keys
+      cnpy::npz_t npz_file = cnpy::npz_load(filename);
+      
+      // Iterate over all keys in the npz file
+      for (const auto& pair : npz_file) {
+         string key = pair.first;
+         
+         // Skip ensemble weights (handled separately via --nEns)
+         if (key.find("weights_ensemble_") == 0) {
+            continue;
+         }
+         
+         // Skip bootstrap data weights (handled separately via --nBootstrapData)
+         if (key.find("weights_bootstrap_data_") == 0) {
+            continue;
+         }
+         
+         // Skip bootstrap MC weights (handled separately if needed)
+         if (key.find("weights_bootstrap_mc_") == 0) {
+            continue;
+         }
+         
+         // Skip weights_hv - this re-weights a different dataset and should be
+         // specified explicitly via --weight_names if needed
+         if (key == "weights_hv") {
+            continue;
+         }
+         
+         // Include all other weights (weights_nominal, weights_dd, 
+         // weights_trackEffMain, etc., and target_dd)
+         detected_names.push_back(key);
+      }
+      
+      // Sort for consistent ordering
+      sort(detected_names.begin(), detected_names.end());
+      
+   } catch (const std::runtime_error& e) {
+      throw std::runtime_error("DetectWeightNames: Error reading npz file " + filename + ": " + e.what());
+   }
+   
+   return detected_names;
 }
 
 void MakeOmni::Loop(Long64_t maxEvents) {
@@ -59,19 +123,58 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    // Load needed weights
    vector<vector<float>> central_weights;
    vector<vector<float>> ens_weights;
+   vector<vector<float>> bootstrap_data_weights;
 
-   // Load the needed weights
+   // Load weights individually (more reliable for large files with many arrays)
+   // Loading the entire npz file at once can fail with large files due to cnpy limitations
+
+   // Load the needed weights individually (more reliable for large files)
+   cout << "Loading weights from file: " << weightFilename << endl;
    for (const auto& weight_name : weightBranchNames) {
-      if (weight_name != "weight" && weight_name != "weight_mc" && weight_name != "target_dd") {
-         central_weights.push_back(LoadWeights(weightFilename, weight_name + "-central"));
+      if (weight_name != "weight" && weight_name != "weight_mc") {
+         // Load from npz file using weight name directly (new format)
+         // target_dd can now be loaded from npz if specified
+         cout << "  Loading: " << weight_name << "..." << flush;
+         try {
+            central_weights.push_back(LoadWeights(weightFilename, weight_name));
+            cout << " done" << endl;
+         } catch (const std::exception& e) {
+            cout << " FAILED" << endl;
+            cerr << "Error loading weight '" << weight_name << "': " << e.what() << endl;
+            throw;
+         }
       } else {
+         // weight and weight_mc come from ROOT tree, not npz file
          central_weights.push_back(vector<float>());
       }
    }
 
    // Load the ensemble weights
    for (int i = 0; i < nEns; ++i) {
-      ens_weights.push_back(LoadWeights(weightFilename, weightBranchNames[0] + "-" + to_string(i)));
+      string key = "weights_ensemble_" + to_string(i);
+      cout << "  Loading: " << key << "..." << flush;
+      try {
+         ens_weights.push_back(LoadWeights(weightFilename, key));
+         cout << " done" << endl;
+      } catch (const std::exception& e) {
+         cout << " FAILED" << endl;
+         cerr << "Error loading weight '" << key << "': " << e.what() << endl;
+         throw;
+      }
+   }
+
+   // Load the bootstrap data weights
+   for (int i = 0; i < nBootstrapData; ++i) {
+      string key = "weights_bootstrap_data_" + to_string(i);
+      cout << "  Loading: " << key << "..." << flush;
+      try {
+         bootstrap_data_weights.push_back(LoadWeights(weightFilename, key));
+         cout << " done" << endl;
+      } catch (const std::exception& e) {
+         cout << " FAILED" << endl;
+         cerr << "Error loading weight '" << key << "': " << e.what() << endl;
+         throw;
+      }
    }
 
    // Jet definitions to consider
@@ -115,21 +218,77 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    int num_threads = omp_get_max_threads();
    vector<vector<HistoGroup>> thread_central_histos(num_threads);
    vector<vector<HistoGroup>> thread_ens_histos(num_threads);
+   vector<vector<HistoGroup>> thread_bootstrap_histos(num_threads);
+   
+   // Calculate total number of histogram groups per thread
+   int total_central = weightBranchNames.size();
+   int total_per_thread = total_central + nEns + nBootstrapData;
+   int total_groups = total_per_thread * num_threads;
+   
+   std::cout << " === initializing " << num_threads << " thread-local histogram groups ===" << std::endl;
+   std::cout << "  Per thread: " << total_central << " central + " << nEns << " ensemble + " << nBootstrapData << " bootstrap = " << total_per_thread << " groups" << std::endl;
+   std::cout << "  Total: " << total_groups << " histogram groups" << std::endl;
    
    // Initialize thread-local histogram groups
+   int group_count = 0;
+   int progress_interval = (total_groups > 20) ? (total_groups / 20) : 1;
+   int thread_report_interval = (num_threads > 10) ? (num_threads / 10) : 1;
+   
    for (int t = 0; t < num_threads; ++t) {
-      for (const auto& weight_name : weightBranchNames) {
-         if (weight_name != "weight" && weight_name != "weight_mc") {
-            thread_central_histos[t].push_back(HistoGroup(weight_name + "-", kinematicRegion));
+      if (t % thread_report_interval == 0 || t == num_threads - 1) {
+         std::cout << "  Initializing thread " << (t + 1) << "/" << num_threads << "..." << std::endl;
+      }
+      
+      // Initialize central weight histograms
+      for (size_t w = 0; w < weightBranchNames.size(); ++w) {
+         const auto& weight_name = weightBranchNames[w];
+         string group_prefix;
+         
+         // Determine histogram group name based on weight type
+         if (weight_name == "target_dd") {
+            group_prefix = "target_dd-";
+         } else if (weight_name == "weight" || weight_name == "weight_mc") {
+            group_prefix = "nominal-";
          } else {
-            thread_central_histos[t].push_back(HistoGroup("nominal-", kinematicRegion));
+            // Drop "weights_" prefix if present, otherwise use full name
+            const string weights_prefix = "weights_";
+            if (weight_name.find(weights_prefix) == 0) {
+               group_prefix = weight_name.substr(weights_prefix.length()) + "-";
+            } else {
+               group_prefix = weight_name + "-";
+            }
+         }
+         
+         thread_central_histos[t].push_back(HistoGroup(group_prefix, kinematicRegion));
+         group_count++;
+         
+         if (group_count % progress_interval == 0) {
+            std::cout << "    Progress: " << group_count << "/" << total_groups << " groups initialized (" 
+                      << (100 * group_count / total_groups) << "%)" << std::endl;
          }
       }
       
+      // Initialize ensemble weight histograms
       for (int i = 0; i < nEns; ++i) {
-         thread_ens_histos[t].push_back(HistoGroup(weightBranchNames[0] + "-" + to_string(i) + "-", kinematicRegion));
+         thread_ens_histos[t].push_back(HistoGroup("ensemble_" + to_string(i) + "-", kinematicRegion));
+         group_count++;
+         if (group_count % progress_interval == 0) {
+            std::cout << "    Progress: " << group_count << "/" << total_groups << " groups initialized (" 
+                      << (100 * group_count / total_groups) << "%)" << std::endl;
+         }
+      }
+      
+      // Initialize bootstrap data weight histograms
+      for (int i = 0; i < nBootstrapData; ++i) {
+         thread_bootstrap_histos[t].push_back(HistoGroup("bootstrap_data_" + to_string(i) + "-", kinematicRegion));
+         group_count++;
+         if (group_count % progress_interval == 0) {
+            std::cout << "    Progress: " << group_count << "/" << total_groups << " groups initialized (" 
+                      << (100 * group_count / total_groups) << "%)" << std::endl;
+         }
       }
    }
+   std::cout << "  Completed initialization of all " << total_groups << " histogram groups" << std::endl;
    
    // Pre-load all events sequentially (ROOT trees are not thread-safe)
    std::cout << " === pre-loading events === " << std::endl;
@@ -144,9 +303,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       Float_t pT_ll, pT_l1, pT_l2, eta_l1, eta_l2, phi_l1, phi_l2, y_ll;
       Float_t pT_trackj1, y_trackj1, phi_trackj1, m_trackj1;
       Float_t pT_trackj2, y_trackj2, phi_trackj2, m_trackj2;
-      Int_t Ntracks, npT_tracks;
-      vector<Double_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
-      vector<Long_t> pdgId_tracks_vec;
+      Int_t Ntracks;
+      vector<Float_t> pT_tracks_vec, eta_tracks_vec, phi_tracks_vec;
+      vector<Long64_t> pdgId_tracks_vec;
    };
    
    vector<EventData> event_data;
@@ -154,14 +313,16 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    for (Long64_t jentry=0; jentry<nentries;jentry++) {
       Long64_t ientry = LoadTree(jentry);
       if (ientry < 0) continue;
-      nb = fChain->GetEntry(jentry);   nbytes += nb;
+      nb = fChain->GetEntry(jentry);
+      nbytes += nb;
       
       // Store the event data
       EventData evt;
       evt.entry = jentry;
       evt.weight = weight;
       evt.weight_mc = weight_mc;
-      evt.target_dd = target_dd;
+      // Only copy target_dd if the branch was loaded
+      evt.target_dd = (b_target_dd != nullptr) ? target_dd : 0.0;
       evt.pass190 = pass190;
       evt.pT_ll = pT_ll;
       evt.pT_l1 = pT_l1;
@@ -180,14 +341,46 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       evt.phi_trackj2 = phi_trackj2;
       evt.m_trackj2 = m_trackj2;
       evt.Ntracks = Ntracks;
-      evt.npT_tracks = npT_tracks;
-      
-      // Copy track arrays
-      evt.pT_tracks_vec.assign(pT_tracks, pT_tracks + npT_tracks);
-      evt.eta_tracks_vec.assign(eta_tracks, eta_tracks + npT_tracks);
-      evt.phi_tracks_vec.assign(phi_tracks, phi_tracks + npT_tracks);
-      if (isTruth) {
-         evt.pdgId_tracks_vec.assign(pdgId_tracks, pdgId_tracks + npT_tracks);
+
+      // Copy track data based on format (vector or array)
+      if (trackFormat == "vector") {
+         // Copy from vector format
+         evt.pT_tracks_vec.clear();
+         evt.pT_tracks_vec.reserve(pT_tracks.size());
+         evt.pT_tracks_vec.assign(pT_tracks.begin(), pT_tracks.end());
+         
+         evt.eta_tracks_vec.clear();
+         evt.eta_tracks_vec.reserve(eta_tracks.size());
+         evt.eta_tracks_vec.assign(eta_tracks.begin(), eta_tracks.end());
+         
+         evt.phi_tracks_vec.clear();
+         evt.phi_tracks_vec.reserve(phi_tracks.size());
+         evt.phi_tracks_vec.assign(phi_tracks.begin(), phi_tracks.end());
+         
+         if (isTruth) {
+            evt.pdgId_tracks_vec.clear();
+            evt.pdgId_tracks_vec.reserve(pdgId_tracks.size());
+            evt.pdgId_tracks_vec.assign(pdgId_tracks.begin(), pdgId_tracks.end());
+         }
+      } else {
+         // Copy from array format (using Ntracks to determine how many to copy)
+         evt.pT_tracks_vec.clear();
+         evt.pT_tracks_vec.reserve(Ntracks);
+         evt.pT_tracks_vec.assign(pT_tracks_array, pT_tracks_array + Ntracks);
+         
+         evt.eta_tracks_vec.clear();
+         evt.eta_tracks_vec.reserve(Ntracks);
+         evt.eta_tracks_vec.assign(eta_tracks_array, eta_tracks_array + Ntracks);
+         
+         evt.phi_tracks_vec.clear();
+         evt.phi_tracks_vec.reserve(Ntracks);
+         evt.phi_tracks_vec.assign(phi_tracks_array, phi_tracks_array + Ntracks);
+         
+         if (isTruth) {
+            evt.pdgId_tracks_vec.clear();
+            evt.pdgId_tracks_vec.reserve(Ntracks);
+            evt.pdgId_tracks_vec.assign(pdgId_tracks_array, pdgId_tracks_array + Ntracks);
+         }
       }
       
       event_data.push_back(evt);
@@ -241,7 +434,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
 
          // Create vector of PseudoJets from all tracks in event
          vector<PseudoJet> particles;
-         for (int i=0; i<evt.npT_tracks; i++){ 
+         for (int i=0; i<evt.Ntracks; i++){ 
             TLorentzVector constit_tlv;
             // Which track 3 vectors to use depend on whether we are processing truth or reco
             // Truth files use double precision while reco files use float precision
@@ -294,42 +487,15 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          }
 
          // Apply kinematic region cuts here
-         if (kinematicRegion == 1 && (evt.pT_trackj2 < 50 || evt.pT_ll < 350)) {
+         if (kinematicRegion == 0 && (evt.pT_ll < 200)) {
             continue;
-         } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2)) {
+         } else if (kinematicRegion == 1 && (evt.pT_trackj2 < 50 || evt.pT_ll < 350)) {
             continue;
-         } else if (kinematicRegion == 3 && evt.m_trackj1 < 32) {
+         } else if (kinematicRegion == 2 && (R04_mjj < 200 || R04_dyjj < 2 || evt.pT_ll < 200)) {
+            continue;
+         } else if (kinematicRegion == 3 && (evt.m_trackj1 < 32 || evt.pT_ll < 200)) {
             continue;
          }
-
-         // // Get Lund variables 
-         // vector<double> R04_lundz;
-         // vector<double> R04_lundkt;
-         // vector<double> R04_lundDr;
-         // if (R04_jets.size() > 0) {
-         //    processJets(R04_jets[0], 0.4, R04_lundz, R04_lundkt, R04_lundDr);
-         // }
-
-         // vector<double> R06_lundz;
-         // vector<double> R06_lundkt;
-         // vector<double> R06_lundDr;
-         // if (R06_jets.size() > 0) {
-         //    processJets(R06_jets[0], 0.6, R06_lundz, R06_lundkt, R06_lundDr);
-         // }
-
-         // vector<double> R10_lundz;
-         // vector<double> R10_lundkt;
-         // vector<double> R10_lundDr;
-         // if (R10_jets.size() > 0) {
-         //    processJets(R10_jets[0], 1.0, R10_lundz, R10_lundkt, R10_lundDr);
-         // }
-
-         // vector<double> CA04_lundz;
-         // vector<double> CA04_lundkt;
-         // vector<double> CA04_lundDr;
-         // if (CA04_jets.size() > 0) {
-         //    processJets(CA04_jets[0], 0.4, CA04_lundz, CA04_lundkt, CA04_lundDr);
-         // }
 
          // Get EEC variables in jets
          double R04_Q2 = 0.0;
@@ -376,27 +542,48 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          // Note we are filling with values only from leading jet for now
          // Can also use the FillEEC function for the TEEC
 
-         // Loop through all groups
-         for (unsigned int i = 0; i < centralHistoGroups.size() + ensHistoGroups.size(); ++i) {
+         // Loop through all groups (central, ensemble, bootstrap)
+         unsigned int total_groups = centralHistoGroups.size() + ensHistoGroups.size() + bootstrapHistoGroups.size();
+         for (unsigned int i = 0; i < total_groups; ++i) {
 
             // Get weight
             float use_weight;
-            if (weightBranchNames[i] == "weight") {
-               use_weight = evt.weight;
-            } else if (weightBranchNames[i] == "weight_mc") {
-               use_weight = evt.weight_mc;
-            } else if (weightBranchNames[i] == "target_dd") {
-               use_weight = evt.target_dd;
-            } else if (i < centralHistoGroups.size()) {
-               use_weight = central_weights[i][jentry] * evt.weight_mc;
+            if (i < centralHistoGroups.size()) {
+               // Central weights
+               if (weightBranchNames[i] == "weight") {
+                  use_weight = evt.weight / 140.1 ;  // Divide by luminosity to get cross section
+               } else if (weightBranchNames[i] == "weight_mc") {
+                  use_weight = evt.weight_mc / 140.1;  // Divide by luminosity to get cross section
+               } else if (weightBranchNames[i] == "target_dd") {
+                  // target_dd can come from npz file (if specified) or ROOT tree
+                  if (central_weights[i].size() > 0) {
+                     use_weight = central_weights[i][jentry];
+                  } else if (b_target_dd != nullptr) {
+                     // Branch was loaded from ROOT tree
+                     use_weight = evt.target_dd / 140.1;  // Divide by luminosity to get cross section
+                  } else {
+                     // Branch doesn't exist - use 0.0 as fallback (or could skip event)
+                     use_weight = 0.0;
+                  }
+               } else {
+                  use_weight = central_weights[i][jentry];
+               }
+            } else if (i < centralHistoGroups.size() + ensHistoGroups.size()) {
+               // Ensemble weights
+               unsigned int ens_idx = i - centralHistoGroups.size();
+               use_weight = ens_weights[ens_idx][jentry];
             } else {
-               use_weight = ens_weights[i - centralHistoGroups.size()][jentry] * evt.weight_mc;
+               // Bootstrap data weights
+               unsigned int bootstrap_idx = i - centralHistoGroups.size() - ensHistoGroups.size();
+               use_weight = bootstrap_data_weights[bootstrap_idx][jentry];
             }
 
             // Get thread-local histogram group
             HistoGroup& histoGroup = (i < centralHistoGroups.size()) ? 
                thread_central_histos[thread_id][i] : 
-               thread_ens_histos[thread_id][i - centralHistoGroups.size()];
+               (i < centralHistoGroups.size() + ensHistoGroups.size()) ?
+               thread_ens_histos[thread_id][i - centralHistoGroups.size()] :
+               thread_bootstrap_histos[thread_id][i - centralHistoGroups.size() - ensHistoGroups.size()];
 
             // // KT R=0.4 jets
             if (KT_jets.size() > 0) {
@@ -420,7 +607,6 @@ void MakeOmni::Loop(Long64_t maxEvents) {
             histoGroup.hmjj_R04->Fill(R04_mjj, use_weight);
             histoGroup.hdyjj_R04->Fill(R04_dyjj, use_weight);
             FillEEC(histoGroup.hEEC_R04, R04_esum, R04_z, R04_Q2, use_weight);
-            // FillLund(histoGroup.hLund_z_R04, histoGroup.hLund_dR_R04, histoGroup.hLund_plane_R04, R04_lundz, R04_lundDr, use_weight);
 
             // // R=0.6 jets
             if (R06_jets.size() > 0) {
@@ -428,7 +614,6 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                histoGroup.hpT_R06->Fill(R06_jets[0].pt(), use_weight);
             }
             FillEEC(histoGroup.hEEC_R06, R06_esum, R06_z, R06_Q2, use_weight);
-            // FillLund(histoGroup.hLund_z_R06, histoGroup.hLund_dR_R06, histoGroup.hLund_plane_R06, R06_lundz, R06_lundDr, use_weight);
 
             // R=1.0 jets
             if (R10_jets.size() > 0) {
@@ -436,7 +621,6 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                histoGroup.hpT_R10->Fill(R10_jets[0].pt(), use_weight);
             }
             FillEEC(histoGroup.hEEC_R10, R10_esum, R10_z, R10_Q2, use_weight);
-            // FillLund(histoGroup.hLund_z_R10, histoGroup.hLund_dR_R10, histoGroup.hLund_plane_R10, R10_lundz, R10_lundDr, use_weight);
 
             // CA R=0.4 jets
             if (CA04_jets.size() > 0) {
@@ -480,6 +664,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       for (unsigned int i = 0; i < ensHistoGroups.size(); ++i) {
          ensHistoGroups[i].MergeHistos(thread_ens_histos[t][i]);
       }
+      for (unsigned int i = 0; i < bootstrapHistoGroups.size(); ++i) {
+         bootstrapHistoGroups[i].MergeHistos(thread_bootstrap_histos[t][i]);
+      }
    }
    
    // Complete the progress bar
@@ -496,6 +683,10 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    }
 
    for (auto& histoGroup : ensHistoGroups) {
+      histoGroup.WriteHistos(foutput);
+   }
+
+   for (auto& histoGroup : bootstrapHistoGroups) {
       histoGroup.WriteHistos(foutput);
    }
 

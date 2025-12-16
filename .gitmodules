@@ -1,3 +1,6 @@
 [submodule "fastjet/indicators"]
 	path = fastjet/indicators
 	url = https://github.com/p-ranav/indicators.git
+[submodule "fastjet/cnpy"]
+	path = fastjet/cnpy
+	url = https://github.com/rogersce/cnpy.git

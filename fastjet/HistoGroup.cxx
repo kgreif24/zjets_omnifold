@@ -92,23 +92,14 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
     hmjj_R04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
     hdyjj_R04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
     hEEC_R04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
-    // hLund_z_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
-    // hLund_dR_R04 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
-    // hLund_plane_R04 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 11, 0.5, 6));
 
     hm1_R06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
     hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
     hEEC_R06 = make_shared<TH1D>(TH1D("", "", nbins, ak6_edges));
-    // hLund_z_R06 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
-    // hLund_dR_R06 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
-    // hLund_plane_R06 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
 
     hm1_R10 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
     hpT_R10 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
     hEEC_R10 = make_shared<TH1D>(TH1D("", "", nbins, ak10_edges));
-    // hLund_z_R10 = make_shared<TH1D>(TH1D("", "", 10, 0, 10));
-    // hLund_dR_R10 = make_shared<TH1D>(TH1D("", "", 10, 0, 5));
-    // hLund_plane_R10 = make_shared<TH2D>(TH2D("", "", 10, 0, 5, 12, 0, 6));
 
     hm1_CA04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
     hpT_CA04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
@@ -150,23 +141,14 @@ void HistoGroup::WriteHistos(TFile& foutput) {
     hmjj_R04->Write((name + "hmjj_R04").c_str());
     hdyjj_R04->Write((name + "hdyjj_R04").c_str());
     hEEC_R04->Write((name + "hEEC_R04").c_str());
-    // hLund_z_R04->Write((name + "hLund_z_R04").c_str());
-    // hLund_dR_R04->Write((name + "hLund_dR_R04").c_str());
-    // hLund_plane_R04->Write((name + "hLund_plane_R04").c_str());
 
     hm1_R06->Write((name + "hm1_R06").c_str());
     hpT_R06->Write((name + "hpT_R06").c_str());
     hEEC_R06->Write((name + "hEEC_R06").c_str());
-    // hLund_z_R06->Write((name + "hLund_z_R06").c_str());
-    // hLund_dR_R06->Write((name + "hLund_dR_R06").c_str());
-    // hLund_plane_R06->Write((name + "hLund_plane_R06").c_str());
 
     hm1_R10->Write((name + "hm1_R10").c_str());
     hpT_R10->Write((name + "hpT_R10").c_str());
     hEEC_R10->Write((name + "hEEC_R10").c_str());
-    // hLund_z_R10->Write((name + "hLund_z_R10").c_str());
-    // hLund_dR_R10->Write((name + "hLund_dR_R10").c_str());
-    // hLund_plane_R10->Write((name + "hLund_plane_R10").c_str());
 
     hm1_CA04->Write((name + "hm1_CA04").c_str());
     hpT_CA04->Write((name + "hpT_CA04").c_str());

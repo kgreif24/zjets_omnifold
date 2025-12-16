@@ -1,10 +1,12 @@
 """uncertainty_plotter.py - This module provides a subclass of the Plotter
-class that builds uncertainty plots. It will only make plots comparing
-truth pseudodata to re-weighted truth level MC, as uncertainties are only
-defined in this context.
+class that builds uncertainty plots. It can be run in two modes:
+    1. Compare truth pseudodata to re-weighted truth level MC
+    2. Compare data to truth generators
+The data comparison mode removes method bias and flips the ratio calculation.
+It also supports dual target mode for comparing against two truth-level generators.
 
 Author: Kevin Greif
-Last updated 03.28.2025
+Last updated 11.22.2025
 python3
 """
 
@@ -12,17 +14,20 @@ import tqdm
 import numpy as np
 import uproot
 import awkward as ak
-import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import plotter
+from analyze import uncertainties as uncert_module
 
 
 class UncertaintyPlotter(plotter.Plotter):
     """
     UncertaintyPlotter is a subclass of Plotter that is specialized for
-    building uncertainty plots. It will only make plots comparing truth
-    pseudodata to re-weighted truth level MC, as uncertainties are only
-    defined in this context.
+    building uncertainty plots. It can be run in two modes:
+    1. Compare truth pseudodata to re-weighted truth level MC
+    2. Compare data to truth generators
+    The data comparison mode removes method bias and flips the ratio calculation.
+    It also supports dual target mode for comparing against two truth-level generators.
     """
 
     def __init__(
@@ -30,11 +35,11 @@ class UncertaintyPlotter(plotter.Plotter):
         source_path,
         target_path,
         hv_path,
-        data_path,
         store,
         root_files=None,
         target2_path=None,
         data_comparison_mode=False,
+        normalize_targets=False,
         **kwargs,
     ):
         """
@@ -46,11 +51,10 @@ class UncertaintyPlotter(plotter.Plotter):
         Arguments:
             source_path (str): Path to the source file containing the Omnifold
                 weights.
-            target_path (str): Path to the target file containing the target
-                weights.
+            target_path (str): Path to the target file containing the target weights.
+                Must be a single ROOT file.
             hv_path (str): Path to the file containing the sherpa sample reweighted
                 to look like MG that is used for the hidden variable uncertainty.
-            data_path (str): Path to the data file containing the data.
             store (str): Path to the directory where the plots will be stored.
             root_files (list of str): List of root files to load histograms of
                 fastjet observables from. In order [source_end, target, hv, data].
@@ -61,8 +65,19 @@ class UncertaintyPlotter(plotter.Plotter):
             data_comparison_mode (bool): If True, compares data measurement to truth
                 generators instead of pseudodata to target. Removes method bias and
                 flips ratio calculations. Default is False.
+            normalize_targets (bool): If True, normalizes the target histograms to match
+                the source histograms. Default is False.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
+        # Ensure target_path is a single string (not a list)
+        if isinstance(target_path, list):
+            raise ValueError(
+                "target_path must be a single ROOT file path (string). "
+                "Multiple target files are not supported. "
+                "Use target2_path for multiple files if needed."
+            )
+
+        # Initialize parent class with single target path
         super().__init__(
             source_path,
             target_path,
@@ -76,133 +91,40 @@ class UncertaintyPlotter(plotter.Plotter):
         self.target2_path = target2_path
         self.data_comparison_mode = data_comparison_mode
         self.dual_target_mode = target2_path is not None
+        self.normalize_targets = normalize_targets
 
-        # Systematic uncertainty settings
-        self.active_systs = {
-            "nn-init": {
-                "name": "NN Init",
-                "color": "aqua",
-                "plot_ratio": False,
-                "stochastic": True,
-            },
-            "track-eff": {
-                "name": "Track eff.",
-                "color": "purple",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "jet-track-eff": {
-                "name": "Jet track eff.",
-                "color": "pink",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "track-fake": {
-                "name": "Track fake",
-                "color": "brown",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "track-scale": {
-                "name": "Track scale",
-                "color": "gray",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "muon-id": {
-                "name": "Muon ID",
-                "color": "lightgreen",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "muon-ms": {
-                "name": "Muon MS",
-                "color": "lightblue",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "muon-resbias": {
-                "name": "Muon resolution bias",
-                "color": "deepskyblue",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "muon-rho": {
-                "name": "Muon rho",
-                "color": "lightseagreen",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "muon-scale": {
-                "name": "Muon scale",
-                "color": "teal",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "hv": {
-                "name": "Hidden variable",
-                "color": "orange",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "dd": {
-                "name": "Data driven",
-                "color": "red",
-                "plot_ratio": False,
-                "stochastic": False,
-            },
-            "data-stat": {
-                "name": "Data stat",
-                "color": "blue",
-                "plot_ratio": False,
-                "stochastic": True,
-            },
-            "mc-stat": {
-                "name": "MC stat",
-                "color": "green",
-                "plot_ratio": False,
-                "stochastic": True,
-            },
-        }
+        # Create UncertaintyCalculator instance
+        self.uncertainty_calculator = uncert_module.UncertaintyCalculator()
+
+        # Hardcode luminosity
+        self.luminosity = 140.1  # fb^-1
 
         # Get the sherpa tree
-        if "hv" in self.active_systs.keys():
+        if "hv" in self.uncertainty_calculator.uncertainty_definitions:
             self.sherpa_path = hv_path
             self.sherpa_tree = uproot.open(hv_path)["OmniTree"]
             self.sherpa_events = self.sherpa_tree.num_entries
-            if self.sherpa_events > self.max_events:
+            if self.max_events > 0 and self.sherpa_events > self.max_events:
                 self.sherpa_events = self.max_events
-
-        # Get the data tree
-        self.data_path = data_path
-        self.data_tree = uproot.open(data_path)["OmniTree"]
-        self.data_events = self.data_tree.num_entries
-        if self.data_events > self.max_events:
-            self.data_events = self.max_events
 
         # Verify that we have the correct number of root files
         # if there are fastjet observables
         if self.fastjet:
-            expected_files = 5 if self.dual_target_mode else 4
+            expected_files = 4 if self.dual_target_mode else 3
             assert (
                 len(self.root_files) == expected_files
             ), f"Must have {expected_files} root files for fastjet observables"
             assert self.root_files[0] is not None, "Must have a source_end root file"
             assert self.root_files[1] is not None, "Must have a target root file"
             assert self.root_files[2] is not None, "Must have a hv root file"
-            assert self.root_files[3] is not None, "Must have a data root file"
             if self.dual_target_mode:
-                assert self.root_files[4] is not None, "Must have a target2 root file"
-
-        # Initialize caches for additional trees - flags will be loaded on demand
-        # For data, since no pass190, we can cache a dummy
-        self._pass190_cache["data"] = np.ones(self.data_events, dtype=bool)
+                assert self.root_files[3] is not None, "Must have a target2 root file"
 
         # Initialize second target if provided
         if self.dual_target_mode:
             self.target2_tree = uproot.open(target2_path)["OmniTree"]
             self.target2_events = self.target2_tree.num_entries
-            if self.target2_events > self.max_events:
+            if self.max_events > 0 and self.target2_events > self.max_events:
                 self.target2_events = self.max_events
 
         # Hardcode symlog x ticks
@@ -231,18 +153,6 @@ class UncertaintyPlotter(plotter.Plotter):
             ]
         )
 
-        # Note: kinematic cuts will be applied in plot() method when needed
-
-        # Define uncertainty merging groups
-        self.uncertainty_groups = {
-            "Tracking": ["track-eff", "jet-track-eff", "track-fake", "track-scale"],
-            "Unfolding": ["dd", "hv"],
-            "Muon": ["muon-id", "muon-ms", "muon-resbias", "muon-rho", "muon-scale"],
-        }
-
-        # Control whether to hide individual uncertainties when merging
-        self.hide_individual_uncertainties = True
-
     def plot(self, of_weights, color="blue", **kwargs):
         """plot - Override of the base class plot method. Here we will build
         uncertainty plots comparing truth pseudodata to re-weighted truth
@@ -265,31 +175,26 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Load weights from numpy file
         weights_file = np.load(of_weights)
-
-        # Efficiently load and process all weights
-        processed_weights = self._load_and_process_weights_efficiently(weights_file)
-
-        # Apply source weights vectorized
-        final_weights = self._apply_source_weights_vectorized(processed_weights)
+        weights_dict = self._load_and_process_weights_efficiently(weights_file)
 
         # Get target weights efficiently
-        target = self._get_target_weights_efficiently()
-        if "dd" in self.active_systs:
-            target_dd = self._get_target_dd_weights_efficiently()
-            final_weights["target_dd"] = target_dd
-
-        # Package into use weights dict
-        weights_dict = {
-            "target": target,
-            **final_weights,
-        }
+        # (get MG weights if in data comparison mode)
+        mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
+        target_weights = self._get_target_weights_efficiently(
+            get_mg_weights=mg_weight_names if self.data_comparison_mode else None
+        )
 
         # Get second target weights if in dual target mode
+        target2_weights = {}
         if self.dual_target_mode:
-            target2 = self._get_weights_target2("weight_mc")
-            target2_pass190 = self._get_cached_pass190_flags("target2")
-            target2 = target2[target2_pass190 == 1]
-            weights_dict["target2"] = target2
+            # Get sherpa uncertainty weights if in data comparison mode
+            sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
+            get_sherpa_weights = (
+                sherpa_weight_names if self.data_comparison_mode else None
+            )
+            target2_weights = self._get_target2_weights_efficiently(
+                get_sherpa_weights=get_sherpa_weights
+            )
 
         # If we have track level observables, need to repeat the weights
         # for each track in the event
@@ -297,190 +202,292 @@ class UncertaintyPlotter(plotter.Plotter):
             print("Calculating track level weights!")
 
             # Process all weights in batch for efficiency
-            # A bit of a hack to remove the hv weights from the systematic dictionary
-            # because they are handled separately
-            source_weights_dict = final_weights.copy()
-            source_weights_dict.pop("ensemble")
-            if "hv" in source_weights_dict:
-                source_weights_dict.pop("hv")
+            # Remove hv weights from the systematic dictionary because they are
+            # handled separately (they come from sherpa tree, not source tree)
+            source_weights_dict = weights_dict.copy()
+            if "weights_hv" in source_weights_dict:
+                source_weights_dict.pop("weights_hv")
 
-            # Process all source weights at once
-            weights_dict_trk = self._get_track_weights_batch(source_weights_dict)
+            # Process all source weights at once (including ensemble and bootstrap_data)
+            source_weights_trk = self._get_track_weights_batch(source_weights_dict)
 
-            # Process target and hv weights separately
-            target_trk = self._get_track_weights(
-                target,
-                tree_type="target",
-            )
-            weights_dict_trk["target"] = target_trk
-            if "hv" in self.active_systs:
-                hv_trk = self._get_track_weights(
-                    final_weights["hv"],
+            # Process hv weights
+            if "hv" in self.uncertainty_calculator.uncertainty_definitions:
+                source_weights_trk["weights_hv"] = self._get_track_weights(
+                    weights_dict["weights_hv"],
                     tree_type="sherpa",
                 )
-                weights_dict_trk["hv"] = hv_trk
 
-            # Process ensemble weights efficiently
-            if final_weights["ensemble"].size > 0:
-                ensemble_weights_trk = np.zeros(
-                    (
-                        len(weights_dict_trk["central"]),
-                        final_weights["ensemble"].shape[1],
-                    )
-                )
-                for i in tqdm.tqdm(range(final_weights["ensemble"].shape[1])):
-                    ensemble_weights_trk[:, i] = self._get_track_weights(
-                        final_weights["ensemble"][:, i],
-                        tree_type="source",
-                    )
-                weights_dict_trk["ensemble"] = ensemble_weights_trk
-            else:
-                weights_dict_trk["ensemble"] = np.zeros(
-                    (len(weights_dict_trk["central"]), 0)
-                )
+            # Process target weights
+            target_weights_trk = {}
+            target_weights_trk["target"] = self._get_track_weights(
+                target_weights["target"],
+                tree_type="target",
+            )
+
+            # Process target theory weights if they exist
+            mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
+            if self.data_comparison_mode:
+                for weight_name in mg_weight_names:
+                    if weight_name in target_weights:
+                        target_weights_trk[weight_name] = self._get_track_weights(
+                            target_weights[weight_name],
+                            tree_type="target",
+                        )
 
             # Process target2 weights if in dual target mode
             if self.dual_target_mode:
-                target2_trk = self._get_track_weights(
-                    target2,
+                target2_weights_trk = {}
+                target2_weights_trk["target2"] = self._get_track_weights(
+                    target2_weights["target2"],
                     tree_type="target2",
                 )
-                weights_dict_trk["target2"] = target2_trk
+
+                # Process target2 theory weights if they exist
+                sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
+                if self.data_comparison_mode:
+                    for weight_name in sherpa_weight_names:
+                        if weight_name in weights_dict:
+                            target2_weights_trk[weight_name] = self._get_track_weights(
+                                weights_dict[weight_name],
+                                tree_type="target2",
+                            )
 
         # Loop through plots and make histograms
         return_dict = {}
         for plot in self.plots:
+            print(f"Plotting {plot['key']}")
 
             # Pick weight dict
-            use_weight_dict = (
-                weights_dict_trk if plot["type"] == "track" else weights_dict
+            use_weight_source = (
+                source_weights_trk if plot["type"] == "track" else weights_dict
             )
+            use_weight_target = (
+                target_weights_trk if plot["type"] == "track" else target_weights
+            )
+            if self.dual_target_mode:
+                use_weight_target2 = (
+                    target2_weights_trk if plot["type"] == "track" else target2_weights
+                )
+            else:
+                use_weight_target2 = None
 
-            # Get histograms
+            # Build measured histogram and begin compiling uncertainty dict
+            all_hists = {}
             nominal_plot = plot.copy()
             if nominal_plot["type"] == "fastjet":
                 nominal_plot["key"] = "nominal-" + nominal_plot["key"]
-            source_hist, bins = self._get_histogram(
+            source_hist, source_hist_var, bins = self._get_histogram(
                 nominal_plot,
-                weights=(use_weight_dict["central"]),
+                weights=(use_weight_source["central"]),
             )
-            target_hist, _ = self._get_histogram(
-                nominal_plot,
-                weights=use_weight_dict["target"],
-                is_target=True,
-                root_index=1,  # This only effects histogram for fastjet observables
-            )
+            all_hists["nominal"] = (source_hist, source_hist_var, bins)
 
-            # Get second target histogram if in dual target mode
-            if self.dual_target_mode:
-                target2_hist, _ = self._get_histogram_target2(
-                    nominal_plot,
-                    weights=use_weight_dict["target2"],
-                    root_index=4,  # This only effects histogram for fastjet observables
-                )
-
-            # MC stat uncertainty
-            if "mc-stat" in self.active_systs:
-                source_stat_var, _ = self._get_histogram(
-                    nominal_plot,
-                    weights=(use_weight_dict["central"] ** 2),
-                    return_variance=True if plot["type"] == "fastjet" else False,
-                )
-                self.active_systs["mc-stat"].update({"var": source_stat_var})
-
-            # Data stat uncertainty, note this is copied from reco level
-            if "data-stat" in self.active_systs:
-                data_hist, _ = self._get_data_histogram(nominal_plot)
-                data_var = source_hist**2 / data_hist
-                self.active_systs["data-stat"].update({"var": data_var})
-
-            # NN initialization uncertainty
-            if "nn-init" in self.active_systs:
-                var_hists = []
-                for i in range(use_weight_dict["ensemble"].shape[1]):
-                    member_weights = use_weight_dict["ensemble"][:, i]
-                    member_plot = plot.copy()
-                    if member_plot["type"] == "fastjet":
-                        member_plot["key"] = "nominal-" + str(i) + "-" + plot["key"]
-                    member_hist, _ = self._get_histogram(
-                        member_plot,
-                        weights=member_weights,
+            # Build target histograms
+            target_hists = {}
+            target_nominal_hist = None
+            for wgt_name, wgts in use_weight_target.items():
+                target_plot = plot.copy()
+                if target_plot["type"] == "fastjet":
+                    target_plot["key"] = (
+                        self._theory_weight_name_to_hist_name(wgt_name)
+                        + "-"
+                        + plot["key"]
                     )
-                    # Remember to normalize to the source histogram!
-                    norm_factor = np.sum(source_hist) / np.sum(member_hist)
-                    member_hist *= norm_factor
-                    var_hists.append(member_hist)
-                nn_init_var = np.var(var_hists, axis=0) / (len(var_hists) - 1)
-                self.active_systs["nn-init"].update({"var": nn_init_var})
+                target_hist_tuple = self._get_histogram(
+                    target_plot,
+                    weights=wgts,
+                    is_target=True,
+                    root_index=1,  # Only effects histogram for fastjet observables
+                )
+                if wgt_name == "target":
+                    if self.normalize_targets:
+                        norm_factor = np.sum(source_hist) / np.sum(target_hist_tuple[0])
+                        target_hist_tuple = (
+                            target_hist_tuple[0] * norm_factor,
+                            target_hist_tuple[1] * norm_factor**2,
+                            target_hist_tuple[2],
+                        )
+                    target_nominal_hist = target_hist_tuple[0]
+                else:
+                    norm_factor = np.sum(target_nominal_hist) / np.sum(
+                        target_hist_tuple[0]
+                    )
+                    target_hist_tuple = (
+                        target_hist_tuple[0] * norm_factor,
+                        target_hist_tuple[1] * norm_factor**2,
+                        target_hist_tuple[2],
+                    )
+                target_hists[wgt_name] = target_hist_tuple
 
-            # Systematic uncertainties
-            for key in self.active_systs:
-                # Skip stochastic systematic uncertainties
-                if self.active_systs[key]["stochastic"]:
+            if self.dual_target_mode:
+                target2_hists = {}
+                target2_nominal_hist = None
+                for wgt_name, wgts in use_weight_target2.items():
+                    target2_plot = plot.copy()
+                    if target2_plot["type"] == "fastjet":
+                        target2_plot["key"] = (
+                            self._theory_weight_name_to_hist_name(wgt_name)
+                            + "-"
+                            + plot["key"]
+                        )
+                    target2_hist_tuple = self._get_histogram_target2(
+                        target2_plot,
+                        weights=wgts,
+                        root_index=3,  # Only effects histogram for fastjet observables
+                    )
+                    if wgt_name == "target2":
+                        if self.normalize_targets:
+                            norm_factor = np.sum(source_hist) / np.sum(
+                                target2_hist_tuple[0]
+                            )
+                            target2_hist_tuple = (
+                                target2_hist_tuple[0] * norm_factor,
+                                target2_hist_tuple[1] * norm_factor**2,
+                                target2_hist_tuple[2],
+                            )
+                        target2_nominal_hist = target2_hist_tuple[0]
+                    else:
+                        norm_factor = np.sum(target2_nominal_hist) / np.sum(
+                            target2_hist_tuple[0]
+                        )
+                        target2_hist_tuple = (
+                            target2_hist_tuple[0] * norm_factor,
+                            target2_hist_tuple[1] * norm_factor**2,
+                            target2_hist_tuple[2],
+                        )
+                    target2_hists[wgt_name] = target2_hist_tuple
+
+            # Build ensemble histograms for NN stability uncertainty
+            if "nn-stability" in self.uncertainty_calculator.uncertainty_definitions:
+                if use_weight_source["ensemble"].size > 0:
+                    for i in range(use_weight_source["ensemble"].shape[1]):
+                        member_weights = use_weight_source["ensemble"][:, i]
+                        member_plot = plot.copy()
+                        # Only modify key for fastjet observables
+                        # (to load from correct ROOT file)
+                        if member_plot["type"] == "fastjet":
+                            member_plot["key"] = (
+                                "weights_ensemble_" + str(i) + "-" + plot["key"]
+                            )
+                        member_hist, member_hist_var, _ = self._get_histogram(
+                            member_plot,
+                            weights=member_weights,
+                        )
+                        # Use key format expected by UncertaintyCalculator
+                        all_hists[f"ensemble_{i}"] = (
+                            member_hist,
+                            member_hist_var,
+                            bins,
+                        )
+
+            # Build ensemble histograms for data stat uncertainty
+            if "data-stat" in self.uncertainty_calculator.uncertainty_definitions:
+                if (
+                    "bootstrap_data" in use_weight_source
+                    and use_weight_source["bootstrap_data"].size > 0
+                ):
+                    for i in range(use_weight_source["bootstrap_data"].shape[1]):
+                        member_weights = use_weight_source["bootstrap_data"][:, i]
+                        member_plot = plot.copy()
+                        # Only modify key for fastjet observables
+                        # (to load from correct ROOT file)
+                        if member_plot["type"] == "fastjet":
+                            member_plot["key"] = (
+                                "weights_bootstrap_data_" + str(i) + "-" + plot["key"]
+                            )
+                        member_hist, member_hist_var, _ = self._get_histogram(
+                            member_plot,
+                            weights=member_weights,
+                        )
+                        # Use key format expected by UncertaintyCalculator
+                        all_hists[f"bootstrap_data_{i}"] = (
+                            member_hist,
+                            member_hist_var,
+                            bins,
+                        )
+
+            # Build systematic uncertainty histograms
+            # Iterate over uncertainty definitions and build histograms
+            for syst_key in self.uncertainty_calculator.uncertainty_definitions:
+                syst_def = self.uncertainty_calculator.uncertainty_definitions[syst_key]
+                # Skip stochastic uncertainties (handled separately by calculator)
+                if syst_def.get("stochastic", False):
                     continue
-                wgts = use_weight_dict[key]
+
+                # Get weights from weight dict using "weights_" prefix
+                weight_key = f"weights_{syst_key}"
+                if weight_key not in use_weight_source:
+                    continue
+                wgts = use_weight_source[weight_key]
                 syst_plot = plot.copy()
                 if syst_plot["type"] == "fastjet":
-                    syst_plot["key"] = key + "-" + plot["key"]
-                if key == "hv":
+                    syst_plot["key"] = syst_key + "-" + plot["key"]
+
+                if syst_key == "hv":
                     hv_plot = syst_plot.copy()
-                    syst_hist, _ = self._get_sherpa_histogram(
+                    all_hists[syst_key] = self._get_sherpa_histogram(
                         hv_plot,
                         weights=wgts,
                     )
-                    estimate_hist = source_hist
-                elif key == "dd":
-                    syst_hist, _ = self._get_histogram(
+                elif syst_key == "dd":
+                    all_hists[syst_key] = self._get_histogram(
                         syst_plot,
                         weights=wgts,
                     )
-                    target_plot = plot.copy()  # Make sure you don't copy "syst_plot"
+                    # Also need target_dd histogram
+                    target_plot = plot.copy()
                     if target_plot["type"] == "fastjet":
                         target_plot["key"] = "target_dd-" + plot["key"]
-                    estimate_hist, _ = self._get_histogram(
+                    all_hists["target_dd"] = self._get_histogram(
                         target_plot,
-                        weights=use_weight_dict["target_dd"],
-                        # Note the data driven weights are actually for the source data!
+                        weights=use_weight_source["target_dd"],
                         is_target=False,
                     )
                 else:
-                    syst_hist, _ = self._get_histogram(
+                    all_hists[syst_key] = self._get_histogram(
                         syst_plot,
                         weights=wgts,
                     )
-                    estimate_hist = source_hist
-                norm_factor = np.sum(estimate_hist) / np.sum(syst_hist)
-                syst_hist *= norm_factor
-                # If we are plotting the ratio, add this systematic histogram
-                # to the dictionary to pass into the build plot function
-                if self.active_systs[key]["plot_ratio"]:
-                    self.active_systs[key]["ratio"] = syst_hist / estimate_hist
-                syst_var = np.abs(syst_hist - estimate_hist) ** 2
-                self.active_systs[key].update({"var": syst_var})
 
-            # Apply uncertainty merging after all individual uncertainties
-            # are calculated
-            self._apply_uncertainty_merging()
+            # Calculate uncertainties using UncertaintyCalculator
+            syst_vars, syst_info = self.uncertainty_calculator.calculate_uncertainties(
+                all_hists, measured_key="nominal"
+            )
+
+            # Calculate theory uncertainties for targets if in data comparison mode
+            target_var = None
+            target2_var = None
+            if self.data_comparison_mode:
+                # Calculate MadGraph theory uncertainty for target
+                target_var = self.uncertainty_calculator.get_total_theory_uncertainty(
+                    target_hists, measured_key="target", is_madgraph=True
+                )
+
+                # Calculate Sherpa theory uncertainty for target2 if in dual target mode
+                if self.dual_target_mode:
+                    target2_var = (
+                        self.uncertainty_calculator.get_total_theory_uncertainty(
+                            target2_hists,
+                            measured_key="target2",
+                            is_madgraph=False,
+                        )
+                    )
 
             # Make and save plot
-            if type(bins) is tuple:
-                fig = self._build_2d_uncert_plots(
-                    plot,
-                    bins,
-                    source_hist,
-                    target_hist,
-                    color=color,
-                    target2_hist=target2_hist if self.dual_target_mode else None,
-                )
-            else:
-                fig = self._build_uncert_plot(
-                    plot,
-                    bins,
-                    source_hist,
-                    target_hist,
-                    color=color,
-                    target2_hist=target2_hist if self.dual_target_mode else None,
-                )
+            fig = self._build_uncert_plot(
+                plot,
+                bins,
+                source_hist,
+                target_hists["target"][0],
+                syst_vars,
+                color=color,
+                target2_hist=(
+                    target2_hists["target2"][0] if self.dual_target_mode else None
+                ),
+                target_var=target_var,
+                target2_var=target2_var,
+            )
             extension = ".pdf" if self.use_pdf else ".png"
             store_name = self.store / (plot["key"] + extension)
             fig.savefig(store_name, dpi=300)
@@ -488,22 +495,22 @@ class UncertaintyPlotter(plotter.Plotter):
             return_dict[plot["key"]] = store_name
 
             # Create and save uncertainty budget plot
-            if not type(bins) is tuple:  # Only create for 1D plots
-                budget_fig = self._plot_uncertainty_budget(
-                    plot,
-                    bins,
-                    source_hist,
-                    target_hist,
-                    target2_hist=target2_hist if self.dual_target_mode else None,
-                )
-                budget_name = plot["key"] + "_uncert_budget" + extension
-                budget_store_name = self.store / budget_name
-                budget_fig.savefig(budget_store_name, dpi=300)
-                plt.close(budget_fig)
-                return_dict[plot["key"] + "_uncert_budget"] = budget_store_name
-
-            # Clean up merged uncertainties after each plot
-            self._remove_merged_uncertainties()
+            budget_fig = self._plot_uncertainty_budget(
+                plot,
+                bins,
+                source_hist,
+                target_hists["target"][0],
+                syst_vars,
+                syst_info,
+                target2_hist=(
+                    target2_hists["target2"][0] if self.dual_target_mode else None
+                ),
+            )
+            budget_name = plot["key"] + "_uncert_budget" + extension
+            budget_store_name = self.store / budget_name
+            budget_fig.savefig(budget_store_name, dpi=300)
+            plt.close(budget_fig)
+            return_dict[plot["key"] + "_uncert_budget"] = budget_store_name
 
         return return_dict
 
@@ -519,36 +526,54 @@ class UncertaintyPlotter(plotter.Plotter):
 
         Returns:
             hist (np.array): Array of histogram values.
+            hist_var (np.array): Array of histogram variance values.
             bins (np.array): Array of bin edges.
         """
 
-        assert "hv" in self.active_systs.keys()
+        assert "hv" in self.uncertainty_calculator.uncertainty_definitions
 
         # If the observable is computed using fastjet, we need to load the data
         # histogram from the correct ROOT file
         if plot_dict["type"] == "fastjet":
-            sherpa_hist, bins = self._get_histogram(
+            sherpa_hist, sherpa_hist_var, bins = self._get_histogram(
                 plot_dict,
                 root_index=2,
             )
 
         # Else we can load the data and weights from the sherpa tree
         else:
-            # Get sherpa data using shared method
-            sherpa_data = self._get_filtered_data(
-                self.sherpa_tree,
-                plot_dict["key"],
-                self._get_cached_pass190_flags("sherpa"),
-                use_truth=True,
-                max_events=self.sherpa_events,
-            )
+            # Check cache first
+            # use_truth is always True for sherpa
+            cache_key = (plot_dict["key"], "sherpa", True)
+            if cache_key in self._filtered_data_cache:
+                sherpa_data = self._filtered_data_cache[cache_key]
+            else:
+                # Get sherpa data using shared method
+                sherpa_data = self._get_filtered_data(
+                    self.sherpa_tree,
+                    plot_dict["key"],
+                    self._get_cached_pass190_flags("sherpa"),
+                    use_truth=True,
+                    max_events=self.sherpa_events,
+                )
+                # Cache the result
+                self._filtered_data_cache[cache_key] = sherpa_data
 
             # Create histogram using shared method
             sherpa_hist, bins = self._create_histogram_from_data(
                 sherpa_data, plot_dict, weights=weights, density=False
             )
 
-        return sherpa_hist, bins
+            # Calculate variance
+            bins_edges = self._get_bins_for_plot(plot_dict)
+            if weights is not None:
+                sherpa_hist_var, _ = np.histogram(
+                    sherpa_data, bins=bins_edges, weights=weights**2, density=False
+                )
+            else:
+                sherpa_hist_var = sherpa_hist.copy()
+
+        return sherpa_hist, sherpa_hist_var, bins
 
     def _get_weights_target2(self, weights):
         """_get_weights_target2 - Get weights from the second target tree.
@@ -557,7 +582,7 @@ class UncertaintyPlotter(plotter.Plotter):
             weights (str): Branch name to get weights from
 
         Returns:
-            weights (np.array): Array of weights from target2 tree
+            weights (np.array): Array of weights from target2 tree.
         """
         return ak.to_numpy(
             self.target2_tree[weights].array(entry_stop=self.target2_events)
@@ -568,20 +593,24 @@ class UncertaintyPlotter(plotter.Plotter):
         plot_dict,
         weights=None,
         density=False,
-        root_index=4,
-        return_variance=False,
+        root_index=3,
     ):
-        """_get_histogram_target2 - Get histogram from the second target tree.
+        """_get_histogram_target2 - Get histogram from the second target tree(s).
+        Always returns the variance of the histogram. Handles multiple trees by
+        concatenating data before histogramming.
 
         Arguments:
             plot_dict (dict): Dictionary containing the plot configuration
-            weights (np.array): Weights to use for histogram
+            weights (np.array): Weights to use for histogram (already concatenated
+                if multiple trees)
             density (bool): If True, normalize to PDF
             root_index (int): Index of root file for fastjet observables
-            return_variance (bool): If True, return variance instead of histogram
 
         Returns:
-            tuple: (histogram, bins)
+            tuple: (histogram, variance, bins) where:
+                - histogram (np.array): Histogram values
+                - variance (np.array): Variance of the histogram
+                - bins (np.array or tuple): Bin edges
         """
         # If the observable is computed using fastjet, we need to load
         # the histograms using uproot
@@ -593,14 +622,12 @@ class UncertaintyPlotter(plotter.Plotter):
             else:
                 hist, bins = tobject.to_numpy()
 
-            if return_variance:
-                hist = tobject.variances()
+            # Get variance from ROOT object
+            variance = tobject.variances()
 
         # Else the data is loaded and binned from the trees directly
         else:
-            assert not return_variance
-
-            # Get filtered data from target2 tree
+            # Get filtered data from target2 tree(s) - already concatenated
             data = self._get_data_target2(plot_dict["key"])
 
             # Create histogram using shared method
@@ -608,15 +635,33 @@ class UncertaintyPlotter(plotter.Plotter):
                 data, plot_dict, weights=weights, density=False
             )
 
+            # Calculate variance
+            if weights is not None:
+                # For weighted histograms, variance is sum of squared weights per bin
+                bins_edges = self._get_bins_for_plot(plot_dict)
+                variance, _ = np.histogram(
+                    data, bins=bins_edges, weights=weights**2, density=False
+                )
+            else:
+                # For unweighted histograms, use Poisson statistics (variance = counts)
+                variance = hist.copy()
+
         # Normalize histogram if desired
         if density:
-            assert not return_variance
-            hist = self._normalize_to(hist, val=1.0)
+            # Calculate normalization factor
+            norm_factor = np.sum(hist)
+            if norm_factor > 0:
+                hist = hist / norm_factor
+                # Variance scales as the square of the normalization factor
+                variance = variance / (norm_factor**2)
 
-        return hist, bins
+        return hist, variance, bins
 
     def _get_data_target2(self, key):
         """_get_data_target2 - Get data from the second target tree.
+
+        This method caches the filtered/flattened data to avoid repeated
+        disk reads for the same observable.
 
         Arguments:
             key (str): Key to get data for
@@ -624,7 +669,13 @@ class UncertaintyPlotter(plotter.Plotter):
         Returns:
             np.array: The data as a numpy array
         """
-        return self._get_filtered_data(
+        # Check cache first
+        # use_truth is always True for target2
+        cache_key = (key, "target2", True)
+        if cache_key in self._filtered_data_cache:
+            return self._filtered_data_cache[cache_key]
+
+        data = self._get_filtered_data(
             self.target2_tree,
             key,
             self._get_cached_pass190_flags("target2"),
@@ -632,44 +683,9 @@ class UncertaintyPlotter(plotter.Plotter):
             max_events=self.target2_events,
         )
 
-    def _get_data_histogram(self, plot_dict):
-        """_get_data_histogram - Get the data histogram for a given observable.
-        We'll use a simple sqrt(N) error at reco level as a stand-in for the
-        full data stat uncertainty.
-
-        Arguments:
-            plot_dict (dict): Dictionary containing the plotting style information
-
-        Returns:
-            hist (np.array): Array of histogram values.
-            bins (np.array): Array of bin edges.
-        """
-
-        # If the observable is computed using fastjet, we need to load the data
-        # histogram from the correct ROOT file
-        if plot_dict["type"] == "fastjet":
-            data_hist, bins = self._get_histogram(
-                plot_dict,
-                root_index=3,
-            )
-
-        # Else we can load the data histogram from the data tree
-        else:
-            # Create a dummy pass190 array (all True) for data
-            data = self._get_filtered_data(
-                self.data_tree,
-                plot_dict["key"],
-                self._get_cached_pass190_flags("data"),
-                use_truth=False,
-                max_events=self.data_events,
-            )
-
-            # Create histogram using shared method
-            data_hist, bins = self._create_histogram_from_data(
-                data, plot_dict, weights=None, density=False
-            )
-
-        return data_hist, bins
+        # Cache the result
+        self._filtered_data_cache[cache_key] = data
+        return data
 
     def _build_uncert_plot(
         self,
@@ -677,21 +693,29 @@ class UncertaintyPlotter(plotter.Plotter):
         bins,
         source_hist,
         target_hist,
+        syst_vars,
         color="blue",
         target2_hist=None,
+        target_var=None,
+        target2_var=None,
     ):
         """_build_uncert_plot - Produce an uncertainty plot for a given observable.
         This plot will compare the source histogram to the target histogram, and
         additionally draw all of the uncertainties from the variances contained in
-        the optional variances argument detailed below.
+        syst_vars.
 
         Arguments:
             plot (dict): Dictionary containing the plotting style information
             bins (np.array): Array of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
             target_hist (np.array): Array of target histogram values.
+            syst_vars (dict): Dictionary mapping uncertainty keys to variance arrays.
             color (str): Color to use for the histogram and ratio plots.
             target2_hist (np.array, optional): Array of second target histogram values.
+            target_var (np.array, optional): Total theory uncertainty for target
+                histogram. Only used in data_comparison_mode.
+            target2_var (np.array, optional): Total theory uncertainty for target2
+                histogram. Only used in data_comparison_mode with dual_target_mode.
 
         Returns:
             fig (matplotlib.figure.Figure): Figure object for the plot.
@@ -701,30 +725,36 @@ class UncertaintyPlotter(plotter.Plotter):
         if self.data_comparison_mode:
             # In data comparison mode, we compare data to truth generators
             # No method bias calculation, and ratio is target/data
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-            ratio = norm_target_hist / source_hist  # Flipped ratio
+            ratio = target_hist / source_hist  # Flipped ratio
             mbias = None
             rel_mbias = None
         else:
             # Standard pseudodata vs target comparison
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-            ratio = source_hist / norm_target_hist
+            # Need to normalize target histogram to match source histogram
+            ratio = source_hist / target_hist
+            mbias = (source_hist - target_hist) ** 2
+            rel_mbias = np.sqrt(mbias) / target_hist
 
-            # Find method bias
-            mbias = (source_hist - norm_target_hist) ** 2
-            rel_mbias = np.sqrt(mbias) / norm_target_hist
-
-        # Calculate total variance and uncertainty
-        total_var = np.sum(
-            [self.active_systs[key]["var"] for key in self.active_systs], axis=0
-        )
+        # Calculate total variance and uncertainty from syst_vars
+        total_var = np.sum(list(syst_vars.values()), axis=0)
         total_uncert = np.sqrt(total_var)
         rel_total_uncert = total_uncert / source_hist
 
+        # Calculate relative uncertainties for ratio plots in data_comparison_mode
+        rel_ratio_uncert = None
+        rel_ratio2_uncert = None
+        if self.data_comparison_mode:
+            # For ratio = norm_target_hist / source_hist, uncertainty includes:
+            # - Data uncertainty: rel_total_uncert
+            # - Target theory uncertainty: target_var / norm_target_hist
+            if target_var is not None:
+                rel_target_uncert = target_var / target_hist
+                rel_ratio_uncert = np.sqrt(rel_total_uncert**2 + rel_target_uncert**2)
+            else:
+                rel_ratio_uncert = rel_total_uncert
+
         # Duplicate last bins for all step plots
-        plot_target_hist = np.append(norm_target_hist, norm_target_hist[-1])
+        plot_target_hist = np.append(target_hist, target_hist[-1])
         if rel_mbias is not None:
             rel_mbias = np.append(rel_mbias, rel_mbias[-1])
 
@@ -747,27 +777,80 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Densities
         if self.data_comparison_mode:
+            # Calculate bin widths for uncertainty boxes
+            bin_widths = 2 * bin_errors
+
             # In data comparison mode: target as purple points, data as black points
+            # Plot target as purple points first to get y-values
+            target_y_values = plot_target_hist[:-1]  # Remove the duplicated last bin
             ax.errorbar(
                 bin_centers,
-                plot_target_hist[:-1],  # Remove the duplicated last bin for errorbar
+                target_y_values,
                 fmt="o",
-                label="Sherpa",
+                label="MadGraph",
                 color="purple",
+                zorder=2,  # In front of boxes
             )
+
+            # Plot theory uncertainty boxes for target (behind the points)
+            if target_var is not None:
+                box_height = 2 * target_var
+                for x, y, h, w in zip(
+                    bin_centers, target_y_values, box_height, bin_widths
+                ):
+                    # Center the box on the point: bottom = y - h/2
+                    box = Rectangle(
+                        (x - w / 2, y - h / 2),
+                        w,
+                        h,
+                        alpha=0.3,
+                        facecolor="purple",
+                        edgecolor=None,
+                        zorder=1,  # Behind the points
+                    )
+                    ax.add_patch(box)
 
             # Add second target if in dual target mode
             if self.dual_target_mode and target2_hist is not None:
-                norm_factor2 = np.sum(source_hist) / np.sum(target2_hist)
-                norm_target2_hist = norm_factor2 * target2_hist
-                ratio2 = norm_target2_hist / source_hist
+                ratio2 = target2_hist / source_hist
+
+                # Calculate relative uncertainty for target2 ratio
+                # Includes data uncertainty and target2 theory uncertainty
+                if target2_var is not None:
+                    rel_target2_uncert = target2_var / target2_hist
+                    rel_ratio2_uncert = np.sqrt(
+                        rel_total_uncert**2 + rel_target2_uncert**2
+                    )
+                else:
+                    rel_ratio2_uncert = rel_total_uncert
+
+                # Plot target2 as orange points first to get y-values
                 ax.errorbar(
                     bin_centers,
-                    norm_target2_hist,
+                    target2_hist,
                     fmt="o",
-                    label="MadGraph",
+                    label="Sherpa",
                     color="orange",
+                    zorder=2,  # In front of boxes
                 )
+
+                # Plot theory uncertainty boxes for target2 (behind the points)
+                if target2_var is not None:
+                    box_height = 2 * target2_var
+                    for x, y, h, w in zip(
+                        bin_centers, target2_hist, box_height, bin_widths
+                    ):
+                        # Center the box on the point: bottom = y - h/2
+                        box = Rectangle(
+                            (x - w / 2, y - h / 2),
+                            w,
+                            h,
+                            alpha=0.3,
+                            facecolor="orange",
+                            edgecolor=None,
+                            zorder=1,  # Behind the points
+                        )
+                        ax.add_patch(box)
 
             ax.errorbar(
                 bin_centers,
@@ -777,6 +860,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 fmt="+",
                 label="Data",
                 color="black",
+                zorder=3,  # In front of everything
             )
         else:
             # Standard mode: target as dashed line, unfolded as colored points
@@ -820,30 +904,31 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Ratios
         rax.axhline(1, color="black", linestyle="--")
+        # Use combined uncertainty (data + theory) in data_comparison_mode
+        ratio_uncert = (
+            rel_ratio_uncert if rel_ratio_uncert is not None else rel_total_uncert
+        )
         rax.errorbar(
             bin_centers,
             ratio,
             xerr=bin_errors,
-            yerr=rel_total_uncert,
-            fmt="o",
+            yerr=ratio_uncert,
+            fmt="+",
             color="purple" if self.data_comparison_mode else color,
         )
         if self.data_comparison_mode and self.dual_target_mode:
+            # Use combined uncertainty (data + target2 theory) for target2
+            ratio2_uncert = (
+                rel_ratio2_uncert if rel_ratio2_uncert is not None else rel_total_uncert
+            )
             rax.errorbar(
                 bin_centers,
                 ratio2,
-                yerr=rel_total_uncert,
-                fmt="o",
+                xerr=bin_errors,
+                yerr=ratio2_uncert,
+                fmt="+",
                 color="orange",
             )
-        for key, syst_ratio in self.active_systs.items():
-            if syst_ratio["plot_ratio"]:
-                rax.plot(
-                    bin_centers,
-                    syst_ratio["ratio"],
-                    ".",
-                    color=syst_ratio["color"],
-                )
         rax.set_ylim(0.5, 1.5)
         rax.set_yticks([0.5, 1.0, 1.5])
         if self.data_comparison_mode:
@@ -866,131 +951,14 @@ class UncertaintyPlotter(plotter.Plotter):
 
         return fig
 
-    def _build_2d_uncert_plots(
-        self,
-        plot,
-        bins,
-        source_hist,
-        target_hist,
-        color="blue",
-        target2_hist=None,
-    ):
-        """_build_2d_uncert_plots - Produce a 2D uncertainty plot for a given
-        observable. This plot will compare the source histogram to the target
-        histogram, and additionally draw all of the uncertainties from the
-        variances contained in self.active_systs.
-
-        Arguments:
-            plot (dict): Dictionary containing the plotting style information
-            bins (tuple): Tuple of two arrays of bin edges for the histogram.
-            source_hist (np.array): Array of source histogram values.
-            target_hist (np.array): Array of target histogram values.
-            color (str): Color to use for the histogram and ratio plots.
-
-        Returns:
-            fig (matplotlib.figure.Figure): Figure object for the plot.
-        """
-
-        # Handle different comparison modes
-        if self.data_comparison_mode:
-            # In data comparison mode, we compare data to truth generators
-            # No method bias calculation, and ratio is target/data
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-            ratio = norm_target_hist / source_hist  # Flipped ratio
-            mbias = None
-            rel_mbias = None
-        else:
-            # Standard pseudodata vs target comparison
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-            ratio = source_hist / norm_target_hist
-
-            # Find method bias
-            mbias = (source_hist - norm_target_hist) ** 2
-            rel_mbias = np.sqrt(mbias) / norm_target_hist
-
-        # Calculate total variance and uncertainty
-        total_var = np.sum(
-            [self.active_systs[key]["var"] for key in self.active_systs], axis=0
-        )
-        total_uncert = np.sqrt(total_var)
-        rel_total_uncert = total_uncert / source_hist
-
-        # If the relative MC stat error is larger than 10%, mask the bin
-        bin_mask = np.zeros_like(source_hist, dtype=bool)
-        rel_mc_stat = np.sqrt(self.active_systs["mc-stat"]["var"]) / source_hist
-        bin_mask[rel_mc_stat > 0.1] = True
-        ratio = np.ma.masked_where(bin_mask, ratio)
-        rel_total_uncert = np.ma.masked_where(bin_mask, rel_total_uncert)
-        if rel_mbias is not None:
-            rel_mbias = np.ma.masked_where(bin_mask, rel_mbias)
-
-        # Define custom color maps
-        ratio_cmap = matplotlib.cm.get_cmap("coolwarm").copy()
-        ratio_cmap.set_bad(color="white")
-        uncert_cmap = matplotlib.cm.get_cmap("summer").copy()
-        uncert_cmap.set_bad(color="white")
-
-        # Plot
-        fig, (ax, uax) = plt.subplots(1, 2, figsize=(12, 6))
-
-        # Ratio plot
-        cax = ax.pcolormesh(
-            bins[0],
-            bins[1],
-            ratio.T,
-            cmap=ratio_cmap,
-            vmin=0.9,
-            vmax=1.1,
-            shading="auto",
-        )
-        if self.data_comparison_mode:
-            fig.colorbar(cax, ax=ax, label="Ratio to data")
-        else:
-            fig.colorbar(cax, ax=ax, label="Ratio to target")
-        ax.set_xlabel(plot["xlabel"])
-        ax.set_ylabel(plot["ylabel"])
-        ax.set_title(plot["title"])
-
-        # Uncertainty plot
-        cuax = uax.pcolormesh(
-            bins[0],
-            bins[1],
-            rel_total_uncert.T,
-            cmap=uncert_cmap,
-            vmin=0,
-            vmax=0.2,
-            shading="auto",
-        )
-        fig.colorbar(cuax, ax=uax, label="Total uncertainty")
-        uax.set_xlabel(plot["xlabel"])
-        uax.set_ylabel(plot["ylabel"])
-        uax.set_title(plot["title"])
-
-        # Add method bias as contours (only if method bias is available)
-        if rel_mbias is not None:
-            uax.contour(
-                bins[0][:-1],
-                bins[1][:-1],
-                rel_mbias.T,
-                levels=[0.1],
-                colors="red",
-                linewidths=2,
-            )
-            # Add legend for contour
-            uax.plot([], [], color="red", linewidth=2, label="10% method bias")
-            uax.legend(loc="upper right")
-
-        fig.tight_layout()
-        return fig
-
     def _plot_uncertainty_budget(
         self,
         plot,
         bins,
         source_hist,
         target_hist,
+        syst_vars,
+        syst_info,
         target2_hist=None,
     ):
         """plot_uncertainty_budget - Create a standalone plot showing just the
@@ -1002,6 +970,8 @@ class UncertaintyPlotter(plotter.Plotter):
             bins (np.array): Array of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
             target_hist (np.array): Array of target histogram values.
+            syst_vars (dict): Dictionary mapping uncertainty keys to variance arrays.
+            syst_info (dict): Dictionary mapping uncertainty keys to their metadata.
 
         Returns:
             fig (matplotlib.figure.Figure): Figure object for the plot.
@@ -1010,23 +980,20 @@ class UncertaintyPlotter(plotter.Plotter):
         # Handle different comparison modes
         if self.data_comparison_mode:
             # In data comparison mode, no method bias calculation
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
             mbias = None
             rel_mbias = None
         else:
-            # Standard pseudodata vs target comparison
-            norm_factor = np.sum(source_hist) / np.sum(target_hist)
-            norm_target_hist = norm_factor * target_hist
-
             # Find method bias
+            if self.normalize_targets:
+                norm_factor = np.sum(source_hist) / np.sum(target_hist)
+                norm_target_hist = norm_factor * target_hist
+            else:
+                norm_target_hist = target_hist
             mbias = (source_hist - norm_target_hist) ** 2
             rel_mbias = np.sqrt(mbias) / norm_target_hist
 
-        # Calculate total variance and uncertainty
-        total_var = np.sum(
-            [self.active_systs[key]["var"] for key in self.active_systs], axis=0
-        )
+        # Calculate total variance and uncertainty from syst_vars
+        total_var = np.sum(list(syst_vars.values()), axis=0)
         total_uncert = np.sqrt(total_var)
         rel_total_uncert = total_uncert / source_hist
 
@@ -1035,12 +1002,6 @@ class UncertaintyPlotter(plotter.Plotter):
         if rel_mbias is not None:
             plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         plot_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
-        plot_systs = {
-            key: np.append(
-                self.active_systs[key]["var"], self.active_systs[key]["var"][-1]
-            )
-            for key in self.active_systs
-        }
 
         # Create figure
         fig, ax = plt.subplots(figsize=(6.4, 4.8))
@@ -1061,13 +1022,15 @@ class UncertaintyPlotter(plotter.Plotter):
         )
 
         # Plot individual uncertainties
-        for key in plot_systs:
+        for key, var in syst_vars.items():
+            info = syst_info[key]
+            plot_var = np.append(var, var[-1])
             ax.plot(
                 bins,
-                np.sqrt(plot_systs[key]) / plot_source_hist,
+                np.sqrt(plot_var) / plot_source_hist,
                 "-",
-                color=self.active_systs[key]["color"],
-                label=self.active_systs[key]["name"],
+                color=info.get("color", "black"),
+                label=info.get("name", key),
                 drawstyle="steps-post",
             )
 
@@ -1122,93 +1085,6 @@ class UncertaintyPlotter(plotter.Plotter):
 
         return fig
 
-    def _merge_uncertainties(self, group_name, individual_uncertainties):
-        """Merge multiple uncertainties in quadrature.
-
-        Arguments:
-            group_name (str): Name for the merged uncertainty group
-            individual_uncertainties (list): List of uncertainty names to merge
-
-        Returns:
-            dict: Dictionary containing the merged uncertainty information
-        """
-        if not individual_uncertainties:
-            return None
-
-        # Check that all uncertainties exist and have variance data
-        available_uncertainties = []
-        for uncert_name in individual_uncertainties:
-            if (
-                uncert_name in self.active_systs
-                and "var" in self.active_systs[uncert_name]
-            ):
-                available_uncertainties.append(uncert_name)
-
-        if not available_uncertainties:
-            return None
-
-        # Merge variances in quadrature
-        merged_var = np.sum(
-            [self.active_systs[uncert]["var"] for uncert in available_uncertainties],
-            axis=0,
-        )
-
-        # Create merged uncertainty entry
-        merged_uncertainty = {
-            "name": group_name.title(),
-            # Use color of first uncertainty
-            "color": self.active_systs[available_uncertainties[0]]["color"],
-            "plot_ratio": False,  # Default to not plotting ratio
-            "stochastic": False,  # Merged uncertainties are typically not stochastic
-            "var": merged_var,
-            # Keep track of what was merged
-            "merged_from": available_uncertainties,
-        }
-
-        return merged_uncertainty
-
-    def _apply_uncertainty_merging(self):
-        """Apply uncertainty merging based on self.uncertainty_groups.
-        This method creates merged uncertainties and temporarily adds them to
-        active_systs. Individual uncertainties that are grouped are hidden.
-        """
-        self._merged_uncertainties = {}
-        self._hidden_uncertainties = {}  # Store hidden uncertainties for restoration
-
-        for group_name, individual_uncertainties in self.uncertainty_groups.items():
-            merged_uncert = self._merge_uncertainties(
-                group_name, individual_uncertainties
-            )
-            if merged_uncert is not None:
-                self._merged_uncertainties[group_name] = merged_uncert
-                # Temporarily add to active_systs for plotting
-                self.active_systs[group_name] = merged_uncert
-
-                # Hide individual uncertainties that are being grouped (if enabled)
-                if self.hide_individual_uncertainties:
-                    for uncert_name in individual_uncertainties:
-                        if uncert_name in self.active_systs:
-                            # Store the original uncertainty for restoration
-                            self._hidden_uncertainties[uncert_name] = (
-                                self.active_systs[uncert_name]
-                            )
-                            # Remove from active_systs to hide it
-                            del self.active_systs[uncert_name]
-
-    def _remove_merged_uncertainties(self):
-        """Remove merged uncertainties from active_systs after plotting and restore
-        hidden individual uncertainties.
-        """
-        # Remove merged uncertainties
-        for group_name in self._merged_uncertainties.keys():
-            if group_name in self.active_systs:
-                del self.active_systs[group_name]
-
-        # Restore hidden individual uncertainties (if any were hidden)
-        if hasattr(self, '_hidden_uncertainties'):
-            for uncert_name, uncert_data in self._hidden_uncertainties.items():
-                self.active_systs[uncert_name] = uncert_data
-
     def _transform_to_symlog(self, x):
         """_transform_to_symlog - Transform a linear scale to a symmetric log scale.
         This is used to transform the x-axis of some EEC plots to a symmetric log scale.
@@ -1237,30 +1113,28 @@ class UncertaintyPlotter(plotter.Plotter):
             dict: Dictionary containing all processed weights
         """
         # Get basic info
-        central_weights = weights_file["nominal-central"]
-        nraw_events = len(central_weights)
-        max_events_nominal = min(nraw_events, self.max_events)
-        if "hv" in self.active_systs:
-            max_events_sherpa = min(self.sherpa_events, self.max_events)
+        central_weights = weights_file["weights_nominal"]
 
         # Pre-allocate result dictionary
         result = {}
 
         # Process central weights
-        central_weights = central_weights[:max_events_nominal]
+        central_weights = central_weights[: self.source_events]
         source_pass190 = self._get_cached_pass190_flags("source")
         central_weights = central_weights[source_pass190 == 1]
         result["central"] = central_weights
 
         # Process ensemble weights more efficiently
         ens_names = [
-            f for f in weights_file.files if ("nominal" in f) and ("central" not in f)
+            f
+            for f in weights_file.files
+            if ("weights_ensemble" in f) and ("weights_nominal" not in f)
         ]
 
         if ens_names:
             # Load all ensemble weights at once
             ensemble_weights = np.array(
-                [weights_file[name][:max_events_nominal] for name in ens_names]
+                [weights_file[name][: self.source_events] for name in ens_names]
             ).T  # Shape: (n_events, n_ensemble)
 
             # Apply filter to all ensemble weights at once
@@ -1269,21 +1143,46 @@ class UncertaintyPlotter(plotter.Plotter):
         else:
             result["ensemble"] = np.zeros((len(central_weights), 0))
 
+        # Process data bootstrap weights efficiently
+        dbootstrap_names = [
+            f for f in weights_file.files if "weights_bootstrap_data" in f
+        ]
+        if dbootstrap_names:
+            dbootstrap_weights = np.array(
+                [weights_file[name][: self.source_events] for name in dbootstrap_names]
+            ).T
+            # Apply filter to all bootstrap weights at once
+            dbootstrap_weights = dbootstrap_weights[source_pass190 == 1, :]
+            result["bootstrap_data"] = dbootstrap_weights
+        else:
+            result["bootstrap_data"] = np.zeros((len(central_weights), 0))
+
         # Process systematic weights efficiently
-        for syst in self.active_systs:
-            if not self.active_systs[syst]["stochastic"]:
-                syst_key = syst + "-central"
-                if syst_key in weights_file.files:
-                    if syst == "hv":
-                        sherpa_pass190 = self._get_cached_pass190_flags("sherpa")
-                        syst_weights = weights_file[syst_key][:max_events_sherpa][
-                            sherpa_pass190 == 1
-                        ]
-                    else:
-                        syst_weights = weights_file[syst_key][:max_events_nominal][
-                            source_pass190 == 1
-                        ]
-                    result[syst] = syst_weights
+        # Keys in .npz file have "weights_" prefix, strip it to get
+        # UncertaintyCalculator keys
+        for syst_key in self.uncertainty_calculator.uncertainty_definitions:
+            syst_def = self.uncertainty_calculator.uncertainty_definitions[syst_key]
+            if syst_def.get("stochastic", False):
+                continue
+            # Look for weight key with "weights_" prefix
+            weight_key = f"weights_{syst_key}"
+            if weight_key in weights_file.files:
+                if syst_key == "hv":
+                    sherpa_pass190 = self._get_cached_pass190_flags("sherpa")
+                    syst_weights = weights_file[weight_key][: self.sherpa_events][
+                        sherpa_pass190 == 1
+                    ]
+                else:
+                    syst_weights = weights_file[weight_key][: self.source_events][
+                        source_pass190 == 1
+                    ]
+                result[weight_key] = syst_weights
+            # If the weight key is "dd", we need to get the target_dd weights
+            if weight_key == "weights_dd":
+                target_dd = weights_file["target_dd"][: self.source_events][
+                    source_pass190 == 1
+                ]
+                result["target_dd"] = target_dd
 
         return result
 
@@ -1313,7 +1212,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
         return self._cached_sherpa_weights
 
-    def _get_target_weights_efficiently(self):
+    def _get_target_weights_efficiently(self, get_mg_weights=None):
         """Efficiently get and cache target weights to avoid repeated loading."""
         if not hasattr(self, "_cached_target_weights"):
             self._cached_target_weights = self._get_weights("weight_mc", is_target=True)
@@ -1321,55 +1220,56 @@ class UncertaintyPlotter(plotter.Plotter):
             self._cached_target_weights = self._cached_target_weights[
                 target_pass190 == 1
             ]
+            # Divide by luminosity to get cross section
+            self._cached_target_weights /= self.luminosity
+        result = {"target": self._cached_target_weights}
+        if get_mg_weights is not None:
+            if not hasattr(self, "_cached_mg_weights"):
+                self._cached_mg_weights = {}
+                for weight_name in get_mg_weights:
+                    wgts = self._get_weights(weight_name, is_target=True)
+                    target_pass190 = self._get_cached_pass190_flags("target")
+                    wgts = wgts[target_pass190 == 1]
+                    # Note MG theory weights are multiplied by the weight_mc branch!
+                    wgts *= self._cached_target_weights
+                    self._cached_mg_weights[weight_name] = wgts
+                result.update(**self._cached_mg_weights)
+        return result
 
-        return self._cached_target_weights
-
-    def _get_target_dd_weights_efficiently(self):
-        """Efficiently get and cache target data-driven weights."""
-        if not hasattr(self, "_cached_target_dd_weights"):
-            self._cached_target_dd_weights = self._get_weights(
-                "target_dd", is_target=False
-            )
-            source_pass190 = self._get_cached_pass190_flags("source")
-            self._cached_target_dd_weights = self._cached_target_dd_weights[
-                source_pass190 == 1
-            ]
-
-        return self._cached_target_dd_weights
-
-    def _apply_source_weights_vectorized(self, weights_dict):
-        """Apply source weights to all weight arrays in a vectorized manner.
+    def _get_target2_weights_efficiently(self, get_sherpa_weights=None):
+        """Efficiently get and cache target2 weights to avoid repeated loading.
 
         Arguments:
-            weights_dict (dict): Dictionary containing weight arrays
+            get_sherpa_weights (list, optional): List of weight names to load from
+                sherpa_uncertainties. If provided, loads these weights and adds
+                them to the result.
 
         Returns:
-            dict: Dictionary with source weights applied
+            dict: Dictionary containing "target2" key and optionally theory
+                uncertainty weight keys.
         """
-        source_weights = self._get_source_weights_efficiently()
-        if "hv" in self.active_systs:
-            sherpa_weights = self._get_sherpa_weights_efficiently()
+        if not hasattr(self, "_cached_target2_weights"):
+            target2_weights = self._get_weights_target2("weight_mc")
+            target2_pass190 = self._get_cached_pass190_flags("target2")
+            target2_weights = target2_weights[target2_pass190 == 1]
+            # Divide by luminosity to get cross section
+            target2_weights /= self.luminosity
+            self._cached_target2_weights = target2_weights
 
-        result = {}
+        result = {"target2": self._cached_target2_weights}
 
-        # Apply source weights to central and ensemble weights
-        if "central" in weights_dict:
-            result["central"] = weights_dict["central"] * source_weights
-
-        if "ensemble" in weights_dict and weights_dict["ensemble"].size > 0:
-            result["ensemble"] = weights_dict["ensemble"] * np.expand_dims(
-                source_weights, axis=1
-            )
-
-        # Apply appropriate weights to systematic weights
-        for syst in self.active_systs:
-            if self.active_systs[syst]["stochastic"]:
-                continue
-            weights = weights_dict[syst]
-            if syst == "hv":
-                result[syst] = weights * sherpa_weights
-            else:
-                result[syst] = weights * source_weights
+        if get_sherpa_weights is not None:
+            if not hasattr(self, "_cached_sherpa_weights"):
+                self._cached_sherpa_weights = {}
+                for weight_name in get_sherpa_weights:
+                    wgts = self._get_weights_target2(weight_name)
+                    target2_pass190 = self._get_cached_pass190_flags("target2")
+                    wgts = wgts[target2_pass190 == 1]
+                    # Note Sherpa theory weights ARE NOT multiplied by weight_mc!
+                    # Divide by luminosity to get cross section
+                    wgts /= self.luminosity
+                    self._cached_sherpa_weights[weight_name] = wgts
+                result.update(**self._cached_sherpa_weights)
 
         return result
 
@@ -1380,30 +1280,73 @@ class UncertaintyPlotter(plotter.Plotter):
         1. Loading track data only once
         2. Processing all weights in batch
         3. Avoiding repeated track data access
+        4. Handling both 1D and 2D weight arrays (e.g., ensemble, bootstrap_data)
 
         Arguments:
-            weights_dict (dict): Dictionary containing weight arrays to process
+            weights_dict (dict): Dictionary containing weight arrays to process.
+                Can contain 1D arrays (n_events,) or 2D arrays (n_events, n_members).
             tree_type (str): Type of tree to use for track data
 
         Returns:
-            dict: Dictionary with track-level weights
+            dict: Dictionary with track-level weights. 1D arrays become 1D track arrays,
+                2D arrays become 2D track arrays (n_tracks, n_members).
         """
         # Get track data once
         track_data = self._get_cached_track_data(tree_type=tree_type)
 
         # Process all weights at once
         result = {}
+        n_tracks = None  # Will be determined from first processed weight
+
+        # First pass: process all non-empty weights
         for name, weights in weights_dict.items():
             if weights.size > 0:  # Only process non-empty arrays
-                weights_ak, _ = ak.broadcast_arrays(ak.from_numpy(weights), track_data)
-                result[name] = ak.to_numpy(ak.flatten(weights_ak, axis=None))
-            else:
-                result[name] = np.array([])
+                # Check if this is a 2D array (e.g., ensemble, bootstrap_data)
+                if weights.ndim == 2 and weights.shape[1] > 0:
+                    # Process each column and stack them back into a 2D array
+                    n_members = weights.shape[1]
+                    track_weights_list = []
+                    for i in tqdm.tqdm(range(n_members), desc=f"Processing {name}"):
+                        weights_1d = weights[:, i]
+                        weights_ak, _ = ak.broadcast_arrays(
+                            ak.from_numpy(weights_1d), track_data
+                        )
+                        track_weights_list.append(
+                            ak.to_numpy(ak.flatten(weights_ak, axis=None))
+                        )
+                    # Stack columns back into 2D array: (n_tracks, n_members)
+                    result[name] = np.column_stack(track_weights_list)
+                    # Store track count from first processed weight
+                    if n_tracks is None:
+                        n_tracks = len(result[name])
+                else:
+                    # Process 1D array as before
+                    weights_ak, _ = ak.broadcast_arrays(
+                        ak.from_numpy(weights), track_data
+                    )
+                    result[name] = ak.to_numpy(ak.flatten(weights_ak, axis=None))
+                    # Store track count from first processed weight
+                    if n_tracks is None:
+                        n_tracks = len(result[name])
+
+        # Second pass: handle empty arrays using track count from first pass
+        # If no weights were processed, get track count from track_data
+        if n_tracks is None:
+            n_tracks = len(track_data) if hasattr(track_data, "__len__") else 0
+
+        for name, weights in weights_dict.items():
+            if weights.size == 0:  # Handle empty arrays
+                # Preserve 2D structure if original was 2D
+                if weights.ndim == 2:
+                    n_cols = weights.shape[1] if len(weights.shape) > 1 else 0
+                    result[name] = np.zeros((n_tracks, n_cols))
+                else:
+                    result[name] = np.array([])
 
         return result
 
     def _get_cached_pass190_flags(self, tree_type="source"):
-        """Override to handle additional tree types: sherpa, target2, data."""
+        """Override to handle additional tree types: sherpa, target2."""
         if tree_type in self._pass190_cache:
             return self._pass190_cache[tree_type]
 
@@ -1412,63 +1355,55 @@ class UncertaintyPlotter(plotter.Plotter):
         elif tree_type == "sherpa":
             tree = self.sherpa_tree
             max_events = self.sherpa_events
+            pull_key = "truth_pass190" if self.use_truth else "pass190"
+            flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
+            self._pass190_cache[tree_type] = flags
+            return flags
         elif tree_type == "target2":
             tree = self.target2_tree
             max_events = self.target2_events
-        elif tree_type == "data":
-            # Data has no pass190, all events pass
-            flags = np.ones(self.data_events, dtype=bool)
+            pull_key = "truth_pass190" if self.use_truth else "pass190"
+            flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
             self._pass190_cache[tree_type] = flags
             return flags
         else:
             raise ValueError(f"Unknown tree_type: {tree_type}")
 
-        pull_key = "truth_pass190" if self.use_truth else "pass190"
-        flags = ak.to_numpy(tree[pull_key].array(entry_stop=max_events))
-
-        self._pass190_cache[tree_type] = flags
-        return flags
+    def apply_kinematic_cuts(self, region):
+        """Override to handle target2 trees when applying kinematic cuts."""
+        # Call parent method to handle source and target trees
+        super().apply_kinematic_cuts(region)
 
     def _ensure_kinematic_cuts_applied(self):
         """Override to apply kinematic cuts to all trees including additional ones
         in UncertaintyPlotter (sherpa, data, and optionally target2).
         This method is idempotent.
         """
-        if self._kinematic_region != 0 and not hasattr(self, "_kinematic_cuts_applied"):
+        if self._kinematic_region != -1 and not hasattr(
+            self, "_kinematic_cuts_applied"
+        ):
             print("Applying kinematic cuts for region:", self._kinematic_region)
             if self.verbosity >= 3:
                 print(
-                    "Verbosity is greater than 3, please ensure fastjet"
+                    "Verbosity is greater than 2, please ensure fastjet"
                     " observables are calculated in the limited phase space!"
                 )
 
-            # First call the parent method to handle source and target trees
-            super().apply_kinematic_cuts(self._kinematic_region)
+            # Apply kinematic cuts (handles multiple target trees)
+            self.apply_kinematic_cuts(self._kinematic_region)
 
             # Apply kinematic cuts to sherpa tree
-            if "hv" in self.active_systs:
+            if "hv" in self.uncertainty_calculator.uncertainty_definitions:
                 sherpa_mask = self.get_kinematic_region(
                     self.sherpa_tree,
                     self._kinematic_region,
                     evts=self.sherpa_events,
-                    use_truth=self.use_truth,
+                    use_truth=True,
                 )
                 sherpa_pass190 = self._get_cached_pass190_flags("sherpa")
                 self._pass190_cache["sherpa"] = np.logical_and(
                     sherpa_pass190, sherpa_mask
                 )
-
-            # Apply kinematic cuts to data tree
-            # Note: data doesn't have pass190, so we just apply the kinematic mask
-            # directly
-            data_mask = self.get_kinematic_region(
-                self.data_tree,
-                self._kinematic_region,
-                evts=self.data_events,
-                use_truth=False,  # Data has no truth
-            )
-            # For data, we store the combined mask (no pass190 to combine with)
-            self._pass190_cache["data"] = data_mask
 
             # Apply kinematic cuts to target2 tree if in dual target mode
             if self.dual_target_mode:
@@ -1476,7 +1411,7 @@ class UncertaintyPlotter(plotter.Plotter):
                     self.target2_tree,
                     self._kinematic_region,
                     evts=self.target2_events,
-                    use_truth=self.use_truth,
+                    use_truth=True,
                 )
                 target2_pass190 = self._get_cached_pass190_flags("target2")
                 self._pass190_cache["target2"] = np.logical_and(
@@ -1487,7 +1422,7 @@ class UncertaintyPlotter(plotter.Plotter):
             self._kinematic_cuts_applied = True
 
     def _get_cached_track_data(self, tree_type="source"):
-        """Override to handle additional tree types."""
+        """Override to handle additional tree types: sherpa, target2."""
         cache_key = tree_type
         if cache_key in self._track_data_cache:
             return self._track_data_cache[cache_key]
@@ -1500,21 +1435,54 @@ class UncertaintyPlotter(plotter.Plotter):
             tree = self.sherpa_tree
             max_events = self.sherpa_events
             pass190 = self._get_cached_pass190_flags("sherpa")
+            track_data = tree[pull_key].array(entry_stop=max_events)
+            track_data = track_data[pass190 == 1]
+            self._track_data_cache[cache_key] = track_data
+            return track_data
         elif tree_type == "target2":
             tree = self.target2_tree
             max_events = self.target2_events
             pass190 = self._get_cached_pass190_flags("target2")
-        elif tree_type == "data":
-            tree = self.data_tree
-            max_events = self.data_events
-            pass190 = self._get_cached_pass190_flags("data")
-            pull_key = "pT_tracks"  # Data has no truth
+            track_data = tree[pull_key].array(entry_stop=max_events)
+            track_data = track_data[pass190 == 1]
+            self._track_data_cache[cache_key] = track_data
+            return track_data
         else:
             raise ValueError(f"Unknown tree_type: {tree_type}")
 
-        track_data = tree[pull_key].array(entry_stop=max_events)
-        track_data = track_data[pass190 == 1]
+    def _theory_weight_name_to_hist_name(self, weight_name):
+        """_theory_weight_name_to_hist_name - Convert a theory weight name to a
+        histogram name.
 
-        # Cache the original structure (not flattened) for proper broadcasting
-        self._track_data_cache[cache_key] = track_data
-        return track_data
+        Arguments:
+            weight_name (str): The name of the theory weight.
+
+        Returns:
+            str: The name of the histogram.
+        """
+        if weight_name == "target":
+            return "nominal"
+        elif weight_name == "target2":
+            return "nominal"
+        elif weight_name == "w_QCD_dd":
+            return "theoryQCD"
+        elif weight_name == "w_PDF_CT18nnlo":
+            return "theoryPDF"
+        elif weight_name == "w_Alpha_s1":
+            return "theoryAlphaS"
+        elif weight_name == "w_Var1Down":
+            return "theoryPSsoft"
+        elif weight_name == "w_Var2Down":
+            return "theoryPSjet"
+        elif weight_name == "w_MPIDown":
+            return "theoryMPI"
+        elif weight_name == "w_RenDown":
+            return "theoryPSscale"
+        elif weight_name == "PS_ME_QCD_dd":
+            return "theoryQCD"
+        elif weight_name == "PS_ME_PDF_CT18nnlo":
+            return "theoryPDF"
+        elif weight_name == "PS_ME_Alpha_s1":
+            return "theoryAlphaS"
+        else:
+            raise ValueError(f"Weight name {weight_name} not recognized!")

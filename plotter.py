@@ -49,6 +49,7 @@ class Plotter:
         root_files=None,
         ibu_bins=False,
         kinematic_region=0,
+        normalize_targets=True,
         syst_kw=None,
     ):
         """Initializes the Plotter class with the source and target paths
@@ -68,7 +69,7 @@ class Plotter:
                 for details.
             use_pdf (bool): Flag to use pdf files for plotting. Default is False.
             max_events (int): Maximum number of events to include in plotting.
-                Default is 5e6.
+                Default is -1, which uses all events.
             root_files (list of str): List of root files to load histograms of
                 fastjet observables from. In order [source_start, source_end, target].
                 Defaults to None, in which case there should be no fastjet observables
@@ -76,7 +77,8 @@ class Plotter:
             ibu_bins (bool): If true use coarse IBU bins instead of fine bins
             kinematic_region (int): If set to one of the following values,
                 restricts plotting to the following kinematic regions:
-                0: No cuts, all events are used.
+                -1: No cuts, all events are used
+                0: Default: pT_ll > 200 GeV
                 1. High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2. Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3. Diboson enhanced: pT_j1 > 32 GeV
@@ -101,6 +103,7 @@ class Plotter:
         self.ibu_bins = ibu_bins
         self.kinematic_region = kinematic_region
         self.syst_kw = syst_kw
+        self.normalize_targets = normalize_targets
         self.syst_prekey, self.syst_postkey = du.get_syst_pre_and_post_keys(syst_kw)
 
         # Initialize ROOT file caching
@@ -108,13 +111,14 @@ class Plotter:
         self._root_object_cache = {}
         self._pass190_cache = {}
         self._track_data_cache = {}
+        self._filtered_data_cache = {}
 
         # Find number of events to use in plotting
         self.source_events = self.source_tree.num_entries
-        if self.source_events > max_events:
+        if max_events > 0 and self.source_events > max_events:
             self.source_events = max_events
         self.target_events = self.target_tree.num_entries
-        if self.target_events > max_events:
+        if max_events > 0 and self.target_events > max_events:
             self.target_events = max_events
 
         # Store kinematic region for later application
@@ -125,12 +129,20 @@ class Plotter:
             config = yaml.safe_load(stream)
 
         # Loop through plots in config, keep only those that have verbosity less
-        # than or equal to configured level
-        self.plots = [
-            config["plots"][plot]
-            for plot in config["plots"]
-            if config["plots"][plot]["verbosity_level"] <= verbosity
-        ]
+        # than or equal to configured level, or if verbosity is 4, keep only
+        # the plots that have verbosity_level set to 4
+        if verbosity == 4:
+            self.plots = [
+                config["plots"][plot]
+                for plot in config["plots"]
+                if config["plots"][plot]["verbosity_level"] == 4
+            ]
+        else:
+            self.plots = [
+                config["plots"][plot]
+                for plot in config["plots"]
+                if config["plots"][plot]["verbosity_level"] <= verbosity
+            ]
 
         # Detect whether we have any track level or fastjet observables
         self.track_level = False
@@ -202,25 +214,32 @@ class Plotter:
         for plot in self.plots:
 
             # Get histograms
-            source_start_hist, bins = self._get_histogram(
+            source_start_hist, _, bins = self._get_histogram(
                 plot,
                 weights=source_start_trk if plot["type"] == "track" else source_start,
-                density=True,
+                density=False,
                 root_index=0,
             )
-            source_end_hist, _ = self._get_histogram(
+            source_end_hist, _, bins = self._get_histogram(
                 plot,
                 weights=source_end_trk if plot["type"] == "track" else source_end,
-                density=True,
+                density=False,
                 root_index=1,
             )
-            target_hist, _ = self._get_histogram(
+            target_hist, _, bins = self._get_histogram(
                 plot,
                 weights=target_trk if plot["type"] == "track" else target,
-                density=True,
+                density=False,
                 is_target=True,
                 root_index=2,
             )
+
+            # Normalize target histogram if requested
+            if self.normalize_targets:
+                norm_factor_source = np.sum(source_end_hist) / np.sum(source_start_hist)
+                norm_factor_target = np.sum(source_end_hist) / np.sum(target_hist)
+                source_start_hist *= norm_factor_source
+                target_hist *= norm_factor_target
 
             # Calculate ratios
             start_ratio = source_start_hist / target_hist
@@ -373,42 +392,38 @@ class Plotter:
         weights=None,
         density=False,
         root_index=0,
-        return_variance=False,
         **kwargs,
     ):
-        """_get_histogram - This function computes a histogram for a given
-        plot dictionary (observable) and vector of weights.
-        It uses the key from the plot dictionary to access the data from the
-        trees if the observable is precomputed or a track variable.
-        If the observable is computed using fastjet it directly loads the
-        histograms from the root files whose path is provided in the
-        root_files argument. In this case the weights vector is not used.
-
-        Some fastjet observables (Lund planes) are 2D histograms. In the case
-        that these histograms are requested, the function returns a tuple
-        of np.arrays (binsx, binsy) in place of a single np.array for the
-        bins.
+        """_get_histogram - This function creates or loads a histogram for a given
+        plot configuration. For fastjet observables, it loads pre-computed histograms
+        from ROOT files. For other observables, it loads data from the trees and
+        creates histograms on-the-fly. Always returns the variance of the histogram.
 
         Arguments:
-            plot_dict (dict): Dictionary containing the plot configuration
-                including the key for the observable.
-            is_target (bool): If true, pull from the target tree instead of source
-            weights (np.array): Weights to use for histogram in building
-                the histogram
-            density (bool): If True, will normalize the histogram to
-                form a probability density function (PDF). Default is False.
-            return_variance (bool): If True, will return the variance of the
-                histogram instead of the histogram itself.
-                Default is False, note this only works for
-                fastjet observables.
-            root_index (int): Index of the root file to use for fastjet
-                observables. Default is 0, or the first root file provided.
+            plot_dict (dict): Dictionary containing plot configuration including
+                "type", "key", and binning information.
+            is_target (bool): If True, load data from target tree instead of source.
+                Default is False.
+            weights (np.array, optional): Weights to apply when creating histograms
+                from tree data. Only used for non-fastjet observables. Default is None.
+            density (bool): If True, normalize the histogram to unit area (density).
+                Default is False.
+            root_index (int): Index of the ROOT file in self.root_files to use for
+                fastjet observables. Used to select between source_start (0),
+                source_end (1), and target (2) histograms. Default is 0.
+            **kwargs: Additional keyword arguments (currently unused).
 
         Returns:
-            tuple: A tuple containing the histograms for the source start,
-                source end, and target distributions. The histograms are
-                numpy arrays representing the counts in each bin.
-            np.array: The bin edges for the histograms.
+            tuple: (hist, variance, bins) where:
+                - hist (np.array): Histogram values. For 2D histograms (TH2),
+                  this is a 2D array.
+                - variance (np.array): Variance of the histogram. For weighted
+                  histograms, this is the sum of squared weights per bin. For
+                  unweighted histograms, this uses Poisson statistics
+                  (variance = counts). For 2D histograms, this is a 2D array
+                  matching the histogram shape.
+                - bins (np.array or tuple): Bin edges. For 1D histograms, this is
+                  a 1D array. For 2D histograms, this is a tuple (binsx, binsy).
         """
 
         # If the observable is computed using fastjet, we need to load
@@ -421,13 +436,11 @@ class Plotter:
             else:
                 hist, bins = tobject.to_numpy()
 
-            if return_variance:
-                hist = tobject.variances()
+            # Get variance from ROOT object
+            variance = tobject.variances()
 
         # Else the data is loaded and binned from the trees directly
         else:
-            assert not return_variance
-
             # Get the correct key
             key = plot_dict["key"]
             if not is_target and self.syst_kw in plot_dict["modified"]:
@@ -441,12 +454,27 @@ class Plotter:
                 data, plot_dict, weights=weights, density=False
             )
 
+            # Calculate variance
+            if weights is not None:
+                # For weighted histograms, variance is sum of squared weights per bin
+                bins_edges = self._get_bins_for_plot(plot_dict)
+                variance, _ = np.histogram(
+                    data, bins=bins_edges, weights=weights**2, density=False
+                )
+            else:
+                # For unweighted histograms, use Poisson statistics (variance = counts)
+                variance = hist.copy()
+
         # Normalize histogram if desired
         if density:
-            assert not return_variance
-            hist = self._normalize_to(hist, val=1.0)
+            # Calculate normalization factor
+            norm_factor = np.sum(hist)
+            if norm_factor > 0:
+                hist = hist / norm_factor
+                # Variance scales as the square of the normalization factor
+                variance = variance / (norm_factor**2)
 
-        return hist, bins
+        return hist, variance, bins
 
     def _normalize_to(self, hist, val=1.0):
         """_normalize_to - This function normalizes a histogram to a given value.
@@ -601,6 +629,7 @@ class Plotter:
             self._cleanup_root_cache()
             self._pass190_cache.clear()
             self._track_data_cache.clear()
+            self._filtered_data_cache.clear()
 
     def _get_weights(
         self, weights, is_target=False, use_train=False, array_name="nominal-central"
@@ -656,9 +685,7 @@ class Plotter:
             weights = np.load(weights)
             if array_name in weights.files:
                 assert not use_train
-                print(f"Using array {array_name} from {weights.files}")
                 weights = weights[array_name]
-                print(f"First few weights: {weights[:5]}")
             elif use_train:
                 weights = weights["train"]
             else:
@@ -669,8 +696,10 @@ class Plotter:
             if len(weights) > max_events:
                 weights = weights[:max_events]
 
-            # Multiply by ROOT weights
-            weights *= root_weights
+            # Multiply by ROOT weights if needed
+            if "weights" not in array_name:
+                print(f"Multiplying weights by ROOT weights for {array_name}")
+                weights *= root_weights
 
         # Branch name case
         else:
@@ -715,6 +744,9 @@ class Plotter:
         If the data is track level, it will be flattened to a 1D array
         before returning.
 
+        This method caches the filtered/flattened data to avoid repeated
+        disk reads for the same observable.
+
         Args:
             key (str): Key to get data for
             is_target (bool): If true, pull from the target tree instead of source
@@ -722,6 +754,17 @@ class Plotter:
         Returns:
             (np.array): The data as a numpy array
         """
+        # Determine tree type for cache key
+        tree_type = "target" if is_target else "source"
+
+        # Create cache key: (key, tree_type, use_truth)
+        # Note: use_truth affects the key prefix in _get_filtered_data
+        cache_key = (key, tree_type, self.use_truth)
+
+        # Return cached data if available
+        if cache_key in self._filtered_data_cache:
+            return self._filtered_data_cache[cache_key]
+
         if is_target:
             tree = self.target_tree
             pass190_flags = self._get_cached_pass190_flags("target")
@@ -731,13 +774,19 @@ class Plotter:
             pass190_flags = self._get_cached_pass190_flags("source")
             max_events = self.source_events
 
-        return self._get_filtered_data(
+        # Load and filter data
+        data = self._get_filtered_data(
             tree,
             key,
             pass190_flags,
             use_truth=self.use_truth,
             max_events=max_events,
         )
+
+        # Cache the result
+        self._filtered_data_cache[cache_key] = data
+
+        return data
 
     def _add_ratios(self, fig):
         """_add_ratios - This function adds ratio pads to a given matplotlib figure.
@@ -761,11 +810,13 @@ class Plotter:
         """Ensure kinematic cuts are applied if needed. This method is idempotent.
         Should be called before any plotting or analysis methods.
         """
-        if self._kinematic_region != 0 and not hasattr(self, "_kinematic_cuts_applied"):
+        if self._kinematic_region != -1 and not hasattr(
+            self, "_kinematic_cuts_applied"
+        ):
             print("Applying kinematic cuts for region:", self._kinematic_region)
             if self.verbosity >= 3:
                 print(
-                    "Verbosity is greater than 3, please ensure fastjet"
+                    "Verbosity is greater than 2, please ensure fastjet"
                     " observables are calculated in the limited phase space!"
                 )
             self.apply_kinematic_cuts(self._kinematic_region)
@@ -777,7 +828,8 @@ class Plotter:
 
         Args:
             region (int): The kinematic region to apply cuts for.
-                0: No cuts, all events are used.
+                -1: No cuts, all events are used
+                0: Default: pT_ll > 200 GeV
                 1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3: Diboson enhanced: pT_j1 > 32 GeV
@@ -823,22 +875,27 @@ class Plotter:
         if N > evts:
             N = evts
 
-        if region == 0:
+        pT_ll = ak.to_numpy(tree[prekey + "pT_ll"].array(entry_stop=N))
+
+        if region == -1:
             # No cuts, all events are used
             return np.ones(N, dtype=bool)
+        elif region == 0:
+            # Default: pT_ll > 200 GeV
+            return np.array(pT_ll > 200)
         elif region == 1:
             pT_j2 = ak.to_numpy(tree[prekey + "pT_trackj2"].array(entry_stop=N))
-            pT_ll = ak.to_numpy(tree[prekey + "pT_ll"].array(entry_stop=N))
             return np.logical_and(pT_j2 > 50, pT_ll > 350)
         elif region == 2:
             m_jj, dy_jj = du.get_jj_info(tree, use_truth=use_truth, stop=N)
-            return np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
+            cuts = np.logical_and(m_jj > 200, np.abs(dy_jj) > 2)
+            return np.logical_and(cuts, pT_ll > 200)
         elif region == 3:
             m_j1 = ak.to_numpy(tree[prekey + "pT_trackj1"].array(entry_stop=N))
-            return m_j1 > 32
+            return np.logical_and(m_j1 > 32, pT_ll > 200)
         else:
             raise ValueError(
-                f"Invalid kinematic region {region}. Must be one of 0, 1, 2, or 3."
+                f"Invalid kinematic region {region}. Must be one of -1, 0, 1, 2, or 3."
             )
 
     def _get_cached_pass190_flags(self, tree_type="source"):

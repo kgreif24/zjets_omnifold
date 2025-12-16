@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <exception>
 #include "TString.h"
 #include "MakeOmni.h"
 #include "TChain.h"
@@ -15,9 +16,11 @@ int main(int argc, char* argv[]){
 	vector<string> weight_names;
 	TString outFile;
 	bool isTruth = false;
-	int maxEvents = 5000000;
+	int maxEvents = -1;
 	int nEns = 0;
+	int nBootstrapData = 0;
 	int kinematic_region = 0;
+	string track_format = "vector";  // Default to vector format
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 		if (arg == "--file") {
@@ -65,6 +68,15 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
+		if (arg == "--nBootstrapData") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				nBootstrapData = std::stoi(argv[i+1]);
+				i++; // Move to the next arg
+			} else { // Throw error if no argument provided
+				std::cerr << "--nBootstrapData option requires one argument." << std::endl;
+				return 1;
+			}
+		}
 		
 		if (arg == "--outFile") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
@@ -96,7 +108,38 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
+		if (arg == "--track_format") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				track_format = string(argv[i+1]);
+				if (track_format != "vector" && track_format != "array") {
+					std::cerr << "--track_format must be either 'vector' or 'array'" << std::endl;
+					return 1;
+				}
+				i++; // Move to the next arg
+			} else { // Throw error if no argument provided
+				std::cerr << "--track_format option requires one argument." << std::endl;
+				return 1;
+			}
+		}
     }
+
+	// Auto-detect weight names if not provided
+	if (weight_names.size() == 0 && weight_file != "") {
+		cout << "No weight names specified, auto-detecting from weight file..." << endl;
+		cout << "Attempting to read from: " << weight_file << endl;
+		try {
+			weight_names = MakeOmni::DetectWeightNames(weight_file);
+			cout << "Detected " << weight_names.size() << " weight arrays:" << endl;
+			for (const auto& weight_name : weight_names) {
+				cout << "  - " << weight_name << endl;
+			}
+		} catch (const std::exception& e) {
+			std::cerr << "Error auto-detecting weight names: " << e.what() << std::endl;
+			std::cerr << "Please check that the weight file exists and is readable." << std::endl;
+			std::cerr << "You can also manually specify weight names using --weight_names" << std::endl;
+			return 1;
+		}
+	}
 
 	// Set up the chain
 	TChain* myChain = new TChain("OmniTree");
@@ -114,9 +157,10 @@ int main(int argc, char* argv[]){
 	cout << "Has entries: " << myChain->GetEntries() << endl;
 	cout << "Max events: " << maxEvents << endl;
 	cout << "Kinematic region: " << kinematic_region << endl;
+	cout << "Track format: " << track_format << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, kinematic_region);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, nBootstrapData, kinematic_region, track_format);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;

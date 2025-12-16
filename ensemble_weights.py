@@ -6,12 +6,24 @@ Last updated 08/27/2024
 python3
 """
 
+import os
+import sys
 import argparse
 import glob
+import tempfile
+import zipfile
+import uproot
+import awkward as ak
 import numpy as np
+import pandas as pd
+
+sys.path.append("./utils")
+import data_utils as du  # noqa: E402
+
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 
-def pull_weights(campaign_path, run_group, iteration, indices=None, max_ens=10):
+def pull_weights(campaign_path, run_group, iteration, indices=None):
     """pull_weights - This function will pull the weights produced by a given
     run group. For example, if the nominal run group is titled "nominal-run-[1-10],
     the function will build a numpy array of weights from all of the step 2 trainings
@@ -22,11 +34,13 @@ def pull_weights(campaign_path, run_group, iteration, indices=None, max_ens=10):
         run_group (str): The name of the run group to pull weights from.
         iteration (int): The iteration number to pull weights for.
         indices (np.ndarray, optional): Indices to reorder the weights. Default is None.
-        max_ens (int, optional): The maximum number of ensembles to pull weights for.
-            Default is 10.
 
     Returns:
-        np.ndarray: A numpy array of the weights with shape (n_runs, n_test_events)
+        tuple: A tuple containing:
+            - np.ndarray: A numpy array of the weights with shape
+              (n_runs, n_test_events)
+            - list: A list of full run names (e.g., "dbootstrap_1", "dbootstrap_2")
+              in the same order as weights
     """
 
     # Get the weight files for this run group
@@ -40,22 +54,252 @@ def pull_weights(campaign_path, run_group, iteration, indices=None, max_ens=10):
             " at iteration {iteration}."
         )
 
-    # If max_ens is provided, limit the number of weight files to max_ens
-    if max_ens is not None:
-        weight_files = weight_files[:max_ens]
-
-    # Place weights in a numpy array
+    # Place weights in a numpy array and extract run names
     iteration_weights = []
+    run_names = []
     for file in weight_files:
         weights = np.load(file)["test"]
         iteration_weights.append(weights)
+        # Extract full run name from path:
+        # {campaign_path}/{run_name}/weights/...
+        # Get the directory name that contains the weights file
+        dir_path = os.path.dirname(file)
+        # Go up two levels to get run directory
+        run_name = os.path.basename(os.path.dirname(dir_path))
+        run_names.append(run_name)
     iteration_weights = np.stack(iteration_weights, axis=0, dtype=np.float32)
 
     # If indices are provided, reorder the weights
     if indices is not None:
         iteration_weights = iteration_weights[:, indices]
 
-    return iteration_weights
+    return iteration_weights, run_names
+
+
+def group_name_to_write_name(gn, idx=None):
+    """group_name_to_write_name - Utility function to convert a group name,
+    which is how a given group is referred to in the Omnifold results repository,
+    to a write name, which is how a given group is referred to in the final weight
+    files provided for publication.
+    """
+    if gn == "nominal" and idx is None:
+        return "weights_nominal"
+    elif gn == "hv":  # Not a bug! HV uncertainty re-weights the sherpa sample
+        return "weights_nominal"
+    elif gn == "nominal" and idx is not None:
+        return f"weights_ensemble_{idx}"
+    elif gn == "dd":
+        return "weights_dd"
+    elif gn == "dbootstrap":
+        assert idx is not None
+        return f"weights_bootstrap_data_{idx}"
+    elif gn == "mcbootstrap":
+        assert idx is not None
+        return f"weights_bootstrap_mc_{idx}"
+    elif gn == "nn-init":
+        assert idx is not None
+        return f"weights_ensemble_{idx}"
+    elif gn == "track-eff":
+        return "weights_trackEffMain"
+    elif gn == "jet-track-eff":
+        return "weights_trackEffJet"
+    elif gn == "track-fake":
+        return "weights_trackFake"
+    elif gn == "track-scale":
+        return "weights_trackPtScale"
+    elif gn == "muon-id":
+        return "weights_muonCalID"
+    elif gn == "muon-ms":
+        return "weights_muonCalMS"
+    elif gn == "muon-resbias":
+        return "weights_muonCalResBias"
+    elif gn == "muon-scale":
+        return "weights_muonCalScale"
+    elif gn == "muon-effreco":
+        return "weights_muonEffReco"
+    elif gn == "muon-effiso":
+        return "weights_muonEffIso"
+    elif gn == "muon-efftrk":
+        return "weights_muonEffTrack"
+    elif gn == "muon-efftrig":
+        return "weights_muonEffTrig"
+    elif gn == "prw":
+        return "weights_pileup"
+    elif gn == "theory-qcd":
+        return "weights_theoryQCD"
+    elif gn == "theory-pdf":
+        return "weights_theoryPDF"
+    elif gn == "theory-alphas":
+        return "weights_theoryAlphaS"
+    elif gn == "theory-pssoft":
+        return "weights_theoryPSsoft"
+    elif gn == "theory-psjet":
+        return "weights_theoryPSjet"
+    elif gn == "theory-mpi":
+        return "weights_theoryMPI"
+    elif gn == "theory-psscale":
+        return "weights_theoryPSscale"
+    else:
+        raise ValueError(f"Group name {gn} not recognized!")
+
+
+def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
+    """get_truth_to_reco_ratio - This function will calculate the ratio of the truth
+    to the reconstructed events for a given run group. Typically this is just the
+    sum of the `weight_mc` branch divided by the sum of the `weight` branch, unless
+    either of these things are modified by the systematic applied to the run group.
+
+    Note we don't consider the HV systematic here, it is handled separately.
+
+    Args:
+        gn (str): The name of the run group.
+        t_mc (uproot.TTree): The tree to get the weights from.
+        reco_pass (np.ndarray): The pass190 filter for the reconstructed events.
+        truth_pass (np.ndarray): The pass190 filter for the truth events.
+
+    Returns:
+        float: The ratio of the truth to the reconstructed events.
+    """
+
+    nominal_weight_mc = ak.to_numpy(t_mc["weight_mc"].array())
+    nominal_weight = ak.to_numpy(t_mc["weight"].array())
+
+    nominal_weight_mc_filtered = nominal_weight_mc[truth_pass == 1]
+    nominal_weight_filtered = nominal_weight[reco_pass == 1]
+
+    nominal_numerator = np.sum(nominal_weight_mc_filtered)
+    nominal_denominator = np.sum(nominal_weight_filtered)
+    nominal_ratio = nominal_numerator / nominal_denominator
+
+    if "muon" in gn:
+        if gn == "muon-effreco":
+            nominal_sf = ak.to_numpy(t_mc["mu_recoSF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_recoSFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
+            usepass = reco_pass
+        elif gn == "muon-effiso":
+            nominal_sf = ak.to_numpy(t_mc["mu_isoSF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_isoSFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
+            usepass = reco_pass
+        elif gn == "muon-efftrk":
+            nominal_sf = ak.to_numpy(t_mc["mu_TTVASF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_TTVASFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
+            usepass = reco_pass
+        elif gn == "muon-efftrig":
+            nominal_sf = ak.to_numpy(t_mc["singleMuonTrigSF"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_trigSFDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
+            usepass = reco_pass
+        elif gn == "muon-id":
+            weight = nominal_weight
+            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_id", pt_thresh=200)
+        elif gn == "muon-ms":
+            weight = nominal_weight
+            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_ms", pt_thresh=200)
+        elif gn == "muon-resbias":
+            weight = nominal_weight
+            usepass = du.calc_muon_syst_pass190(
+                t_mc, syst_kw="muon_resbias", pt_thresh=200
+            )
+        elif gn == "muon-scale":
+            weight = nominal_weight
+            usepass = du.calc_muon_syst_pass190(
+                t_mc, syst_kw="muon_scale", pt_thresh=200
+            )
+        else:
+            raise ValueError(f"Systematic {gn} not recognized!")
+        weight = weight[usepass == 1]
+        denominator = np.sum(weight)
+        return nominal_numerator / denominator
+    elif gn == "mcbootstrap":
+        raise NotImplementedError("MC bootstrap weights are not implemented yet")
+    elif gn == "hv":
+        raise ValueError("HV systematic is handled separately")
+    else:
+        return nominal_ratio
+
+
+def get_bs_n_data(campaign_path, run_name, ptll, ptll_cut=200):
+    """get_bs_data_weights - This function will return the weights for a given
+    data bootstrap run group. It will re-create the data sample and sum the weights
+    to get the number of data events.
+
+    Args:
+        campaign_path (str): The path to the campaign directory.
+        run_name (str): The full run name (e.g., "dbootstrap_1", "dbootstrap_2").
+        ptll (np.ndarray): Array of pt_ll values.
+        ptll_cut (float): The pt_ll threshold cut. Default is 200.
+
+    Returns:
+        int: The number of data events.
+    """
+    # Load the bootstrap file from the run directory
+    sample_files = glob.glob(f"{campaign_path}/{run_name}/bootstrap*.npy")
+    if not sample_files:
+        raise FileNotFoundError(
+            f"No bootstrap file found in {campaign_path}/{run_name}/"
+        )
+    if len(sample_files) > 1:
+        raise ValueError(
+            f"Multiple bootstrap files found in {campaign_path}/{run_name}/: "
+            f"{sample_files}"
+        )
+    sample = np.load(sample_files[0])
+    filtered_sample = sample[ptll > ptll_cut]
+    return np.sum(filtered_sample)
+
+
+def adjust_theory_weights(t, gn, root_weights):
+    """adjust_theory_weights - This function will adjust the theory weights to the
+    nominal weights.
+
+    Args:
+        t (uproot.TTree): The tree to get the weights from.
+        gn (str): The name of the run group.
+        root_weights (np.ndarray): The root weights to adjust.
+
+    Returns:
+        np.ndarray: The adjusted root weights.
+    """
+    if gn == "theory-qcd":
+        return root_weights * ak.to_numpy(t["w_QCD_dd"].array())
+    elif gn == "theory-pdf":
+        return root_weights * ak.to_numpy(t["w_PDF_CT18nnlo"].array())
+    elif gn == "theory-alphas":
+        return root_weights * ak.to_numpy(t["w_Alpha_s1"].array())
+    elif gn == "theory-pssoft":
+        return root_weights * ak.to_numpy(t["w_Var1Down"].array())
+    elif gn == "theory-psjet":
+        return root_weights * ak.to_numpy(t["w_Var2Down"].array())
+    elif gn == "theory-mpi":
+        return root_weights * ak.to_numpy(t["w_MPIDown"].array())
+    elif gn == "theory-psscale":
+        return root_weights * ak.to_numpy(t["w_RenDown"].array())
+    else:
+        raise ValueError(f"Systematic {gn} not recognized!")
+
+
+def norm_weights(weights, pass190, ratio, n_data, luminosity):
+    """norm_weights - This function will normalize a set of weights to restore the
+    event yield predicted by the MC given the number of data events.
+    """
+    pass_weights = weights[pass190 == 1]
+    return_weights = weights.copy()
+    return_weights[pass190 == 1] = (
+        pass_weights * n_data * ratio / (np.sum(pass_weights) * luminosity)
+    )
+    return_weights[pass190 == 0] = 0
+    return return_weights
+
+
+def calc_pass_200(tree, truth=False, ptll_cut=200):
+    """calc_pass_200 - This function will calculate the pass200 filter"""
+    tk = "truth_" if truth else ""
+    p190 = ak.to_numpy(tree[tk + "pass190"].array())
+    ptll = ak.to_numpy(tree[tk + "pT_ll"].array())
+    return p190 & (ptll > ptll_cut)
 
 
 # Parse arguments
@@ -68,15 +312,9 @@ parser.add_argument(
     help="Path to the directory containing all of the data from a campaign",
 )
 parser.add_argument(
-    "--max_ens",
+    "--iteration",
     type=int,
-    default=10,
-    help="The maximum number of ensembles to pull weights for",
-)
-parser.add_argument(
-    "--iterations",
-    type=int,
-    nargs="+",
+    required=True,
     help="The iterations to pull weights for, in order of the groups",
 )
 parser.add_argument(
@@ -89,47 +327,224 @@ parser.add_argument(
     help="The names of the run groups to pull weights for",
 )
 parser.add_argument("--output", type=str, help="Output file path")
+parser.add_argument(
+    "--luminosity",
+    type=float,
+    help="The integrated luminosity of the data sample in units of fb^-1",
+    default=140.1,
+)
+parser.add_argument(
+    "--ptll_cut",
+    type=float,
+    help="The pt_ll threshold cut in GeV. Default is 200.",
+    default=200.0,
+)
+parser.add_argument(
+    "--og_order",
+    action="store_true",
+    help="If set, unshuffle weights to the original order of the MG and Sherpa samples",
+    default=False,
+)
 args = parser.parse_args()
 
 # Load indices for unshuffling MC test events and HV events
-indices_nominal = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices.npy")
-indices_hv = np.load("/pscratch/sd/k/kgreif/data/unshuffle_indices_hv.npy")
+nominal_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+if args.og_order:
+    nominal_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_og.npy"
+indices_nominal = np.load(nominal_path)
+indices_hv = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_hv.npy"
+)
+
+# Set paths to trees
+base_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/"
+nominal_path = (
+    base_path
+    + "ZjetOmnifold_May19_MGPy8FxFxPlusNonStrong_withdd_Test_23Nov25_shuffled.root"
+)
+hv_path = (
+    base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
+)
+if args.og_order:
+    base_path = "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files_v4/"
+    nominal_path = (
+        base_path + "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_withdd.root"
+    )
+    hv_path = base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5.root"
+
+# Load trees, n_data, and raw MC weights
+t = uproot.open(nominal_path)["OmniTree"]
+t_hv = uproot.open(hv_path)["OmniTree"]
+if args.use_data:
+    t_data = uproot.open(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/"
+        "ZjetOmnifold_Nov11_data_WithTracks_slim_Systematics_shuffled.root"
+    )["OmniTree"]
+    pt_ll_data = ak.to_numpy(t_data["pT_ll"].array())
+    n_data_nominal = np.sum(pt_ll_data > args.ptll_cut)
+else:
+    t_data = uproot.open(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/"
+        "Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled.root"
+    )["OmniTree"]
+    pt_ll_data = ak.to_numpy(t_data["pT_ll"].array())
+    n_data_nominal = np.sum(pt_ll_data > args.ptll_cut)
+nominal_root_weights = ak.to_numpy(t["weight_mc"].array())
+hv_root_weights = ak.to_numpy(t_hv["weight_mc"].array())
+hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
+dd_target_weights = ak.to_numpy(t["target_dd"].array())
+
+# Calculate the pass200 filters for the nominal and HV samples at
+# both reco and truth level
+pass200 = calc_pass_200(t, ptll_cut=args.ptll_cut)
+truth_pass200 = calc_pass_200(t, truth=True, ptll_cut=args.ptll_cut)
+hv_pass200 = calc_pass_200(t_hv, ptll_cut=args.ptll_cut)
+hv_truth_pass200 = calc_pass_200(t_hv, truth=True, ptll_cut=args.ptll_cut)
 
 # Define the names of the various run groups in a campaign
-assert len(args.iterations) == len(
-    args.group_names
-), "Number of iterations must match number of groups"
 all_weights = {}
-print(f"Pulling weights for groups {args.group_names} at iterations {args.iterations}")
 
-for gn, it in zip(args.group_names, args.iterations):
+# Loop through the run groups
+for gn in args.group_names:
 
+    # Skip the HV group, it is handled separately
+    if gn == "hv":
+        continue
+
+    # Decide what indices to use
+    if args.og_order:
+        use_indices = indices_nominal
+    elif "theory" not in gn:
+        use_indices = indices_nominal
+    else:
+        use_indices = None
+
+    # Pull the weights for a given group
     if args.use_data and gn != "dd":
         pull_gn = f"{gn}-data"
     else:
         pull_gn = gn
     print(f"Pulling weights for {pull_gn}")
-    # Set the indices to use
-    if gn == "hv":
-        use_indices = indices_hv
-    else:
-        use_indices = indices_nominal
-    pulled_weights = pull_weights(
+    pulled_weights, run_names = pull_weights(
         args.campaign_path,
         pull_gn,
-        it,
+        args.iteration,
         indices=use_indices,
-        max_ens=args.max_ens,
     )
     print(f"Got {len(pulled_weights)} weights for group {pull_gn}")
 
     # Calculate the central value weights
+    if gn not in ["dbootstrap", "mcbootstrap"]:
+        central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
+        if "theory" in gn:
+            multiplier = adjust_theory_weights(t, gn, nominal_root_weights)
+            central_weights *= multiplier
+        else:
+            central_weights *= nominal_root_weights
+        ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
+        central_weights = norm_weights(
+            central_weights,
+            truth_pass200,
+            ratio_mc,
+            n_data_nominal,
+            args.luminosity,
+        )
+        write_name = group_name_to_write_name(gn)
+        all_weights[write_name] = central_weights
+
+        # Add the luminosity uncertainty weights if this is the nominal group
+        if gn == "nominal":
+            lumi_weights = norm_weights(
+                central_weights,
+                truth_pass200,
+                ratio_mc,
+                n_data_nominal,
+                args.luminosity * (1.0 - 0.0083),  # 0.83% luminosity uncertainty
+            )
+            all_weights["weights_lumi"] = lumi_weights
+
+    # Only save ensemble weights for specific group names
+    if gn in ["nominal", "dbootstrap", "mcbootstrap"]:
+        # Loop over pulled weights and add each to the all_weights dictionary
+        bootstrap_stats = []
+        for i, weight in enumerate(pulled_weights):
+            weight *= nominal_root_weights
+            ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
+            # If this is the data bootstraps need to get the number of data events
+            # for this bootstrap run
+            if gn == "dbootstrap":
+                # Get the run name for this bootstrap
+                n_data = get_bs_n_data(
+                    args.campaign_path, run_names[i], pt_ll_data, ptll_cut=args.ptll_cut
+                )
+            else:
+                n_data = n_data_nominal
+            weight = norm_weights(
+                weight, truth_pass200, ratio_mc, n_data, args.luminosity
+            )
+            write_name = group_name_to_write_name(gn, i)
+            all_weights[write_name] = weight
+
+# Add in dd-target weights, note this are already multiplied by the nominal root weights
+ratio_mc = get_truth_to_reco_ratio("target_dd", t, pass200, truth_pass200)
+dd_target_weights = norm_weights(
+    dd_target_weights, truth_pass200, ratio_mc, n_data_nominal, args.luminosity
+)
+all_weights["target_dd"] = dd_target_weights
+
+# Now handle the HV weights
+hv_weights = {}
+if "hv" in args.group_names:
+    pulled_weights, _ = pull_weights(
+        args.campaign_path,
+        "hv-data" if args.use_data else "hv",
+        args.iteration,
+        indices=indices_hv if args.og_order else None,
+    )
+    # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
-    all_weights[f"{gn}-central"] = central_weights
+    central_weights *= hv_root_weights
+    # Normalize the HV weights
+    ratio_hv = np.sum(hv_root_weights[hv_truth_pass200 == 1]) / np.sum(
+        hv_reco_weights[hv_pass200 == 1]
+    )
+    central_weights = norm_weights(
+        central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
+    )
+    hv_weights["weights_hv"] = central_weights
 
-    # Loop over pulled weights and add each to the all_weights dictionary
-    for i, weight in enumerate(pulled_weights):
-        all_weights[f"{gn}-{i}"] = weight
+# Create output directory if it doesn't exist
+output_dir = os.path.dirname(args.output)
+if output_dir and not os.path.exists(output_dir):
+    os.makedirs(output_dir, exist_ok=True)
 
-# Save results
-np.savez(args.output, **all_weights)
+# Save results in HDF5 format compatible with pd.read_hdf()
+# Save non-hv weights first (creates the file with mode='w')
+df_mc = pd.DataFrame(all_weights)
+df_mc.to_hdf(args.output, key="weights", mode="w", format="table")
+
+df_hv = pd.DataFrame(hv_weights)
+df_hv.to_hdf(args.output, key="hv_weights", mode="a", format="table")
+
+# Also save results in .npz format (UNCOMPRESSED for compatibility with cnpy)
+# Generate .npz filename by replacing HDF5 extension
+npz_output = os.path.splitext(args.output)[0] + ".npz"
+# Save all weights (MC and HV) to a single .npz file
+# Use uncompressed format to avoid issues with cnpy library
+# Save to temporary .npz first, then re-save uncompressed
+with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
+    tmp_npz = tmp.name
+    np.savez(tmp_npz, **all_weights, **hv_weights)
+
+# Re-save as uncompressed zip file
+with zipfile.ZipFile(tmp_npz, "r") as z_in:
+    with zipfile.ZipFile(npz_output, "w", compression=zipfile.ZIP_STORED) as z_out:
+        for item in z_in.infolist():
+            # Copy each file without compression
+            data = z_in.read(item.filename)
+            z_out.writestr(item, data, compress_type=zipfile.ZIP_STORED)
+
+# Clean up temporary file
+os.remove(tmp_npz)
+
+print(f"Saved weights to {npz_output} (uncompressed format)")

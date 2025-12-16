@@ -16,10 +16,12 @@ import uncertainty_plotter
 parser = argparse.ArgumentParser(description="Run plotting functions")
 parser.add_argument("--mc", type=str, help="The path to MC root file")
 parser.add_argument(
-    "--target", type=str, help="The path to target, either truth pseuodata or truth gen"
+    "--target",
+    type=str,
+    help="The path to target file, either truth pseudodata or truth gen. "
+    "Must be a single ROOT file.",
 )
 parser.add_argument("--hv", type=str, help="The path to the sherpa MC file")
-parser.add_argument("--data", type=str, help="The path to the data file")
 parser.add_argument(
     "--root_files",
     type=str,
@@ -27,8 +29,8 @@ parser.add_argument(
     default=None,
     help=(
         "If plotting observables that must be computed with fastjet"
-        ", provide the path to the root files in order (mc, target, hv, data)"
-        ". If using --target2, add target2 as the 5th file."
+        ", provide the path to the root files in order (mc, target, hv)"
+        ". If using --target2, add target2 as the 4th file."
     ),
 )
 parser.add_argument(
@@ -48,8 +50,11 @@ parser.add_argument(
 parser.add_argument(
     "--max_events",
     type=int,
-    default=5000000,
-    help="The maximum number of events to use for plotting",
+    default=-1,
+    help=(
+        "The maximum number of events to use for plotting. "
+        "If set, recommended to run with --normalize_targets."
+    ),
 )
 parser.add_argument(
     "--color",
@@ -61,14 +66,16 @@ parser.add_argument(
     "--cut_region",
     type=int,
     default=0,
-    choices=[0, 1, 2, 3],
+    choices=[-1, 0, 1, 2, 3],
     help="Select a kinematic region to restrict to",
 )
 parser.add_argument(
     "--target2",
     type=str,
     default=None,
-    help="Path to second target file for dual truth-level generator comparison",
+    help=(
+        "Path(s) to second target file(s) for dual truth-level generator comparison. "
+    ),
 )
 parser.add_argument(
     "--data_comparison_mode",
@@ -78,13 +85,18 @@ parser.add_argument(
         "removes method bias)"
     ),
 )
+parser.add_argument(
+    "--normalize_targets",
+    action="store_true",
+    help="Normalize the target histograms to match the source histograms",
+)
 args = parser.parse_args()
 
 # Validate arguments
 if args.target2 is not None and args.root_files is not None:
-    if len(args.root_files) != 5:
-        print("Warning: When using --target2, you should provide 5 root files:")
-        print("  [mc, target, hv, data, target2]")
+    if len(args.root_files) != 4:
+        print("Warning: When using --target2, you should provide 4 root files:")
+        print("  [mc, target, hv, target2]")
         print(f"  You provided {len(args.root_files)} files.")
 
 # Build the plotter and run
@@ -92,11 +104,11 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     args.mc,
     args.target,
     args.hv,
-    args.data,
     args.store,
     root_files=args.root_files,
     target2_path=args.target2,
     data_comparison_mode=args.data_comparison_mode,
+    normalize_targets=args.normalize_targets,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,
