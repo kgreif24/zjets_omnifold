@@ -255,6 +255,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Loop through plots and make histograms
         return_dict = {}
+        histogram_data = {}  # Store histogram data for .npz export
         for plot in self.plots:
             print(f"Plotting {plot['key']}")
 
@@ -451,22 +452,33 @@ class UncertaintyPlotter(plotter.Plotter):
                     )
 
             # Calculate uncertainties using UncertaintyCalculator
-            syst_vars, syst_info = self.uncertainty_calculator.calculate_uncertainties(
-                all_hists, measured_key="nominal"
+            syst_uncerts, syst_info = (
+                self.uncertainty_calculator.calculate_uncertainties(
+                    all_hists, measured_key="nominal"
+                )
             )
+            total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
+            total_uncert = np.sqrt(total_var)
+
+            # Store histogram data for .npz export
+            histogram_data[plot["key"] + "_hist"] = source_hist
+            histogram_data[plot["key"] + "_uncert"] = total_uncert
+            histogram_data[plot["key"] + "_bins"] = bins
 
             # Calculate theory uncertainties for targets if in data comparison mode
-            target_var = None
-            target2_var = None
+            target_uncert = None
+            target2_uncert = None
             if self.data_comparison_mode:
                 # Calculate MadGraph theory uncertainty for target
-                target_var = self.uncertainty_calculator.get_total_theory_uncertainty(
-                    target_hists, measured_key="target", is_madgraph=True
+                target_uncert = (
+                    self.uncertainty_calculator.get_total_theory_uncertainty(
+                        target_hists, measured_key="target", is_madgraph=True
+                    )
                 )
 
                 # Calculate Sherpa theory uncertainty for target2 if in dual target mode
                 if self.dual_target_mode:
-                    target2_var = (
+                    target2_uncert = (
                         self.uncertainty_calculator.get_total_theory_uncertainty(
                             target2_hists,
                             measured_key="target2",
@@ -479,14 +491,14 @@ class UncertaintyPlotter(plotter.Plotter):
                 plot,
                 bins,
                 source_hist,
+                total_uncert,
                 target_hists["target"][0],
-                syst_vars,
                 color=color,
                 target2_hist=(
                     target2_hists["target2"][0] if self.dual_target_mode else None
                 ),
-                target_var=target_var,
-                target2_var=target2_var,
+                target_uncert=target_uncert,
+                target2_uncert=target2_uncert,
             )
             extension = ".pdf" if self.use_pdf else ".png"
             store_name = self.store / (plot["key"] + extension)
@@ -500,17 +512,19 @@ class UncertaintyPlotter(plotter.Plotter):
                 bins,
                 source_hist,
                 target_hists["target"][0],
-                syst_vars,
+                syst_uncerts,
                 syst_info,
-                target2_hist=(
-                    target2_hists["target2"][0] if self.dual_target_mode else None
-                ),
             )
             budget_name = plot["key"] + "_uncert_budget" + extension
             budget_store_name = self.store / budget_name
             budget_fig.savefig(budget_store_name, dpi=300)
             plt.close(budget_fig)
             return_dict[plot["key"] + "_uncert_budget"] = budget_store_name
+
+        # Save histogram data to .npz file
+        npz_path = self.store / "omnifold_histograms.npz"
+        np.savez(npz_path, **histogram_data)
+        print(f"Saved histogram data to: {npz_path}")
 
         return return_dict
 
@@ -572,6 +586,13 @@ class UncertaintyPlotter(plotter.Plotter):
                 )
             else:
                 sherpa_hist_var = sherpa_hist.copy()
+
+            # Divide by the bin width to produce a cross section
+            # Note we don't do this for fastjet observables because the _get_histogram
+            # method of the base class already divides by the bin width.
+            bin_widths = bins[1:] - bins[:-1]
+            sherpa_hist = sherpa_hist / bin_widths
+            sherpa_hist_var = sherpa_hist_var / bin_widths**2
 
         return sherpa_hist, sherpa_hist_var, bins
 
@@ -655,6 +676,12 @@ class UncertaintyPlotter(plotter.Plotter):
                 # Variance scales as the square of the normalization factor
                 variance = variance / (norm_factor**2)
 
+        # Else divide by the bin width to produce a cross section
+        else:
+            bin_widths = bins[1:] - bins[:-1]
+            hist = hist / bin_widths
+            variance = variance / bin_widths**2
+
         return hist, variance, bins
 
     def _get_data_target2(self, key):
@@ -692,12 +719,12 @@ class UncertaintyPlotter(plotter.Plotter):
         plot,
         bins,
         source_hist,
+        source_total_uncert,
         target_hist,
-        syst_vars,
         color="blue",
         target2_hist=None,
-        target_var=None,
-        target2_var=None,
+        target_uncert=None,
+        target2_uncert=None,
     ):
         """_build_uncert_plot - Produce an uncertainty plot for a given observable.
         This plot will compare the source histogram to the target histogram, and
@@ -708,13 +735,15 @@ class UncertaintyPlotter(plotter.Plotter):
             plot (dict): Dictionary containing the plotting style information
             bins (np.array): Array of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
+            source_total_uncert (np.array): Array of source total uncertainty values.
+                Should be percent uncertainties that are multiplied by measured bin
+                counts to get the error bars.
             target_hist (np.array): Array of target histogram values.
-            syst_vars (dict): Dictionary mapping uncertainty keys to variance arrays.
             color (str): Color to use for the histogram and ratio plots.
             target2_hist (np.array, optional): Array of second target histogram values.
-            target_var (np.array, optional): Total theory uncertainty for target
+            target_uncert (np.array, optional): Total theory uncertainty for target
                 histogram. Only used in data_comparison_mode.
-            target2_var (np.array, optional): Total theory uncertainty for target2
+            target2_uncert (np.array, optional): Total theory uncertainty for target2
                 histogram. Only used in data_comparison_mode with dual_target_mode.
 
         Returns:
@@ -735,23 +764,20 @@ class UncertaintyPlotter(plotter.Plotter):
             mbias = (source_hist - target_hist) ** 2
             rel_mbias = np.sqrt(mbias) / target_hist
 
-        # Calculate total variance and uncertainty from syst_vars
-        total_var = np.sum(list(syst_vars.values()), axis=0)
-        total_uncert = np.sqrt(total_var)
-        rel_total_uncert = total_uncert / source_hist
+        # Calculate total uncertainty
+        error_bars = source_total_uncert * source_hist
 
         # Calculate relative uncertainties for ratio plots in data_comparison_mode
         rel_ratio_uncert = None
         rel_ratio2_uncert = None
         if self.data_comparison_mode:
             # For ratio = norm_target_hist / source_hist, uncertainty includes:
-            # - Data uncertainty: rel_total_uncert
+            # - Data uncertainty: source_total_uncert
             # - Target theory uncertainty: target_var / norm_target_hist
-            if target_var is not None:
-                rel_target_uncert = target_var / target_hist
-                rel_ratio_uncert = np.sqrt(rel_total_uncert**2 + rel_target_uncert**2)
+            if target_uncert is not None:
+                rel_ratio_uncert = np.sqrt(source_total_uncert**2 + target_uncert**2)
             else:
-                rel_ratio_uncert = rel_total_uncert
+                rel_ratio_uncert = source_total_uncert
 
         # Duplicate last bins for all step plots
         plot_target_hist = np.append(target_hist, target_hist[-1])
@@ -793,8 +819,8 @@ class UncertaintyPlotter(plotter.Plotter):
             )
 
             # Plot theory uncertainty boxes for target (behind the points)
-            if target_var is not None:
-                box_height = 2 * target_var
+            if target_uncert is not None:
+                box_height = 2 * target_uncert * target_hist
                 for x, y, h, w in zip(
                     bin_centers, target_y_values, box_height, bin_widths
                 ):
@@ -816,13 +842,12 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 # Calculate relative uncertainty for target2 ratio
                 # Includes data uncertainty and target2 theory uncertainty
-                if target2_var is not None:
-                    rel_target2_uncert = target2_var / target2_hist
+                if target2_uncert is not None:
                     rel_ratio2_uncert = np.sqrt(
-                        rel_total_uncert**2 + rel_target2_uncert**2
+                        source_total_uncert**2 + target2_uncert**2
                     )
                 else:
-                    rel_ratio2_uncert = rel_total_uncert
+                    rel_ratio2_uncert = source_total_uncert
 
                 # Plot target2 as orange points first to get y-values
                 ax.errorbar(
@@ -835,8 +860,8 @@ class UncertaintyPlotter(plotter.Plotter):
                 )
 
                 # Plot theory uncertainty boxes for target2 (behind the points)
-                if target2_var is not None:
-                    box_height = 2 * target2_var
+                if target2_uncert is not None:
+                    box_height = 2 * target2_uncert * target2_hist
                     for x, y, h, w in zip(
                         bin_centers, target2_hist, box_height, bin_widths
                     ):
@@ -856,7 +881,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 bin_centers,
                 source_hist,
                 xerr=bin_errors,
-                yerr=total_uncert,
+                yerr=error_bars,
                 fmt="+",
                 label="Data",
                 color="black",
@@ -876,7 +901,7 @@ class UncertaintyPlotter(plotter.Plotter):
             ax.errorbar(
                 bin_centers,
                 source_hist,
-                yerr=total_uncert,
+                yerr=error_bars,
                 fmt="o",
                 label="Unfolded",
                 color=color,
@@ -906,7 +931,7 @@ class UncertaintyPlotter(plotter.Plotter):
         rax.axhline(1, color="black", linestyle="--")
         # Use combined uncertainty (data + theory) in data_comparison_mode
         ratio_uncert = (
-            rel_ratio_uncert if rel_ratio_uncert is not None else rel_total_uncert
+            rel_ratio_uncert if rel_ratio_uncert is not None else source_total_uncert
         )
         rax.errorbar(
             bin_centers,
@@ -918,14 +943,11 @@ class UncertaintyPlotter(plotter.Plotter):
         )
         if self.data_comparison_mode and self.dual_target_mode:
             # Use combined uncertainty (data + target2 theory) for target2
-            ratio2_uncert = (
-                rel_ratio2_uncert if rel_ratio2_uncert is not None else rel_total_uncert
-            )
             rax.errorbar(
                 bin_centers,
                 ratio2,
                 xerr=bin_errors,
-                yerr=ratio2_uncert,
+                yerr=rel_ratio2_uncert,
                 fmt="+",
                 color="orange",
             )
@@ -957,9 +979,8 @@ class UncertaintyPlotter(plotter.Plotter):
         bins,
         source_hist,
         target_hist,
-        syst_vars,
+        syst_uncerts,
         syst_info,
-        target2_hist=None,
     ):
         """plot_uncertainty_budget - Create a standalone plot showing just the
         uncertainty budget. This plot will show the total uncertainty and
@@ -970,7 +991,8 @@ class UncertaintyPlotter(plotter.Plotter):
             bins (np.array): Array of bin edges for the histogram.
             source_hist (np.array): Array of source histogram values.
             target_hist (np.array): Array of target histogram values.
-            syst_vars (dict): Dictionary mapping uncertainty keys to variance arrays.
+            syst_uncerts (dict): Dictionary mapping uncertainty keys to
+                fractional uncertainty arrays.
             syst_info (dict): Dictionary mapping uncertainty keys to their metadata.
 
         Returns:
@@ -992,16 +1014,14 @@ class UncertaintyPlotter(plotter.Plotter):
             mbias = (source_hist - norm_target_hist) ** 2
             rel_mbias = np.sqrt(mbias) / norm_target_hist
 
-        # Calculate total variance and uncertainty from syst_vars
-        total_var = np.sum(list(syst_vars.values()), axis=0)
-        total_uncert = np.sqrt(total_var)
-        rel_total_uncert = total_uncert / source_hist
+        # Calculate total uncertainty
+        total_vars = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
+        total_uncert = np.sqrt(total_vars)
 
         # Duplicate last bins for all step plots
-        plot_source_hist = np.append(source_hist, source_hist[-1])
         if rel_mbias is not None:
             plot_mbias = np.append(rel_mbias, rel_mbias[-1])
-        plot_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
+        plot_total_uncert = np.append(total_uncert, total_uncert[-1])
 
         # Create figure
         fig, ax = plt.subplots(figsize=(6.4, 4.8))
@@ -1022,12 +1042,12 @@ class UncertaintyPlotter(plotter.Plotter):
         )
 
         # Plot individual uncertainties
-        for key, var in syst_vars.items():
+        for key, uncert in syst_uncerts.items():
             info = syst_info[key]
-            plot_var = np.append(var, var[-1])
+            plot_uncert = np.append(uncert, uncert[-1])
             ax.plot(
                 bins,
-                np.sqrt(plot_var) / plot_source_hist,
+                plot_uncert,
                 "-",
                 color=info.get("color", "black"),
                 label=info.get("name", key),
@@ -1056,9 +1076,9 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Set other plot properties
         if rel_mbias is not None:
-            top_uncert = np.max(np.concatenate([rel_total_uncert, rel_mbias]))
+            top_uncert = np.max(np.concatenate([total_uncert, rel_mbias]))
         else:
-            top_uncert = np.max(rel_total_uncert)
+            top_uncert = np.max(total_uncert)
         if top_uncert > 0.2 or np.isnan(top_uncert):
             ax.set_ylim(bottom=0.0, top=0.2)
         else:

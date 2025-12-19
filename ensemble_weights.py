@@ -108,21 +108,21 @@ def group_name_to_write_name(gn, idx=None):
     elif gn == "track-scale":
         return "weights_trackPtScale"
     elif gn == "muon-id":
-        return "weights_muonCalID"
+        return "weights_muCalID"
     elif gn == "muon-ms":
-        return "weights_muonCalMS"
+        return "weights_muCalMS"
     elif gn == "muon-resbias":
-        return "weights_muonCalResBias"
+        return "weights_muCalResBias"
     elif gn == "muon-scale":
-        return "weights_muonCalScale"
+        return "weights_muCalScale"
     elif gn == "muon-effreco":
-        return "weights_muonEffReco"
+        return "weights_muEffReco"
     elif gn == "muon-effiso":
-        return "weights_muonEffIso"
+        return "weights_muEffIso"
     elif gn == "muon-efftrk":
-        return "weights_muonEffTrack"
+        return "weights_muEffTrack"
     elif gn == "muon-efftrig":
-        return "weights_muonEffTrig"
+        return "weights_muEffTrig"
     elif gn == "prw":
         return "weights_pileup"
     elif gn == "theory-qcd":
