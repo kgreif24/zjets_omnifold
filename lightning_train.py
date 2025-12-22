@@ -46,6 +46,7 @@ class OfTrain:
         index=-1,
         unit_test=False,
         data_bootstrap_path=None,
+        mc_bootstrap_path=None,
     ):
         """__init__ - The init function for this class. It takes the OfConfig object
         used for this run of Omnifold, plus the iteration and step of this training run.
@@ -59,6 +60,8 @@ class OfTrain:
             group ID if it is not None
         unit_test - If true, trainer will just run a few steps of training and exit
         data_bootstrap_path - The path to the data bootstrap in this training
+            If None, no bootstrap will be used.
+        mc_bootstrap_path - The path to the MC bootstrap in this training
             If None, no bootstrap will be used.
 
         Returns:
@@ -74,6 +77,7 @@ class OfTrain:
         self.split_seed = seed
         self.unit_test = unit_test
         self.data_bootstrap_path = data_bootstrap_path
+        self.mc_bootstrap_path = mc_bootstrap_path
 
         # Modify the group name if an index is provided
         if index != -1:
@@ -379,6 +383,9 @@ class OfTrain:
                 )
 
         # Build the data module
+        mc_bootstrap_both = (
+            True if self.mc_bootstrap_path is not None and self.step == 2 else False
+        )
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -397,6 +404,8 @@ class OfTrain:
             max_events_target=self.config.max_events_target,
             syst_kw=self.config.syst_kw if self.step == 1 else None,
             data_bootstrap_path=self.data_bootstrap_path,
+            mc_bootstrap_path=self.mc_bootstrap_path,
+            mc_bootstrap_both=mc_bootstrap_both,
         )
 
     def run(self):
@@ -569,6 +578,12 @@ if __name__ == "__main__":
         default=None,
         help="The path to the data bootstrap",
     )
+    parser.add_argument(
+        "--mc_bootstrap_path",
+        type=str,
+        default=None,
+        help="The path to the MC bootstrap",
+    )
     args, unknown = parser.parse_known_args()
 
     # Build trainer
@@ -579,6 +594,7 @@ if __name__ == "__main__":
         seed=args.split_seed,
         index=args.index,
         data_bootstrap_path=args.data_bootstrap_path,
+        mc_bootstrap_path=args.mc_bootstrap_path,
     )
 
     # Override SIGUSR1 and SIGTERM signals to requeue
