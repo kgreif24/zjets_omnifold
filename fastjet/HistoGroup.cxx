@@ -108,7 +108,7 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
     hmjj_CA04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
     hdRjj_CA04 = make_shared<TH1D>(TH1D("", "", dRjj_nbins, dRjj_edges));
     hdyjj_CA04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
-    hdphijj_CA04 = make_shared<TH1D>(TH1D("", "", 10, dphijj_edges));
+    hdphijj_CA04 = make_shared<TH1D>(TH1D("", "", 16, dphijj_edges));
 
     hm1_CA06 = make_shared<TH1D>(TH1D("", "", 6, m_r6_edges));
     hpT_CA06 = make_shared<TH1D>(TH1D("", "", 6, pT_r6_edges));
