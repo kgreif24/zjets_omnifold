@@ -474,6 +474,12 @@ class Plotter:
                 # Variance scales as the square of the normalization factor
                 variance = variance / (norm_factor**2)
 
+        # Else divide by the bin width to produce a cross section
+        else:
+            bin_widths = bins[1:] - bins[:-1]
+            hist = hist / bin_widths
+            variance = variance / bin_widths**2
+
         return hist, variance, bins
 
     def _normalize_to(self, hist, val=1.0):

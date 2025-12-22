@@ -32,6 +32,7 @@ plots:
   pT_l1:
     <<: *default_plot
     key: "pT_l1"
+    ylabel: $d\sigma/dp_{T,\mu1}$ [fb/GeV]
     xlabel: '$p_{T,\mu1}$ [GeV]'
     binlow: 0
     binhigh: 1000
@@ -57,6 +58,7 @@ plots:
   pT_l2:
     <<: *default_plot
     key: "pT_l2"
+    ylabel: $d\sigma/dp_{T,\mu2}$ [fb/GeV]
     xlabel: '$p_{T,\mu2}$ [GeV]'
     binlow: 0
     binhigh: 800
@@ -74,6 +76,7 @@ plots:
   eta_l1:
     <<: *default_plot
     key: "eta_l1"
+    ylabel: $d\sigma/d\eta_{\mu1}$ [fb]
     xlabel: '$\eta_{\mu1}$'
     binlow: -2.5
     binhigh: 2.5
@@ -98,6 +101,7 @@ plots:
   eta_l2:
     <<: *default_plot
     key: "eta_l2"
+    ylabel: $d\sigma/d\eta_{\mu2}$ [fb]
     xlabel: '$\eta_{\mu2}$'
     binlow: -2.5
     binhigh: 2.5
@@ -122,6 +126,7 @@ plots:
   phi_l1:
     <<: *default_plot
     key: "phi_l1"
+    ylabel: $d\sigma/d\phi_{\mu1}$ [fb]
     xlabel: '$\phi_{\mu1}$'
     ylim:
       - 0.0
@@ -155,6 +160,7 @@ plots:
   phi_l2:
     <<: *default_plot
     key: "phi_l2"
+    ylabel: $d\sigma/d\phi_{\mu2}$ [fb]
     xlabel: '$\phi_{\mu2}$'
     ylim:
       - 0.0
@@ -188,6 +194,7 @@ plots:
   pT_ll:
     <<: *default_plot
     key: "pT_ll"
+    ylabel: $d\sigma/dp_{T,\mu\mu}$ [fb/GeV]
     xlabel: '$p_{T,\mu\mu}$ [GeV]'
     binlow: 0
     binhigh: 1000
@@ -211,6 +218,7 @@ plots:
   y_ll:
     <<: *default_plot
     key: "y_ll"
+    ylabel: $d\sigma/dy_{\mu\mu}$ [fb]
     xlabel: '$y_{\mu\mu}$'
     binlow: -3.0
     binhigh: 3.0
@@ -236,6 +244,7 @@ plots:
   pT_trackj1:
     <<: *default_plot
     key: "pT_trackj1"
+    ylabel: $d\sigma/dp_{T,j1}$ [fb/GeV]
     xlabel: "$p_{T,j1}$ [GeV]"
     binlow: 0
     binhigh: 1000.0
@@ -267,6 +276,7 @@ plots:
   pT_trackj2:
     <<: *default_plot
     key: "pT_trackj2"
+    ylabel: $d\sigma/dp_{T,j2}$ [fb/GeV]
     xlabel: "$p_{T,j2}$ [GeV]"
     binlow: 0
     binhigh: 1000.0
@@ -289,6 +299,7 @@ plots:
   y_trackj1:
     <<: *default_plot
     key: "y_trackj1"
+    ylabel: $d\sigma/dy_{j1}$ [fb]
     xlabel: "$y_{j1}$"
     binlow: -3.0
     binhigh: 3.0
@@ -318,6 +329,7 @@ plots:
   y_trackj2:
     <<: *default_plot
     key: "y_trackj2"
+    ylabel: $d\sigma/dy_{j2}$ [fb]
     xlabel: "$y_{j2}$"
     binlow: -3.0
     binhigh: 3.0
@@ -347,6 +359,7 @@ plots:
   phi_trackj1:
     <<: *default_plot
     key: "phi_trackj1"
+    ylabel: $d\sigma/d\phi_{j1}$ [fb]
     xlabel: '$\phi_{j1}$'
     ylim:
       - 0.0
@@ -381,6 +394,7 @@ plots:
   phi_trackj2:
     <<: *default_plot
     key: "phi_trackj2"
+    ylabel: $d\sigma/d\phi_{j2}$ [fb]
     xlabel: '$\phi_{j2}$'
     ylim:
       - 0.0
@@ -415,6 +429,7 @@ plots:
   m_trackj1:
     <<: *default_plot
     key: "m_trackj1"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
     xlabel: "$m_{j1}$ [GeV]"
     binlow: 0
     binhigh: 150
@@ -436,16 +451,17 @@ plots:
         - 25.0
         - 70.0
       "3":
-        - 32.0
-        - 36.0
-        - 42.0
-        - 70.0
+        - 0.0
+        - 20.0
+        - 40.0
+        - 60.0
     verbosity_level: 1
     modified: ["track_eff", "jet_track_eff", "track_fake", "track_scale"]
 
   m_trackj2:
     <<: *default_plot
     key: "m_trackj2"
+    ylabel: $d\sigma/dm_{j2}$ [fb/GeV]
     xlabel: "$m_{j2}$ [GeV]"
     binlow: 0
     binhigh: 150
@@ -470,6 +486,7 @@ plots:
   tau1_trackj1:
     <<: *default_plot
     key: "tau1_trackj1"
+    ylabel: $d\sigma/d\tau_{1,j1}$ [fb]
     xlabel: '$\tau_{1,j1}$'
     binlow: 0
     binhigh: 0.9
@@ -488,6 +505,7 @@ plots:
   tau1_trackj2:
     <<: *default_plot
     key: "tau1_trackj2"
+    ylabel: $d\sigma/d\tau_{1,j2}$ [fb]
     xlabel: '$\tau_{1,j2}$'
     binlow: 0
     binhigh: 0.9
@@ -504,6 +522,7 @@ plots:
   tau2_trackj1:
     <<: *default_plot
     key: "tau2_trackj1"
+    ylabel: $d\sigma/d\tau_{2,j1}$ [fb]
     xlabel: '$\tau_{2,j1}$'
     binlow: 0
     binhigh: 0.6
@@ -522,6 +541,7 @@ plots:
   tau2_trackj2:
     <<: *default_plot
     key: "tau2_trackj2"
+    ylabel: $d\sigma/d\tau_{2,j2}$ [fb]
     xlabel: '$\tau_{2,j2}$'
     binlow: 0
     binhigh: 0.6
@@ -538,6 +558,7 @@ plots:
   tau3_trackj1:
     <<: *default_plot
     key: "tau3_trackj1"
+    ylabel: $d\sigma/d\tau_{3,j1}$ [fb]
     xlabel: '$\tau_{3,j1}$'
     binlow: 0
     binhigh: 0.4
@@ -553,6 +574,7 @@ plots:
   tau3_trackj2:
     <<: *default_plot
     key: "tau3_trackj2"
+    ylabel: $d\sigma/d\tau_{3,j2}$ [fb]
     xlabel: '$\tau_{3,j2}$'
     binlow: 0
     binhigh: 0.4
@@ -568,6 +590,7 @@ plots:
   Ntracks_trackj1:
     <<: *default_plot
     key: "Ntracks_trackj1"
+    ylabel: $d\sigma/dN_{ch,j1}$ [fb]
     xlabel: "$N_{ch,j1}$"
     nbins: 81
     binlow: 0
@@ -594,6 +617,7 @@ plots:
   Ntracks_trackj2:
     <<: *default_plot
     key: "Ntracks_trackj2"
+    ylabel: $d\sigma/dN_{ch,j2}$ [fb]
     xlabel: "$N_{ch,j2}$"
     nbins: 81
     binlow: 0
@@ -611,6 +635,7 @@ plots:
   Ntracks:
     <<: *default_plot
     key: "Ntracks"
+    ylabel: $d\sigma/dN_{ch}$ [fb]
     xlabel: "$N_{ch}$"
     nbins: 257
     binlow: 0
@@ -630,6 +655,7 @@ plots:
   sum_pT_tracks:
     <<: *default_plot
     key: "HT_tracks"
+    ylabel: $d\sigma/dH_{T,tracks}$ [fb/GeV]
     xlabel: "$H_{T,tracks}$ [GeV]"
     binlow: 0
     binhigh: 2000
@@ -649,6 +675,7 @@ plots:
   hm1_R04:
     <<: *default_plot
     key: "hm1_R04"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
     xlabel: "$m_{j1}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
@@ -659,6 +686,7 @@ plots:
   hm2_R04:
     <<: *default_plot
     key: "hm2_R04"
+    ylabel: $d\sigma/dm_{j2}$ [fb/GeV]
     xlabel: "$m_{j2}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
@@ -669,6 +697,7 @@ plots:
   hm3_R04:
     <<: *default_plot
     key: "hm3_R04"
+    ylabel: $d\sigma/dm_{j3}$ [fb/GeV]
     xlabel: "$m_{j3}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
@@ -679,6 +708,7 @@ plots:
   hm4_R04:
     <<: *default_plot
     key: "hm4_R04"
+    ylabel: $d\sigma/dm_{j4}$ [fb/GeV]
     xlabel: "$m_{j4}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
@@ -689,6 +719,7 @@ plots:
   hmjj_R04:
     <<: *default_plot
     key: "hmjj_R04"
+    ylabel: $d\sigma/dm_{jj}$ [fb/GeV]
     xlabel: "$m_{jj}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
@@ -699,6 +730,7 @@ plots:
   hdyjj_R04:
     <<: *default_plot
     key: "hdyjj_R04"
+    ylabel: $d\sigma/d\Delta y_{jj}$ [fb]
     xlabel: '$\Delta y_{jj}$ [GeV]'
     verbosity_level: 3
     w1_eval: false
@@ -709,7 +741,8 @@ plots:
   hEEC_R04:
     <<: *default_plot
     key: "hEEC_R04"
-    xlabel: "$EEC_{j1}$ Anti-kt R=0.4 [GeV]"
+    ylabel: "EEC_{j1}"
+    xlabel: "$z$, Anti-kt R=0.4 [GeV]"
     log_xscale: true
     verbosity_level: 3
     w1_eval: false
@@ -720,7 +753,8 @@ plots:
   hm1_R06:
     <<: *default_plot
     key: "hm1_R06"
-    xlabel: "$m_{j1}$ Anti-kt R=0.6 [GeV]"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
+    xlabel: "$m_{j1}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -730,7 +764,8 @@ plots:
   hpT_R06:
     <<: *default_plot
     key: "hpT_R06"
-    xlabel: '$p_{T,j1}$ Anti-kt R=0.6 [GeV]'
+    ylabel: $d\sigma/dp_{T,j1}$ [fb/GeV]
+    xlabel: '$p_{T,j1}$ [GeV]'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -740,7 +775,8 @@ plots:
   hEEC_R06:
     <<: *default_plot
     key: "hEEC_R06"
-    xlabel: '$EEC_{j1}$ Anti-kt R=0.6 [GeV]'
+    ylabel: "EEC_{j1}"
+    xlabel: "$z$, Anti-kt R=0.6 [GeV]"
     log_xscale: true
     verbosity_level: 3
     w1_eval: false
@@ -751,7 +787,8 @@ plots:
   hm1_R10:
     <<: *default_plot
     key: "hm1_R10"
-    xlabel: "$m_{j1}$ Anti-kt R=1.0 [GeV]"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
+    xlabel: "$m_{j1}$ [GeV]"
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -761,7 +798,8 @@ plots:
   hpT_R10:
     <<: *default_plot
     key: "hpT_R10"
-    xlabel: '$p_{T,j1}$ Anti-kt R=1.0 [GeV]'
+    ylabel: $d\sigma/dp_{T,j1}$ [fb/GeV]
+    xlabel: '$p_{T,j1}$ [GeV]'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -771,7 +809,8 @@ plots:
   hEEC_R10:
     <<: *default_plot
     key: "hEEC_R10"
-    xlabel: '$EEC_{j1}$ Anti-kt R=1.0 [GeV]'
+    ylabel: "EEC_{j1}"
+    xlabel: "$z$, Anti-kt R=1.0 [GeV]"
     log_xscale: true
     verbosity_level: 3
     w1_eval: false
@@ -782,7 +821,8 @@ plots:
   hm1_CA04:
     <<: *default_plot
     key: "hm1_CA04"
-    xlabel: "$m_{j1}$ Cambridge/Aachen R=0.4 [GeV]"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
+    xlabel: "$m_{j1}$ [GeV], Cambridge/Aachen R=0.4"
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -792,7 +832,8 @@ plots:
   hpT_CA04:
     <<: *default_plot
     key: "hpT_CA04"
-    xlabel: '$p_{T,j1}$ Cambridge/Aachen R=0.4 [GeV]'
+    ylabel: $d\sigma/dp_{T,j1}$ [fb/GeV]
+    xlabel: '$p_{T,j1}$ [GeV], Cambridge/Aachen R=0.4'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -802,7 +843,8 @@ plots:
   hmjj_CA04:
     <<: *default_plot
     key: "hmjj_CA04"
-    xlabel: "$m_{jj}$ Cambridge/Aachen R=0.4 [GeV]"
+    ylabel: $d\sigma/dm_{jj}$ [fb/GeV]
+    xlabel: "$m_{jj}$ [GeV], Cambridge/Aachen R=0.4"
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -812,7 +854,8 @@ plots:
   hdRjj_CA04:
     <<: *default_plot
     key: "hdRjj_CA04"
-    xlabel: '$\Delta R_{jj}$ Cambridge/Aachen R=0.4 [GeV]'
+    ylabel: $d\sigma/d\Delta R_{jj}$ [fb]
+    xlabel: '$\Delta R_{jj}$ [GeV], Cambridge/Aachen R=0.4'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -822,7 +865,8 @@ plots:
   hdyjj_CA04:
     <<: *default_plot
     key: "hdyjj_CA04"
-    xlabel: '$y_{jj}$ Cambridge/Aachen R=0.4 [GeV]'
+    ylabel: $d\sigma/d\Delta y_{jj}$ [fb]
+    xlabel: '$y_{jj}$ [GeV], Cambridge/Aachen R=0.4'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -832,7 +876,8 @@ plots:
   hdphijj_CA04:
     <<: *default_plot
     key: "hdphijj_CA04"
-    xlabel: '$\Delta \phi_{jj}$ Cambridge/Aachen R=0.4 [GeV]'
+    ylabel: $d\sigma/d\Delta \phi_{jj}$ [fb]
+    xlabel: '$\Delta \phi_{jj}$ [GeV], Cambridge/Aachen R=0.4'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -842,7 +887,8 @@ plots:
   hEEC_CA04:
     <<: *default_plot
     key: "hEEC_CA04"
-    xlabel: '$EEC_{j1}$ Cambridge/Aachen R=0.4 [GeV]'
+    ylabel: "EEC_{j1}"
+    xlabel: "$z$, Cambridge/Aachen R=0.4 [GeV]"
     log_xscale: true
     verbosity_level: 3
     w1_eval: false
@@ -853,7 +899,8 @@ plots:
   hm1_CA06:
     <<: *default_plot
     key: "hm1_CA06"
-    xlabel: "$m_{j1}$ Cambridge/Aachen R=0.6 [GeV]"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
+    xlabel: "$m_{j1}$ [GeV], Cambridge/Aachen R=0.6"
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -863,7 +910,8 @@ plots:
   hpT_CA06:
     <<: *default_plot
     key: "hpT_CA06"
-    xlabel: '$p_{T,j1}$ Cambridge/Aachen R=0.6 [GeV]'
+    ylabel: $d\sigma/dp_{T,j1}$ [fb/GeV]
+    xlabel: '$p_{T,j1}$ [GeV], Cambridge/Aachen R=0.6'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -873,7 +921,8 @@ plots:
   hm1_kt04:
     <<: *default_plot
     key: "hm1_KT04"
-    xlabel: "$m_{j1}$ k_t R=0.4 [GeV]"
+    ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
+    xlabel: "$m_{j1}$ [GeV], k_t R=0.4"
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -883,7 +932,8 @@ plots:
   hpT_KT04:
     <<: *default_plot
     key: "hpT_KT04"
-    xlabel: '$p_{T,j1}$ k_t R=0.4 [GeV]'
+    ylabel: $d\sigma/dp_{T,j1}$ [fb/GeV]
+    xlabel: '$p_{T,j1}$ [GeV], k_t R=0.4'
     verbosity_level: 3
     w1_eval: false
     type: "fastjet"
@@ -894,7 +944,7 @@ plots:
     <<: *default_plot
     key: "hTEEC_collinear"
     xlabel: '$z$'
-    ylabel: '$TEEC$'
+    ylabel: '$EEC$'
     log_xscale: true
     log_yscale: true
     verbosity_level: 3
@@ -907,7 +957,7 @@ plots:
     <<: *default_plot
     key: "hTEEC_full_nolog"
     xlabel: '$z$'
-    ylabel: '$TEEC$'
+    ylabel: '$EEC$'
     log_xscale: false
     log_yscale: true
     verbosity_level: 3
@@ -920,7 +970,7 @@ plots:
     <<: *default_plot
     key: "hTEEC_b2b"
     xlabel: '$1-z$'
-    ylabel: '$TEEC$'
+    ylabel: '$EEC$'
     log_xscale: true
     log_yscale: true
     verbosity_level: 3
@@ -933,59 +983,7 @@ plots:
     <<: *default_plot
     key: "hTEEC_full"
     xlabel: '$z$'
-    ylabel: '$TEEC$'
-    symlog_xscale: true
-    log_yscale: true
-    verbosity_level: 3
-    w1_eval: false
-    type: "fastjet"
-    multifold: false
-    ibu: false
-
-  hTEEC_z_collinear:
-    <<: *default_plot
-    key: "hTEEC_z_collinear"
-    xlabel: '$1-\tau$'
-    ylabel: '$TEEC_z$'
-    log_xscale: true
-    log_yscale: true
-    verbosity_level: 3
-    w1_eval: false
-    type: "fastjet"
-    multifold: false
-    ibu: false
-
-  hTEEC_z_full_nolog:
-    <<: *default_plot
-    key: "hTEEC_z_full_nolog"
-    xlabel: '$\tau$'
-    ylabel: '$TEEC_z$'
-    log_xscale: false
-    log_yscale: true
-    verbosity_level: 3
-    w1_eval: false
-    type: "fastjet"
-    multifold: false
-    ibu: false
-
-  hTEEC_z_b2b:
-    <<: *default_plot
-    key: "hTEEC_z_b2b"
-    xlabel: '$\tau$'
-    ylabel: '$TEEC_z$'
-    log_xscale: true
-    log_yscale: true
-    verbosity_level: 3
-    w1_eval: false
-    type: "fastjet"
-    multifold: false
-    ibu: false
-
-  hTEEC_z_full:
-    <<: *default_plot
-    key: "hTEEC_z_full"
-    xlabel: '$\tau$'
-    ylabel: '$TEEC_z$'
+    ylabel: '$EEC$'
     symlog_xscale: true
     log_yscale: true
     verbosity_level: 3
@@ -997,6 +995,7 @@ plots:
   pT_tracks:
     <<: *default_plot
     key: "pT_tracks"
+    ylabel: "A.U."
     xlabel: "$p_{T,tracks}$ [GeV]"
     binlow: 0
     binhigh: 5
@@ -1016,12 +1015,12 @@ plots:
     w1_eval: false
     multifold: false
     ibu: false
-    ylabel: "A.U."
 
   eta_tracks:
     <<: *default_plot
     key: "eta_tracks"
     xlabel: '$\eta_{tracks}$'
+    ylabel: "A.U."
     binlow: -2.5
     binhigh: 2.5
     ibubins:
@@ -1049,11 +1048,11 @@ plots:
     w1_eval: false
     multifold: false
     ibu: false
-    ylabel: "A.U."
 
   phi_tracks:
     <<: *default_plot
     key: "phi_tracks"
+    ylabel: "A.U."
     xlabel: '$\phi_{tracks}$'
     rlim:
       - 0.9
@@ -1084,4 +1083,3 @@ plots:
     w1_eval: false
     multifold: false
     ibu: false  
-    ylabel: "A.U."

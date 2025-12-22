@@ -28,6 +28,7 @@ class UncertaintyCalculator:
         uncertainty_definitions: Optional[Dict[str, Dict]] = None,
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
+        multifold_nn_init: bool = False,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -47,6 +48,9 @@ class UncertaintyCalculator:
         hide_individual_uncertainties : bool, optional
             If True, hide individual uncertainties when they are part of a group
             (default: True).
+        multifold_nn_init : bool, optional
+            If True, use the multifold nn-stability uncertainty, which only differs
+            from the Omnifold one by an additional numeric factor
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -57,6 +61,7 @@ class UncertaintyCalculator:
         self.uncertainty_definitions = uncertainty_definitions
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
+        self.multifold_nn_init = multifold_nn_init
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -114,49 +119,49 @@ class UncertaintyCalculator:
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonCalID": {
+            "muCalID": {
                 "name": "Muon ID",
                 "color": "lightgreen",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonCalMS": {
+            "muCalMS": {
                 "name": "Muon MS",
                 "color": "lightblue",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonCalResBias": {
+            "muCalResBias": {
                 "name": "Muon resolution bias",
                 "color": "deepskyblue",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonCalScale": {
+            "muCalScale": {
                 "name": "Muon scale",
                 "color": "teal",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonEffReco": {
+            "muEffReco": {
                 "name": "Muon eff. reco.",
                 "color": "lightseagreen",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonEffIso": {
+            "muEffIso": {
                 "name": "Muon eff. iso.",
                 "color": "seagreen",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonEffTrack": {
+            "muEffTrack": {
                 "name": "Muon eff. track.",
                 "color": "skyblue",
                 "stochastic": False,
                 "prefix": None,
             },
-            "muonEffTrig": {
+            "muEffTrig": {
                 "name": "Muon eff. trig.",
                 "color": "cadetblue",
                 "stochastic": False,
@@ -176,7 +181,7 @@ class UncertaintyCalculator:
             },
             "hv": {
                 "name": "Hidden variable",
-                "color": "orange",
+                "color": "blue",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -254,14 +259,14 @@ class UncertaintyCalculator:
             "Tracking": ["trackEffMain", "trackEffJet", "trackFake", "trackPtScale"],
             "Unfolding": ["dd", "hv"],
             "Muon": [
-                "muonCalID",
-                "muonCalMS",
-                "muonCalResBias",
-                "muonCalScale",
-                "muonEffReco",
-                "muonEffIso",
-                "muonEffTrack",
-                "muonEffTrig",
+                "muCalID",
+                "muCalMS",
+                "muCalResBias",
+                "muCalScale",
+                "muEffReco",
+                "muEffIso",
+                "muEffTrack",
+                "muEffTrig",
             ],
             # "Theory": [
             #     # "theoryQCD",
@@ -371,8 +376,8 @@ class UncertaintyCalculator:
 
         Returns:
         --------
-        syst_vars : dict[str, np.ndarray]
-            Dictionary mapping uncertainty names to variance arrays.
+        syst_uncerts : dict[str, np.ndarray]
+            Dictionary mapping uncertainty names to fractional uncertainty arrays.
         syst_info : dict[str, dict]
             Dictionary mapping uncertainty names to metadata (name, color, etc.).
             Useful for plotting only uncertainties that are active (in the dictionary)
@@ -388,13 +393,13 @@ class UncertaintyCalculator:
         measured_hist, measured_hist_var, _ = all_hists[measured_key]
 
         # Calculate systematic uncertainties
-        syst_vars = {}
+        syst_uncerts = {}
         syst_info = {}
 
         # MC statistical uncertainty (from variance in measured distribution)
         mc_stat_def = self.uncertainty_definitions.get("mc-stat")
         if mc_stat_def is not None:
-            syst_vars["mc-stat"] = measured_hist_var
+            syst_uncerts["mc-stat"] = np.sqrt(measured_hist_var) / measured_hist
             syst_info["mc-stat"] = mc_stat_def.copy()
 
         # Data statistical uncertainty
@@ -403,7 +408,7 @@ class UncertaintyCalculator:
             prefix = data_stat_def.get("prefix", "bootstrap_data_")
             data_stat_keys = [key for key in all_hists.keys() if key.startswith(prefix)]
             data_stat_hists = np.array([all_hists[key][0] for key in data_stat_keys])
-            syst_vars["data-stat"] = np.var(data_stat_hists, axis=0)
+            syst_uncerts["data-stat"] = np.std(data_stat_hists, axis=0) / measured_hist
             syst_info["data-stat"] = data_stat_def.copy()
 
         # NN initialization uncertainty
@@ -412,13 +417,12 @@ class UncertaintyCalculator:
             prefix = nn_init_def.get("prefix", "ensemble_")
             nn_init_keys = [key for key in all_hists.keys() if key.startswith(prefix)]
             ensemble_hists = np.array([all_hists[key][0] for key in nn_init_keys])
+            nens = len(ensemble_hists)
             # Calculate variance across ensemble members
-            # Normalize each member to match the nominal
-            for i in range(len(ensemble_hists)):
-                norm_factor = np.sum(measured_hist) / np.sum(ensemble_hists[i])
-                ensemble_hists[i] *= norm_factor
-            nn_init_var = np.var(ensemble_hists, axis=0) / (len(ensemble_hists) - 1)
-            syst_vars["nn-stability"] = nn_init_var
+            nn_init_uncert = np.std(ensemble_hists, axis=0) / np.sqrt(nens)
+            if self.multifold_nn_init:
+                nn_init_uncert *= 1.253  # Additional factor for multifold nn-stability
+            syst_uncerts["nn-stability"] = nn_init_uncert / measured_hist
             syst_info["nn-stability"] = nn_init_def.copy()
 
         # Data driven uncertainty (from difference between "dd" and "dd-target")
@@ -426,8 +430,7 @@ class UncertaintyCalculator:
         if dd_def is not None:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
-            dd_var = np.abs(dd_hist - dd_target_hist) ** 2
-            syst_vars["dd"] = dd_var
+            syst_uncerts["dd"] = np.abs(dd_hist - dd_target_hist) / dd_target_hist
             syst_info["dd"] = dd_def.copy()
 
         # Other systematic uncertainties (from differences with nominal)
@@ -440,33 +443,33 @@ class UncertaintyCalculator:
                 syst_hist, _, _ = all_hists[syst_key]
 
                 # Calculate variance as squared difference
-                syst_var = np.abs(syst_hist - measured_hist) ** 2
-                syst_vars[syst_key] = syst_var
+                uncert = np.abs(syst_hist - measured_hist) / measured_hist
+                syst_uncerts[syst_key] = uncert
                 syst_info[syst_key] = syst_def.copy()
 
         # Apply uncertainty grouping
         if self.uncertainty_groups:
-            syst_vars, syst_info = self._apply_grouping(syst_vars, syst_info)
+            syst_uncerts, syst_info = self._apply_grouping(syst_uncerts, syst_info)
 
-        return syst_vars, syst_info
+        return syst_uncerts, syst_info
 
     def _apply_grouping(
         self,
-        syst_vars: Dict[str, np.ndarray],
+        syst_uncerts: Dict[str, np.ndarray],
         syst_info: Dict[str, Dict],
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
         """Apply uncertainty grouping by merging in quadrature.
 
         Arguments:
         ----------
-        syst_vars : dict[str, np.ndarray]
-            Dictionary of individual uncertainty variances.
+        syst_uncerts : dict[str, np.ndarray]
+            Dictionary of individual uncertainty fractional uncertainties.
         syst_info : dict[str, dict]
             Dictionary of individual uncertainty metadata.
 
         Returns:
         --------
-        syst_vars : dict[str, np.ndarray]
+        syst_uncerts : dict[str, np.ndarray]
             Dictionary with grouped uncertainties added.
         syst_info : dict[str, dict]
             Dictionary with grouped uncertainty metadata added.
@@ -478,17 +481,17 @@ class UncertaintyCalculator:
             # Check which uncertainties are available
             available_uncertainties = []
             for uncert_name in individual_uncertainties:
-                if uncert_name in syst_vars:
+                if uncert_name in syst_uncerts:
                     available_uncertainties.append(uncert_name)
 
             if not available_uncertainties:
                 continue
 
             # Merge variances in quadrature
-            merged_var = np.sum(
-                [syst_vars[uncert] for uncert in available_uncertainties],
+            merged_uncert = np.sqrt(np.sum(
+                [syst_uncerts[uncert]**2 for uncert in available_uncertainties],
                 axis=0,
-            )
+            ))
 
             # Get color from first available uncertainty
             first_color = syst_info[available_uncertainties[0]]["color"]
@@ -497,7 +500,7 @@ class UncertaintyCalculator:
             merged_uncertainties[group_name] = {
                 "name": group_name.title(),
                 "color": first_color,
-                "var": merged_var,
+                "uncert": merged_uncert,
                 "merged_from": available_uncertainties,
             }
 
@@ -505,22 +508,22 @@ class UncertaintyCalculator:
             if self.hide_individual_uncertainties:
                 for uncert_name in available_uncertainties:
                     hidden_uncertainties[uncert_name] = {
-                        "var": syst_vars[uncert_name],
+                        "uncert": syst_uncerts[uncert_name],
                         "info": syst_info[uncert_name],
                     }
-                    del syst_vars[uncert_name]
+                    del syst_uncerts[uncert_name]
                     del syst_info[uncert_name]
 
         # Add merged uncertainties to syst_vars and syst_info
         for group_name, merged_uncert in merged_uncertainties.items():
-            syst_vars[group_name] = merged_uncert["var"]
+            syst_uncerts[group_name] = merged_uncert["uncert"]
             syst_info[group_name] = {
                 "name": merged_uncert["name"],
                 "color": merged_uncert["color"],
                 "stochastic": False,
             }
 
-        return syst_vars, syst_info
+        return syst_uncerts, syst_info
 
     def get_total_uncertainty(
         self,
@@ -541,8 +544,8 @@ class UncertaintyCalculator:
         --------
         np.ndarray : Total uncertainty (standard deviation) array.
         """
-        syst_vars, _ = self.calculate_uncertainties(all_hists, measured_key)
-        total_var = np.sum(list(syst_vars.values()), axis=0)
+        syst_uncerts, _ = self.calculate_uncertainties(all_hists, measured_key)
+        total_var = np.sum(np.array(list(syst_uncerts.values()))**2, axis=0)
         return np.sqrt(total_var)
 
     def get_total_theory_uncertainty(
@@ -571,7 +574,7 @@ class UncertaintyCalculator:
         """
 
         central_hist, central_hist_var, _ = all_hists[measured_key]
-        syst_vars = [central_hist_var]
+        syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
         if is_madgraph:
             weight_names = self.madgraph_uncertainties
         else:
@@ -579,7 +582,7 @@ class UncertaintyCalculator:
         for weight_name in weight_names:
             if weight_name in all_hists:
                 syst_hist, _, _ = all_hists[weight_name]
-                syst_var = np.abs(syst_hist - central_hist) ** 2
-                syst_vars.append(syst_var)
-        total_var = np.sum(syst_vars, axis=0)
+                syst_uncert = np.abs(syst_hist - central_hist) / central_hist
+                syst_uncerts.append(syst_uncert)
+        total_var = np.sum(np.array(syst_uncerts)**2, axis=0)
         return np.sqrt(total_var)

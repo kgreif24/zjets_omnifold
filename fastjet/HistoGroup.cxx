@@ -46,19 +46,21 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
        symlog_edges[nbins_symlog - i] = 1 - pow(10, logxmin_symlog_b2b + i*(symlog_center-logxmin_symlog_b2b)/nbins_symlog_b2b);
     }
 
-    // Initialize histograms
-    Double_t m_edges[] = {0, 2.5, 5.0, 10.0, 20.0, 30.0};
-    Double_t m1_edges[] = {0, 8.0, 16.0, 24.0, 32.0, 42.0, 70.0};
-    Double_t m2_edges[] = {0, 5.0, 10.0, 20.0, 40.0};
-    Double_t pT_edges[] = {5.0, 50.0, 100.0, 150.0, 200.0, 300.0, 1000.0};
-    Double_t pi = TMath::Pi();
-    Double_t dphijj_edges[] = {-pi, -7*pi/8, -3*pi/4, -pi/2, -pi/4, 0, pi/4, pi/2, 3*pi/4, 7*pi/8, pi};
+    // Set histogram binning
+    Double_t pT_r10_edges[] = {0, 75.0, 120.0, 210.0, 275.0, 350.0, 1100.0};
+    Double_t m_r10_edges[] = {0, 15.0, 30.0, 50.0, 70.0, 110.0, 150.0};
+    Double_t pT_r6_edges[] = {0, 60.0, 120.0, 180.0, 250.0, 375.0, 1100.0};
+    Double_t m_r6_edges[] = {0, 10.0, 20.0, 30.0, 45.0, 70.0, 100.0};
+    Double_t m_r4_edges[] = {0, 8.0, 16.0, 24.0, 32.0, 42.0, 70.0};
+    Double_t pT_r4_edges[] = {0, 50.0, 100.0, 150.0, 200.0, 300.0, 1000.0};
+    Double_t m2_r4_edges[] = {0, 5.0, 10.0, 20.0, 40.0};
+    Double_t m34_r4_edges[] = {0, 2.5, 5.0, 10.0, 20.0, 30.0};
+    Double_t mjj_edges_default[] = {0, 40.0, 80.0, 150.0, 300.0, 500.0, 1200.0};
+    Double_t dRjj_edges_default[] = {0.4, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.5, 6.0};
+    Double_t dphijj_edges[] = {-3.2, -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2};
+    Double_t dyjj_edges_default[] = {0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0};
     
-    // Define arrays for different kinematic regions
-    Double_t mjj_edges_default[] = {0, 200., 400., 600., 800., 1000.};
-    Double_t dyjj_edges_default[] = {0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0};
-    Double_t dRjj_edges_default[] = {0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0};
-    
+    // Define arrays for different kinematic regions    
     Double_t mjj_edges_region2[] = {200., 300., 400., 600., 800., 1000.};
     Double_t dyjj_edges_region2[] = {2.0, 2.4, 2.8, 3.2, 3.6, 4.0};
     Double_t dRjj_edges_region2[] = {2.0, 2.4, 2.8, 3.2, 3.6, 4.0};
@@ -68,7 +70,6 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
     Double_t* dyjj_edges;
     Double_t* dRjj_edges;
     int mjj_nbins, dyjj_nbins, dRjj_nbins;
-    
     if (kinematic_region == 2) {
         mjj_edges = mjj_edges_region2;
         dyjj_edges = dyjj_edges_region2;
@@ -80,40 +81,40 @@ HistoGroup::HistoGroup(string name, int kinematic_region) : name(name), kinemati
         mjj_edges = mjj_edges_default;
         dyjj_edges = dyjj_edges_default;
         dRjj_edges = dRjj_edges_default;
-        mjj_nbins = 5;   // 6 edges = 5 bins
-        dyjj_nbins = 10; // 11 edges = 10 bins
-        dRjj_nbins = 10; // 11 edges = 10 bins
+        mjj_nbins = 6;   // 7 edges = 6 bins
+        dyjj_nbins = 12; // 13 edges = 12 bins
+        dRjj_nbins = 16; // 17 edges = 16 bins
     }
 
-    hm1_R04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hm2_R04 = make_shared<TH1D>(TH1D("", "", 4, m2_edges));
-    hm3_R04 = make_shared<TH1D>(TH1D("", "", 5, m_edges));
-    hm4_R04 = make_shared<TH1D>(TH1D("", "", 5, m_edges));
+    hm1_R04 = make_shared<TH1D>(TH1D("", "", 6, m_r4_edges));
+    hm2_R04 = make_shared<TH1D>(TH1D("", "", 4, m2_r4_edges));
+    hm3_R04 = make_shared<TH1D>(TH1D("", "", 5, m34_r4_edges));
+    hm4_R04 = make_shared<TH1D>(TH1D("", "", 5, m34_r4_edges));
     hmjj_R04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
     hdyjj_R04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
     hEEC_R04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
 
-    hm1_R06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_R06 = make_shared<TH1D>(TH1D("", "", 6, m_r6_edges));
+    hpT_R06 = make_shared<TH1D>(TH1D("", "", 6, pT_r6_edges));
     hEEC_R06 = make_shared<TH1D>(TH1D("", "", nbins, ak6_edges));
 
-    hm1_R10 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_R10 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_R10 = make_shared<TH1D>(TH1D("", "", 6, m_r10_edges));
+    hpT_R10 = make_shared<TH1D>(TH1D("", "", 6, pT_r10_edges));
     hEEC_R10 = make_shared<TH1D>(TH1D("", "", nbins, ak10_edges));
 
-    hm1_CA04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_CA04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_CA04 = make_shared<TH1D>(TH1D("", "", 6, m_r4_edges));
+    hpT_CA04 = make_shared<TH1D>(TH1D("", "", 6, pT_r4_edges));
     hEEC_CA04 = make_shared<TH1D>(TH1D("", "", nbins, ak4_edges));
     hmjj_CA04 = make_shared<TH1D>(TH1D("", "", mjj_nbins, mjj_edges));
     hdRjj_CA04 = make_shared<TH1D>(TH1D("", "", dRjj_nbins, dRjj_edges));
     hdyjj_CA04 = make_shared<TH1D>(TH1D("", "", dyjj_nbins, dyjj_edges));
-    hdphijj_CA04 = make_shared<TH1D>(TH1D("", "", 10, dphijj_edges));
+    hdphijj_CA04 = make_shared<TH1D>(TH1D("", "", 16, dphijj_edges));
 
-    hm1_CA06 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_CA06 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_CA06 = make_shared<TH1D>(TH1D("", "", 6, m_r6_edges));
+    hpT_CA06 = make_shared<TH1D>(TH1D("", "", 6, pT_r6_edges));
 
-    hm1_KT04 = make_shared<TH1D>(TH1D("", "", 6, m1_edges));
-    hpT_KT04 = make_shared<TH1D>(TH1D("", "", 6, pT_edges));
+    hm1_KT04 = make_shared<TH1D>(TH1D("", "", 6, m_r4_edges));
+    hpT_KT04 = make_shared<TH1D>(TH1D("", "", 6, pT_r4_edges));
 
     hTEEC_collinear = make_shared<TH1D>(TH1D("", "", nbins, all_edges));
     hTEEC_full_nolog = make_shared<TH1D>(TH1D("", "", 20, 0.0, 1.0));
