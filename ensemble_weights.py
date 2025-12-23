@@ -213,8 +213,6 @@ def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
         weight = weight[usepass == 1]
         denominator = np.sum(weight)
         return nominal_numerator / denominator
-    elif gn == "mcbootstrap":
-        raise NotImplementedError("MC bootstrap weights are not implemented yet")
     elif gn == "hv":
         raise ValueError("HV systematic is handled separately")
     else:
@@ -249,32 +247,26 @@ def get_bs_n_data(campaign_path, run_name, truth_pass):
     return np.sum(sample[truth_pass == 1])
 
 
-def apply_mc_bootstrap(weights, campaign_path, run_name, truth_pass):
-    """apply_mc_bootstrap - This function will apply the MC bootstrap weights to the
-    given weights.
+def apply_mc_bootstrap(weights):
+    """apply_mc_bootstrap - This function will run a bootstrap of the 
+    MC test sample used to construct the unfolded result.
+    Note that this is independent of the MC bootstrap used in training,
+    since that was performed on the MC training sample.
 
     Args:
         weights (np.ndarray): The weights to apply the MC bootstrap to.
-        campaign_path (str): The path to the campaign directory.
-        run_name (str): The name of the run group.
-        truth_pass (np.ndarray): Array of truth pass190 values.
 
     Returns:
         np.ndarray: The weights with the MC bootstrap applied.
     """
-    # Load the MC bootstrap file from the run directory
-    sample_files = glob.glob(f"{campaign_path}/{run_name}/bootstrap*.npy")
-    if not sample_files:
-        raise FileNotFoundError(
-            f"No bootstrap file found in {campaign_path}/{run_name}/"
-        )
-    if len(sample_files) > 1:
-        raise ValueError(
-            f"Multiple bootstrap files found in {campaign_path}/{run_name}/: "
-            f"{sample_files}"
-        )
-    sample = np.load(sample_files[0])
-    return weights * sample[truth_pass == 1]
+
+    # Sample Poisson to get the bootstrap
+    bs_seed = 1000 + np.random.randint(0, 1000)
+    rng = np.random.default_rng(bs_seed)
+    bs_weights = rng.poisson(lam=1.0, size=len(weights))
+
+    # Apply the bootstrap to the weights
+    return weights * bs_weights
 
 
 def adjust_theory_weights(t, gn, root_weights):
@@ -504,9 +496,7 @@ for gn in args.group_names:
             # If this is the MC bootstrap we need to apply the bootstrap weights
             # but the number of data events is the same as the nominal sample
             elif gn == "mcbootstrap":
-                weight = apply_mc_bootstrap(
-                    weight, args.campaign_path, run_names[i], truth_pass200
-                )
+                weight = apply_mc_bootstrap(weight)
                 n_data = n_data_nominal
             else:
                 n_data = n_data_nominal
