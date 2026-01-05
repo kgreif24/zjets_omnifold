@@ -413,9 +413,10 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 dd_target_weights = ak.to_numpy(t["target_dd"].array())
 
 # Calculate the pass200 filters for the nominal and HV samples at
-# both reco and truth level
+# both reco and truth level, and the data sample at reco level
 pass200 = calc_pass_200(t, ptll_cut=args.ptll_cut)
 truth_pass200 = calc_pass_200(t, truth=True, ptll_cut=args.ptll_cut)
+data_pass200 = calc_pass_200(t_data, ptll_cut=args.ptll_cut)
 hv_pass200 = calc_pass_200(t_hv, ptll_cut=args.ptll_cut)
 hv_truth_pass200 = calc_pass_200(t_hv, truth=True, ptll_cut=args.ptll_cut)
 
@@ -492,7 +493,7 @@ for gn in args.group_names:
             # for this bootstrap run
             if gn == "dbootstrap":
                 # Get the run name for this bootstrap
-                n_data = get_bs_n_data(args.campaign_path, run_names[i], truth_pass200)
+                n_data = get_bs_n_data(args.campaign_path, run_names[i], data_pass200)
             # If this is the MC bootstrap we need to apply the bootstrap weights
             # but the number of data events is the same as the nominal sample
             elif gn == "mcbootstrap":
