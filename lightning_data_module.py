@@ -65,6 +65,7 @@ class LOfData(L.LightningDataModule):
         testing=False,
         use_truth=False,
         syst_kw=None,
+        theory_weight_mode=False,
         data_bootstrap_path=None,
         **kwargs,
     ):
@@ -112,10 +113,10 @@ class LOfData(L.LightningDataModule):
                 for the data module. Defaults to false.
             syst_kw {dict} - Keyword of the systematic variation that should be
                 activated for this data module.
-            data_bootstrap_path {str} - The path to the data bootstrap in this training
-                If None, no bootstrap will be used.
             theory_weight_mode {bool} - Set to true if we are using theory systematics
                 to modify the weights. Defaults to False.
+            data_bootstrap_path {str} - The path to the data bootstrap in this training
+                If None, no bootstrap will be used.
             **kwargs - Passed to the OfDataset classes
         """
 
@@ -139,6 +140,7 @@ class LOfData(L.LightningDataModule):
         self.testing = testing
         self.use_truth = use_truth
         self.syst_kw = syst_kw
+        self.theory_weight_mode = theory_weight_mode
         self.data_bootstrap_path = data_bootstrap_path
 
         # Find total number of events in source and target, and get the pass190 filters
@@ -562,8 +564,9 @@ class LOfData(L.LightningDataModule):
         net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load and multiply root weights by the systematic weights if needed
-        if self.syst_kw is not None and which_file == "source":
-            assert not self.use_truth
+        if self.syst_kw is not None and (
+            which_file == "source" or self.theory_weight_mode
+        ):
             if "msf" in self.syst_kw:
                 nom_sf = ak.to_numpy(
                     tree["singleMuonTrigSF"].array(entry_stop=max_read)

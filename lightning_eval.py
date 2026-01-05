@@ -273,6 +273,8 @@ class OfEval:
 
         # Build data module, note we do not split the data into pieces
         # and use distibuted evaluation for testing
+        is_theory_syst = "theory" in self.config.syst_kw
+        use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         d_module_test = LOfData(
             source_file=self.test_source_file,
             target_file=self.test_target_file,
@@ -288,7 +290,8 @@ class OfEval:
             dataloader_workers=30,
             testing=True,
             use_truth=self.use_truth,
-            syst_kw=self.config.syst_kw if self.step == 1 else None,
+            syst_kw=use_syst,
+            theory_weight_mode=is_theory_syst and self.step == 2,
         )
 
         self.trainer.test(self.model, d_module_test)
@@ -303,6 +306,8 @@ class OfEval:
         """
 
         # Build data modules
+        is_theory_syst = "theory" in self.config.syst_kw
+        use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         d_module_train = LOfData(
             source_file=self.train_source_file,
             target_file=self.train_target_file,
@@ -318,7 +323,8 @@ class OfEval:
             dataloader_workers=20,
             testing=False,
             use_truth=self.use_truth,
-            syst_kw=self.config.syst_kw if self.step == 1 else None,
+            syst_kw=use_syst,
+            theory_weight_mode=is_theory_syst and self.step == 2,
         )
         d_module_test = LOfData(
             source_file=self.test_source_file,
@@ -336,6 +342,7 @@ class OfEval:
             testing=True,
             use_truth=self.use_truth,
             syst_kw=self.config.syst_kw if self.step == 1 else None,
+            theory_weight_mode=is_theory_syst and self.step == 2,
         )
 
         # Run predictions, note this only produces predictions for the source events
@@ -407,7 +414,11 @@ class OfEval:
             # Evaluate difference between reweighted truth MC and truth data
             # if this is step 2
             if self.step == 2 and self.config.truth_data_path is not None:
-                self.compare(plot_weights_test)
+                self.compare(
+                    root_weights_test,
+                    plot_weights_test,
+                    d_module_test.get_target_root_weights(),
+                )
 
             # Save new weights for future use
             np.savez(
@@ -424,7 +435,7 @@ class OfEval:
         if self.world_size > 1:
             torch.distributed.barrier()
 
-    def compare(self, plot_weights):
+    def compare(self, start_weights, end_weights, target_weights):
         """compare - Compare the reweighted truth MC to the truth pseudodata.
 
         Arguments:
@@ -437,9 +448,9 @@ class OfEval:
 
         # Compute and log wasserstein metric with plotter class
         _, w1_end = self.comp_plotter.wasserstein_distance(
-            "weight_mc",
-            plot_weights,
-            "weight_mc",
+            start_weights,
+            end_weights,
+            target_weights,
         )
         print("Reweighted truth MC to truth PD Wasserstein metric:", w1_end)
         if self.config.wandb:
@@ -447,9 +458,9 @@ class OfEval:
 
         # Generate and log plots with plotter class
         plot_dict = self.comp_plotter.plot(
-            "weight_mc",
-            plot_weights,
-            "weight_mc",
+            start_weights,
+            end_weights,
+            target_weights,
         )
         if self.config.wandb:
             for key, histpath in plot_dict.items():

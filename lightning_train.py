@@ -379,6 +379,8 @@ class OfTrain:
                 )
 
         # Build the data module
+        is_theory_syst = "theory" in self.config.syst_kw
+        use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -395,7 +397,9 @@ class OfTrain:
             testing=False,
             use_truth=use_truth,
             max_events_target=self.config.max_events_target,
-            syst_kw=self.config.syst_kw if self.step == 1 else None,
+            syst_kw=use_syst,
+            # Active theory weight mode only for step two trainings
+            theory_weight_mode=is_theory_syst and self.step == 2,
             data_bootstrap_path=self.data_bootstrap_path,
         )
 
