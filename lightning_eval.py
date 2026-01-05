@@ -273,7 +273,9 @@ class OfEval:
 
         # Build data module, note we do not split the data into pieces
         # and use distibuted evaluation for testing
-        is_theory_syst = "theory" in self.config.syst_kw
+        is_theory_syst = (
+            self.config.syst_kw is not None and "theory" in self.config.syst_kw
+        )
         use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         d_module_test = LOfData(
             source_file=self.test_source_file,
@@ -306,7 +308,9 @@ class OfEval:
         """
 
         # Build data modules
-        is_theory_syst = "theory" in self.config.syst_kw
+        is_theory_syst = (
+            self.config.syst_kw is not None and "theory" in self.config.syst_kw
+        )
         use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         d_module_train = LOfData(
             source_file=self.train_source_file,
@@ -341,7 +345,7 @@ class OfEval:
             dataloader_workers=20,
             testing=True,
             use_truth=self.use_truth,
-            syst_kw=self.config.syst_kw if self.step == 1 else None,
+            syst_kw=use_syst,
             theory_weight_mode=is_theory_syst and self.step == 2,
         )
 

@@ -379,7 +379,9 @@ class OfTrain:
                 )
 
         # Build the data module
-        is_theory_syst = "theory" in self.config.syst_kw
+        is_theory_syst = (
+            self.config.syst_kw is not None and "theory" in self.config.syst_kw
+        )
         use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         self.d_module = LOfData(
             source_file=source_file,
