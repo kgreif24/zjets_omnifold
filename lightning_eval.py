@@ -236,6 +236,7 @@ class OfEval:
         # use of multiple GPUs in prediction so it saves time.
 
         # Make plotter objects on rank zero process
+        # Kinematic region is -1 to use all events with pass190 == 1
         if self.rank == 0:
             if step == 1:
                 labels = ("RecoMC", "RecoPD")
@@ -251,6 +252,7 @@ class OfEval:
                 verbosity=1,
                 max_events=self.config.max_events_target,
                 syst_kw=self.config.syst_kw if self.step == 1 else None,
+                kinematic_region=-1,
             )
 
             if step == 2 and self.config.truth_data_path is not None:
@@ -262,6 +264,7 @@ class OfEval:
                     labels=("TruthMC", "TruthPD"),
                     verbosity=2,
                     max_events=self.config.max_events_target,
+                    kinematic_region=-1,
                 )
 
     def run_testing(self):
@@ -421,7 +424,7 @@ class OfEval:
                 self.compare(
                     root_weights_test,
                     plot_weights_test,
-                    d_module_test.get_target_root_weights(),
+                    "weight_mc",
                 )
 
             # Save new weights for future use
