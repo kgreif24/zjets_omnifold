@@ -90,6 +90,11 @@ parser.add_argument(
     action="store_true",
     help="Normalize the target histograms to match the source histograms",
 )
+parser.add_argument(
+    "--do_chi2_test",
+    action="store_true",
+    help="Perform a chi^2 test and print the results",
+)
 args = parser.parse_args()
 
 # Validate arguments
@@ -109,13 +114,14 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     target2_path=args.target2,
     data_comparison_mode=args.data_comparison_mode,
     normalize_targets=args.normalize_targets,
+    do_chi2_test=args.do_chi2_test,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,
     ibu_bins=True,
     kinematic_region=args.cut_region,
 )
-plot_dict = plotter.plot(
+plotter.plot(
     args.weights,
     color=args.color,
 )

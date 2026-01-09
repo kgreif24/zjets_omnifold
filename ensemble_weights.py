@@ -213,8 +213,6 @@ def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
         weight = weight[usepass == 1]
         denominator = np.sum(weight)
         return nominal_numerator / denominator
-    elif gn == "mcbootstrap":
-        raise NotImplementedError("MC bootstrap weights are not implemented yet")
     elif gn == "hv":
         raise ValueError("HV systematic is handled separately")
     else:

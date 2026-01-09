@@ -16,6 +16,7 @@ import uproot
 import awkward as ak
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import scipy.stats as stats
 import plotter
 from analyze import uncertainties as uncert_module
 
@@ -40,6 +41,7 @@ class UncertaintyPlotter(plotter.Plotter):
         target2_path=None,
         data_comparison_mode=False,
         normalize_targets=False,
+        do_chi2_test=False,
         **kwargs,
     ):
         """
@@ -67,6 +69,8 @@ class UncertaintyPlotter(plotter.Plotter):
                 flips ratio calculations. Default is False.
             normalize_targets (bool): If True, normalizes the target histograms to match
                 the source histograms. Default is False.
+            do_chi2_test (bool): If True, performs a chi^2 test and prints the results.
+                Default is False.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         # Ensure target_path is a single string (not a list)
@@ -92,6 +96,7 @@ class UncertaintyPlotter(plotter.Plotter):
         self.data_comparison_mode = data_comparison_mode
         self.dual_target_mode = target2_path is not None
         self.normalize_targets = normalize_targets
+        self.do_chi2_test = do_chi2_test
 
         # Create UncertaintyCalculator instance
         self.uncertainty_calculator = uncert_module.UncertaintyCalculator()
@@ -254,7 +259,6 @@ class UncertaintyPlotter(plotter.Plotter):
                             )
 
         # Loop through plots and make histograms
-        return_dict = {}
         histogram_data = {}  # Store histogram data for .npz export
         for plot in self.plots:
             print(f"Plotting {plot['key']}")
@@ -408,6 +412,32 @@ class UncertaintyPlotter(plotter.Plotter):
                             bins,
                         )
 
+            # Build ensemble histograms for mc stat bootstrap uncertainty
+            if "mc-stat-bs" in self.uncertainty_calculator.uncertainty_definitions:
+                if (
+                    "bootstrap_mc" in use_weight_source
+                    and use_weight_source["bootstrap_mc"].size > 0
+                ):
+                    for i in range(use_weight_source["bootstrap_mc"].shape[1]):
+                        member_weights = use_weight_source["bootstrap_mc"][:, i]
+                        member_plot = plot.copy()
+                        # Only modify key for fastjet observables
+                        # (to load from correct ROOT file)
+                        if member_plot["type"] == "fastjet":
+                            member_plot["key"] = (
+                                "weights_bootstrap_mc_" + str(i) + "-" + plot["key"]
+                            )
+                        member_hist, member_hist_var, _ = self._get_histogram(
+                            member_plot,
+                            weights=member_weights,
+                        )
+                        # Use key format expected by UncertaintyCalculator
+                        all_hists[f"bootstrap_mc_{i}"] = (
+                            member_hist,
+                            member_hist_var,
+                            bins,
+                        )
+
             # Build systematic uncertainty histograms
             # Iterate over uncertainty definitions and build histograms
             for syst_key in self.uncertainty_calculator.uncertainty_definitions:
@@ -452,17 +482,27 @@ class UncertaintyPlotter(plotter.Plotter):
                     )
 
             # Calculate uncertainties using UncertaintyCalculator
-            syst_uncerts, syst_info = (
+            syst_uncerts, syst_covs, syst_info = (
                 self.uncertainty_calculator.calculate_uncertainties(
                     all_hists, measured_key="nominal"
                 )
             )
             total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
             total_uncert = np.sqrt(total_var)
+            total_cov = np.sum(list(syst_covs.values()), axis=0)
+            chi2_cov = np.sum(
+                [
+                    syst_covs[key]
+                    for key in syst_covs.keys()
+                    if "muon" not in key and "track" not in key and "mc-stat" not in key
+                ],
+                axis=0,
+            )
 
             # Store histogram data for .npz export
             histogram_data[plot["key"] + "_hist"] = source_hist
             histogram_data[plot["key"] + "_uncert"] = total_uncert
+            histogram_data[plot["key"] + "_cov"] = total_cov
             histogram_data[plot["key"] + "_bins"] = bins
 
             # Calculate theory uncertainties for targets if in data comparison mode
@@ -504,7 +544,6 @@ class UncertaintyPlotter(plotter.Plotter):
             store_name = self.store / (plot["key"] + extension)
             fig.savefig(store_name, dpi=300)
             plt.close(fig)
-            return_dict[plot["key"]] = store_name
 
             # Create and save uncertainty budget plot
             budget_fig = self._plot_uncertainty_budget(
@@ -519,14 +558,33 @@ class UncertaintyPlotter(plotter.Plotter):
             budget_store_name = self.store / budget_name
             budget_fig.savefig(budget_store_name, dpi=300)
             plt.close(budget_fig)
-            return_dict[plot["key"] + "_uncert_budget"] = budget_store_name
+
+            # Create and save correlation matrix plot
+            corr_fig = self._plot_correlation_matrix(plot, total_cov, bins)
+            corr_name = plot["key"] + "_corr_matrix" + extension
+            corr_store_name = self.store / corr_name
+            corr_fig.savefig(corr_store_name, dpi=300)
+            plt.close(corr_fig)
+            histogram_data[plot["key"] + "_corr_matrix"] = corr_store_name
+
+            # If not in data comparison mode, calculate chi^2 test and p-value
+            if not self.data_comparison_mode and self.do_chi2_test:
+                dof = len(bins) - 1
+                D = source_hist - target_hists["target"][0]
+                chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
+                p_value = 1 - stats.chi2.cdf(chi2, dof)
+                obs = str(plot["key"])
+                print(
+                    f"{obs:<20} dof: {dof:<7} χ2: {chi2:.5f} \t p value: {p_value:.4f}"
+                )
+                histogram_data[plot["key"] + "_dof"] = dof
+                histogram_data[plot["key"] + "_chi2"] = chi2
+                histogram_data[plot["key"] + "_p_value"] = p_value
 
         # Save histogram data to .npz file
         npz_path = self.store / "omnifold_histograms.npz"
         np.savez(npz_path, **histogram_data)
         print(f"Saved histogram data to: {npz_path}")
-
-        return return_dict
 
     def _get_sherpa_histogram(self, plot_dict, weights):
         """_get_sherpa_histogram - Get the sherpa histogram for a given observable.
@@ -1105,6 +1163,82 @@ class UncertaintyPlotter(plotter.Plotter):
 
         return fig
 
+    def _plot_correlation_matrix(self, plot, total_cov, bins):
+        """_plot_correlation_matrix - Create a correlation matrix plot from the
+        covariance matrix.
+
+        Arguments:
+            plot (dict): Dictionary containing the plotting style information
+            total_cov (np.array): Total covariance matrix (n_bins x n_bins)
+            bins (np.array): Array of bin edges for labeling
+
+        Returns:
+            fig (matplotlib.figure.Figure): Figure object for the plot.
+        """
+        # Calculate correlation matrix from covariance matrix
+        # correlation[i,j] = covariance[i,j] / sqrt(covariance[i,i] * covariance[j,j])
+        n_bins = total_cov.shape[0]
+        std_devs = np.sqrt(np.diag(total_cov))
+
+        # Handle zero standard deviations to avoid division by zero
+        std_devs = np.where(std_devs == 0, 1, std_devs)
+
+        # Calculate correlation matrix
+        corr_matrix = total_cov / np.outer(std_devs, std_devs)
+
+        # Clip values to [-1, 1] to handle numerical precision issues
+        corr_matrix = np.clip(corr_matrix, -1, 1)
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=(8, 7))
+
+        # Create the heatmap with origin='lower' to match the attached style
+        # (smallest bins at bottom-left)
+        im = ax.imshow(
+            corr_matrix,
+            cmap="viridis",
+            vmin=-1,
+            vmax=1,
+            aspect="equal",
+            origin="lower",
+        )
+
+        # Add colorbar
+        fig.colorbar(im, ax=ax, shrink=0.8)
+
+        # Create bin labels from bin edges (round to hundredths for decimal edges)
+        bin_labels = [f"({bins[i]:.2f}, {bins[i+1]:.2f})" for i in range(len(bins) - 1)]
+
+        # Set ticks and labels
+        ax.set_xticks(np.arange(n_bins))
+        ax.set_yticks(np.arange(n_bins))
+        ax.set_xticklabels(bin_labels, rotation=45, ha="right")
+        ax.set_yticklabels(bin_labels)
+
+        # Add correlation values as text annotations
+        for i in range(n_bins):
+            for j in range(n_bins):
+                # Choose text color based on background for readability
+                corr_val = corr_matrix[i, j]
+                text_color = "white" if abs(corr_val) < 0.5 else "black"
+                ax.text(
+                    j,
+                    i,
+                    f"{corr_val:.2f}",
+                    ha="center",
+                    va="center",
+                    color=text_color,
+                    fontsize=10,
+                )
+
+        # Set title using the xlabel from plot config (contains variable name)
+        ax.set_title(f"Correlation Matrix: {plot['xlabel']}", fontsize=12)
+
+        # Finalize layout
+        fig.tight_layout()
+
+        return fig
+
     def _transform_to_symlog(self, x):
         """_transform_to_symlog - Transform a linear scale to a symmetric log scale.
         This is used to transform the x-axis of some EEC plots to a symmetric log scale.
@@ -1160,8 +1294,6 @@ class UncertaintyPlotter(plotter.Plotter):
             # Apply filter to all ensemble weights at once
             ensemble_weights = ensemble_weights[source_pass190 == 1, :]
             result["ensemble"] = ensemble_weights
-        else:
-            result["ensemble"] = np.zeros((len(central_weights), 0))
 
         # Process data bootstrap weights efficiently
         dbootstrap_names = [
@@ -1174,8 +1306,17 @@ class UncertaintyPlotter(plotter.Plotter):
             # Apply filter to all bootstrap weights at once
             dbootstrap_weights = dbootstrap_weights[source_pass190 == 1, :]
             result["bootstrap_data"] = dbootstrap_weights
-        else:
-            result["bootstrap_data"] = np.zeros((len(central_weights), 0))
+
+        # Process mc stat bootstrap weights efficiently
+        mc_stat_bs_names = [
+            f for f in weights_file.files if "weights_bootstrap_mc" in f
+        ]
+        if mc_stat_bs_names:
+            mc_stat_bs_weights = np.array(
+                [weights_file[name][: self.source_events] for name in mc_stat_bs_names]
+            ).T
+            mc_stat_bs_weights = mc_stat_bs_weights[source_pass190 == 1, :]
+            result["bootstrap_mc"] = mc_stat_bs_weights
 
         # Process systematic weights efficiently
         # Keys in .npz file have "weights_" prefix, strip it to get
