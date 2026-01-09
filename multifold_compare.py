@@ -26,6 +26,22 @@ parser.add_argument(
     default=None,
     help="Path to omnifold_histograms.npz file to overlay (only with --data)",
 )
+parser.add_argument(
+    "--store",
+    type=str,
+    default="./plot_storage/multifold/pd",
+    help="Path to store the plots (default: ./plot_storage/multifold/pd)",
+)
+parser.add_argument(
+    "--smooth_hv",
+    action="store_true",
+    help="If true, will smooth the hidden variable uncertainty",
+)
+parser.add_argument(
+    "--smooth_all",
+    action="store_true",
+    help="If true, will smooth all uncertainties",
+)
 args = parser.parse_args()
 
 # Load omnifold data if provided (only used in data mode)
@@ -60,11 +76,13 @@ plots = [
 ]
 
 # Initialize the uncertainty calculator
-uncertainty_calculator = UncertaintyCalculator()
+uncertainty_calculator = UncertaintyCalculator(
+    smooth_hv=args.smooth_hv,
+    smooth_all=args.smooth_all,
+)
 
 # Create output directory for plots
-dir_key = "data" if args.data else "pd"
-plot_dir = pathlib.Path("./plot_storage/multifold/" + dir_key)
+plot_dir = pathlib.Path(args.store)
 plot_dir.mkdir(parents=True, exist_ok=True)
 
 # Dictionary to store chi-squared test results (only used in pseudodata mode)

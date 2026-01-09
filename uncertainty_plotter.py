@@ -42,6 +42,8 @@ class UncertaintyPlotter(plotter.Plotter):
         data_comparison_mode=False,
         normalize_targets=False,
         do_chi2_test=False,
+        smooth_hv=False,
+        smooth_all=False,
         **kwargs,
     ):
         """
@@ -71,6 +73,10 @@ class UncertaintyPlotter(plotter.Plotter):
                 the source histograms. Default is False.
             do_chi2_test (bool): If True, performs a chi^2 test and prints the results.
                 Default is False.
+            smooth_hv (bool): If True, will smooth the hidden variable uncertainty.
+                Default is False.
+            smooth_all (bool): If True, will smooth all Hessian uncertainties.
+                Default is False.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         # Ensure target_path is a single string (not a list)
@@ -99,7 +105,10 @@ class UncertaintyPlotter(plotter.Plotter):
         self.do_chi2_test = do_chi2_test
 
         # Create UncertaintyCalculator instance
-        self.uncertainty_calculator = uncert_module.UncertaintyCalculator()
+        self.uncertainty_calculator = uncert_module.UncertaintyCalculator(
+            smooth_hv=smooth_hv,
+            smooth_all=smooth_all,
+        )
 
         # Hardcode luminosity
         self.luminosity = 140.1  # fb^-1

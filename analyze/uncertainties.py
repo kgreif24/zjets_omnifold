@@ -7,6 +7,7 @@ from correlation dimension histograms.
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
+import scipy.stats as stats
 
 
 class UncertaintyCalculator:
@@ -29,6 +30,8 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
+        smooth_hv: bool = False,
+        smooth_all: bool = False,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -51,6 +54,10 @@ class UncertaintyCalculator:
         multifold_nn_init : bool, optional
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
+        smooth_hv : bool, optional
+            If True, smooth the hidden variable uncertainty only (default: False)
+        smooth_all : bool, optional
+            If True, smooth all uncertainties (default: False)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -62,6 +69,8 @@ class UncertaintyCalculator:
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
         self.multifold_nn_init = multifold_nn_init
+        self.smooth_hv = smooth_hv
+        self.smooth_all = smooth_all
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -403,7 +412,8 @@ class UncertaintyCalculator:
                 f"Key '{measured_key}' not found in all_hists."
                 f" Available keys: {available}"
             )
-        measured_hist, measured_hist_var, _ = all_hists[measured_key]
+        measured_hist, measured_hist_var, bins = all_hists[measured_key]
+        bin_centers = (bins[1:] + bins[:-1]) / 2
 
         # Calculate systematic uncertainties
         syst_uncerts = {}
@@ -413,9 +423,9 @@ class UncertaintyCalculator:
         # MC statistical uncertainty (from raw MC stat uncertainty)
         mc_stat_def = self.uncertainty_definitions.get("mc-stat")
         if mc_stat_def is not None:
-            mc_stat_uncert = np.sqrt(measured_hist_var) / measured_hist
-            syst_uncerts["mc-stat"] = mc_stat_uncert
-            syst_covs["mc-stat"] = np.diag(mc_stat_uncert**2)
+            mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
+            syst_uncerts["mc-stat"] = mc_stat_uncert_unnorm / measured_hist
+            syst_covs["mc-stat"] = np.diag(mc_stat_uncert_unnorm**2)
             syst_info["mc-stat"] = mc_stat_def.copy()
 
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
@@ -426,9 +436,8 @@ class UncertaintyCalculator:
                 key for key in all_hists.keys() if key.startswith(prefix)
             ]
             mc_stat_bs_hists = np.array([all_hists[key][0] for key in mc_stat_bs_keys])
-            syst_uncerts["mc-stat-bs"] = (
-                np.std(mc_stat_bs_hists, axis=0) / measured_hist
-            )
+            mc_stat_bs_uncert_unnorm = np.std(mc_stat_bs_hists, axis=0)
+            syst_uncerts["mc-stat-bs"] = mc_stat_bs_uncert_unnorm / measured_hist
             syst_covs["mc-stat-bs"] = self._fill_covariance_matrix(
                 mc_stat_bs_hists,
                 means=np.mean(mc_stat_bs_hists, axis=0),
@@ -441,7 +450,8 @@ class UncertaintyCalculator:
             prefix = data_stat_def.get("prefix", "bootstrap_data_")
             data_stat_keys = [key for key in all_hists.keys() if key.startswith(prefix)]
             data_stat_hists = np.array([all_hists[key][0] for key in data_stat_keys])
-            syst_uncerts["data-stat"] = np.std(data_stat_hists, axis=0) / measured_hist
+            data_stat_uncert_unnorm = np.std(data_stat_hists, axis=0)
+            syst_uncerts["data-stat"] = data_stat_uncert_unnorm / measured_hist
             syst_covs["data-stat"] = self._fill_covariance_matrix(
                 data_stat_hists,
                 means=np.mean(data_stat_hists, axis=0),
@@ -456,10 +466,12 @@ class UncertaintyCalculator:
             ensemble_hists = np.array([all_hists[key][0] for key in nn_init_keys])
             nens = len(ensemble_hists)
             # Calculate variance across ensemble members
-            nn_init_uncert = np.std(ensemble_hists, axis=0) / np.sqrt(nens)
+            nn_init_uncert_unnorm = np.std(ensemble_hists, axis=0) / np.sqrt(nens)
             if self.multifold_nn_init:
-                nn_init_uncert *= 1.253  # Additional factor for multifold nn-stability
-            syst_uncerts["nn-stability"] = nn_init_uncert / measured_hist
+                nn_init_uncert_unnorm *= (
+                    1.253  # Additional factor for multifold nn-stability
+                )
+            syst_uncerts["nn-stability"] = nn_init_uncert_unnorm / measured_hist
             syst_covs["nn-stability"] = (
                 self._fill_covariance_matrix(
                     ensemble_hists,
@@ -475,6 +487,10 @@ class UncertaintyCalculator:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
             dd_uncert_unnorm = dd_hist - dd_target_hist
+            if self.smooth_all:
+                dd_uncert_unnorm = self._smooth_uncertainty(
+                    dd_uncert_unnorm, bin_centers
+                )
             syst_uncerts["dd"] = np.abs(dd_uncert_unnorm) / measured_hist
             # Note we re-normalize the dd uncertainty to match the measured histogram!
             syst_covs["dd"] = self._fill_covariance_matrix(
@@ -492,6 +508,10 @@ class UncertaintyCalculator:
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
+                if syst_key == "hv" and self.smooth_hv:
+                    uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
+                elif self.smooth_all:
+                    uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
                 syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix(
                     [uncert_unnorm],
@@ -707,3 +727,32 @@ class UncertaintyCalculator:
         if decorrelated:
             cov = np.diag(np.diag(cov))
         return cov
+
+    # Gaussian Kernel smoothing
+    # Does not consider the 'uncertainty on the uncertainty'
+    def _smooth_uncertainty(
+        self, uncert: np.ndarray, bin_centers: np.ndarray
+    ) -> np.ndarray:
+        # Parameter for smoothing
+        # The Gaussian Kernel width will be 'full-range'/Nsig
+        Nsig = 10
+        xrange = bin_centers[-1] - bin_centers[0]
+        logScale = bin_centers[0] > 0
+        if logScale:
+            xrange = np.log(bin_centers[-1]) - np.log(bin_centers[0])
+        kernel_width = xrange / Nsig
+
+        # will hold the uncertainty
+        smooth = uncert.copy()
+        for bin_i in range(0, len(bin_centers)):
+            x_i = np.log(bin_centers[bin_i]) if logScale else bin_centers[bin_i]
+            sumw = sumwy = 0
+            for bin_j in range(0, len(bin_centers)):
+                x_j = np.log(bin_centers[bin_j]) if logScale else bin_centers[bin_j]
+                # Kernel weight
+                w = stats.norm.pdf((x_j - x_i) / kernel_width)
+                sumw += w
+                sumwy += w * uncert[bin_j]
+
+            smooth[bin_i] = sumwy / sumw
+        return smooth
