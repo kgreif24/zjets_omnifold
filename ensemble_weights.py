@@ -2,7 +2,7 @@
 over an ensemble of runs of Omnifold.
 
 Author: Kevin Greif
-Last updated 08/27/2024
+Last updated 12/22/2025
 python3
 """
 
@@ -213,15 +213,13 @@ def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
         weight = weight[usepass == 1]
         denominator = np.sum(weight)
         return nominal_numerator / denominator
-    elif gn == "mcbootstrap":
-        raise NotImplementedError("MC bootstrap weights are not implemented yet")
     elif gn == "hv":
         raise ValueError("HV systematic is handled separately")
     else:
         return nominal_ratio
 
 
-def get_bs_n_data(campaign_path, run_name, ptll, ptll_cut=200):
+def get_bs_n_data(campaign_path, run_name, truth_pass):
     """get_bs_data_weights - This function will return the weights for a given
     data bootstrap run group. It will re-create the data sample and sum the weights
     to get the number of data events.
@@ -229,8 +227,7 @@ def get_bs_n_data(campaign_path, run_name, ptll, ptll_cut=200):
     Args:
         campaign_path (str): The path to the campaign directory.
         run_name (str): The full run name (e.g., "dbootstrap_1", "dbootstrap_2").
-        ptll (np.ndarray): Array of pt_ll values.
-        ptll_cut (float): The pt_ll threshold cut. Default is 200.
+        truth_pass (np.ndarray): Array of truth pass190 values.
 
     Returns:
         int: The number of data events.
@@ -247,8 +244,29 @@ def get_bs_n_data(campaign_path, run_name, ptll, ptll_cut=200):
             f"{sample_files}"
         )
     sample = np.load(sample_files[0])
-    filtered_sample = sample[ptll > ptll_cut]
-    return np.sum(filtered_sample)
+    return np.sum(sample[truth_pass == 1])
+
+
+def apply_mc_bootstrap(weights):
+    """apply_mc_bootstrap - This function will run a bootstrap of the 
+    MC test sample used to construct the unfolded result.
+    Note that this is independent of the MC bootstrap used in training,
+    since that was performed on the MC training sample.
+
+    Args:
+        weights (np.ndarray): The weights to apply the MC bootstrap to.
+
+    Returns:
+        np.ndarray: The weights with the MC bootstrap applied.
+    """
+
+    # Sample Poisson to get the bootstrap
+    bs_seed = 1000 + np.random.randint(0, 1000)
+    rng = np.random.default_rng(bs_seed)
+    bs_weights = rng.poisson(lam=1.0, size=len(weights))
+
+    # Apply the bootstrap to the weights
+    return weights * bs_weights
 
 
 def adjust_theory_weights(t, gn, root_weights):
@@ -395,9 +413,10 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 dd_target_weights = ak.to_numpy(t["target_dd"].array())
 
 # Calculate the pass200 filters for the nominal and HV samples at
-# both reco and truth level
+# both reco and truth level, and the data sample at reco level
 pass200 = calc_pass_200(t, ptll_cut=args.ptll_cut)
 truth_pass200 = calc_pass_200(t, truth=True, ptll_cut=args.ptll_cut)
+data_pass200 = calc_pass_200(t_data, ptll_cut=args.ptll_cut)
 hv_pass200 = calc_pass_200(t_hv, ptll_cut=args.ptll_cut)
 hv_truth_pass200 = calc_pass_200(t_hv, truth=True, ptll_cut=args.ptll_cut)
 
@@ -474,14 +493,18 @@ for gn in args.group_names:
             # for this bootstrap run
             if gn == "dbootstrap":
                 # Get the run name for this bootstrap
-                n_data = get_bs_n_data(
-                    args.campaign_path, run_names[i], pt_ll_data, ptll_cut=args.ptll_cut
-                )
+                n_data = get_bs_n_data(args.campaign_path, run_names[i], data_pass200)
+            # If this is the MC bootstrap we need to apply the bootstrap weights
+            # but the number of data events is the same as the nominal sample
+            elif gn == "mcbootstrap":
+                weight = apply_mc_bootstrap(weight)
+                n_data = n_data_nominal
             else:
                 n_data = n_data_nominal
             weight = norm_weights(
                 weight, truth_pass200, ratio_mc, n_data, args.luminosity
             )
+            # Add weights to the all_weights dictionary
             write_name = group_name_to_write_name(gn, i)
             all_weights[write_name] = weight
 

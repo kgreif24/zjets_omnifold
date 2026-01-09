@@ -1,4 +1,4 @@
-""" omnifold.py - This file contains a class which implements the omnifold
+"""omnifold.py - This file contains a class which implements the omnifold
 algorithm.
 
 Author: Kevin Greif
@@ -88,7 +88,14 @@ class Omnifolder:
         # Set seeds for running bootstraps if enabled
         self.data_bootstrap_path = None
         if self.cfg.bootstrap_data:
-            self.data_bootstrap_path = self._generate_data_bootstrap()
+            self.data_bootstrap_path = self._generate_bootstrap(
+                self.cfg.data_path, "bootstrap_s{bs_seed}.npy"
+            )
+        self.mc_bootstrap_path = None
+        if self.cfg.bootstrap_mc:
+            self.mc_bootstrap_path = self._generate_bootstrap(
+                self.cfg.mc_train_path, "bootstrap_mc_s{bs_seed}.npy"
+            )
 
     def run_of(self):
         """run_of - Run the whole Omnifold procedure from start to finish.
@@ -151,9 +158,14 @@ class Omnifolder:
             ]
 
             # Add bootstrap seeds if enabled
+            # Data bootstraps only effect step 1
             if self.cfg.bootstrap_data and step == 1:
                 train_args.append("--data_bootstrap_path")
                 train_args.append(str(self.data_bootstrap_path))
+            # MC bootstraps effect step 1 and step 2
+            if self.cfg.bootstrap_mc:
+                train_args.append("--mc_bootstrap_path")
+                train_args.append(str(self.mc_bootstrap_path))
 
             # Add slurm arguments if we are using
             if self.use_slurm:
@@ -214,7 +226,7 @@ class Omnifolder:
         Arguments:
             is_test - True if we are running the test, False if we are running
                 the prediction
-        Returns:  
+        Returns:
             {list} - List of arguments for the subprocess
         """
 
@@ -296,17 +308,21 @@ class Omnifolder:
         # If loop concludes, we are done with the procedure
         return self.cfg.num_iterations, 2, False
 
-    def _generate_data_bootstrap(self):
-        """_generate_data_bootstrap - This function generates the data bootstrap to be
-        used throuhgout the rest of the Omnifold procedure.
+    def _generate_bootstrap(self, file_path, filename_template):
+        """_generate_bootstrap - This function generates a bootstrap to be
+        used throughout the rest of the Omnifold procedure.
 
-        Arguments: None
+        Arguments:
+            file_path - Path to the ROOT file containing the data
+            filename_template - Template for the output filename, should contain
+                {bs_seed} placeholder (e.g., "bootstrap_s{bs_seed}.npy" or
+                "bootstrap_mc_{bs_seed}.npy")
         Returns:
             {str} - The path to the bootstrap weights
         """
 
         # Load the data using uproot to understand the number of events
-        f = uproot.open(self.cfg.data_path)
+        f = uproot.open(file_path)
         tree = f["OmniTree"]
         p190 = ak.to_numpy(tree["pass190"].array())
 
@@ -316,7 +332,7 @@ class Omnifolder:
         bs_weights = rng.poisson(lam=1.0, size=len(p190))
 
         # Save the bootstrap weights to disk
-        location = f"{self.root_dir}/bootstrap_s{bs_seed}.npy"
+        location = f"{self.root_dir}/{filename_template.format(bs_seed=bs_seed)}"
         np.save(location, bs_weights)
 
         # Return the location of the bootstrap weights
