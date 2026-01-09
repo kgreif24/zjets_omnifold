@@ -30,8 +30,7 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
-        smooth_hv: bool = False,
-        smooth_all: bool = False,
+        smooth_hv: bool = True,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -55,9 +54,7 @@ class UncertaintyCalculator:
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
         smooth_hv : bool, optional
-            If True, smooth the hidden variable uncertainty only (default: False)
-        smooth_all : bool, optional
-            If True, smooth all uncertainties (default: False)
+            If True, smooth the hidden variable uncertainty only (default: True)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -70,7 +67,6 @@ class UncertaintyCalculator:
         self.hide_individual_uncertainties = hide_individual_uncertainties
         self.multifold_nn_init = multifold_nn_init
         self.smooth_hv = smooth_hv
-        self.smooth_all = smooth_all
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -487,15 +483,10 @@ class UncertaintyCalculator:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
             dd_uncert_unnorm = dd_hist - dd_target_hist
-            if self.smooth_all:
-                dd_uncert_unnorm = self._smooth_uncertainty(
-                    dd_uncert_unnorm, bin_centers
-                )
             syst_uncerts["dd"] = np.abs(dd_uncert_unnorm) / measured_hist
             # Note we re-normalize the dd uncertainty to match the measured histogram!
             syst_covs["dd"] = self._fill_covariance_matrix(
                 [dd_uncert_unnorm * (measured_hist / dd_target_hist)],
-                decorrelated=False,
             )
             syst_info["dd"] = dd_def.copy()
 
@@ -510,14 +501,8 @@ class UncertaintyCalculator:
                 uncert_unnorm = syst_hist - measured_hist
                 if syst_key == "hv" and self.smooth_hv:
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
-                elif self.smooth_all:
-                    uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
                 syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
-                syst_covs[syst_key] = self._fill_covariance_matrix(
-                    [uncert_unnorm],
-                    # decorrelated=True if syst_key == "hv" else False,
-                    decorrelated=False,
-                )
+                syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
                 syst_info[syst_key] = syst_def.copy()
 
         # Apply uncertainty grouping
@@ -692,7 +677,6 @@ class UncertaintyCalculator:
         self,
         syst_hists: List[np.ndarray],
         means: np.ndarray = None,
-        decorrelated: bool = False,
     ):
         """Fill the covariance matrix for a list of uncertainty histograms.
 
@@ -707,8 +691,6 @@ class UncertaintyCalculator:
             Mean values of the uncertainty variations.
             Including this argument activates the bootstrap covariance calculation
             as opposed to the Hessian one.
-        decorrelated : bool, optional
-            If True, treat the uncertainties as decorrelated between bins
 
         Returns:
         --------
@@ -724,8 +706,6 @@ class UncertaintyCalculator:
             # Bootstrap: sample covariance = (H - means).T @ (H - means) / (n - 1)
             centered = H - means  # Broadcasting: (n_hists, n_bins) - (n_bins,)
             cov = centered.T @ centered / (len(syst_hists) - 1)
-        if decorrelated:
-            cov = np.diag(np.diag(cov))
         return cov
 
     # Gaussian Kernel smoothing
