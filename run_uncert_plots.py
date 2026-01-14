@@ -130,8 +130,6 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     max_events=args.max_events,
     ibu_bins=True,
     kinematic_region=args.cut_region,
-    smooth_hv=args.smooth_hv,
-    smooth_all=args.smooth_all,
 )
 plotter.plot(
     args.weights,
