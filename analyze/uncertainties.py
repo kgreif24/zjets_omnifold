@@ -66,18 +66,18 @@ class UncertaintyCalculator:
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
         self.madgraph_uncertainties = [
-            "w_QCD_dd",
-            "w_PDF_CT18nnlo",
-            "w_Alpha_s1",
-            "w_Var2Down",
-            "w_Var1Down",
-            "w_MPIDown",
-            "w_RenDown",
+            "weights_theoryQCD",
+            "weights_theoryPDF",
+            "weights_theoryAlphaS",
+            "weights_theoryPSjet",
+            "weights_theoryPSsoft",
+            "weights_theoryMPI",
+            "weights_theoryPSscale",
         ]
         self.sherpa_uncertainties = [
-            "PS_ME_QCD_dd",
-            "PS_ME_PDF_CT18nnlo",
-            "PS_ME_Alpha_s1",
+            "weights_theoryQCD",
+            "weights_theoryPDF",
+            "weights_theoryAlphaS",
         ]
 
     @staticmethod
@@ -488,10 +488,12 @@ class UncertaintyCalculator:
                 continue
 
             # Merge variances in quadrature
-            merged_uncert = np.sqrt(np.sum(
-                [syst_uncerts[uncert]**2 for uncert in available_uncertainties],
-                axis=0,
-            ))
+            merged_uncert = np.sqrt(
+                np.sum(
+                    [syst_uncerts[uncert] ** 2 for uncert in available_uncertainties],
+                    axis=0,
+                )
+            )
 
             # Get color from first available uncertainty
             first_color = syst_info[available_uncertainties[0]]["color"]
@@ -524,29 +526,6 @@ class UncertaintyCalculator:
             }
 
         return syst_uncerts, syst_info
-
-    def get_total_uncertainty(
-        self,
-        all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
-        measured_key: str = "nominal",
-    ) -> np.ndarray:
-        """Calculate total uncertainty (square root of sum of variances).
-
-        Arguments:
-        ----------
-        all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
-            Dictionary mapping histogram names to tuples of (hist, hist_var, bins).
-        measured_key : str, optional
-            Key in all_hists for the measured/unfolded distribution
-            (default: "nominal").
-
-        Returns:
-        --------
-        np.ndarray : Total uncertainty (standard deviation) array.
-        """
-        syst_uncerts, _ = self.calculate_uncertainties(all_hists, measured_key)
-        total_var = np.sum(np.array(list(syst_uncerts.values()))**2, axis=0)
-        return np.sqrt(total_var)
 
     def get_total_theory_uncertainty(
         self,
@@ -584,5 +563,5 @@ class UncertaintyCalculator:
                 syst_hist, _, _ = all_hists[weight_name]
                 syst_uncert = np.abs(syst_hist - central_hist) / central_hist
                 syst_uncerts.append(syst_uncert)
-        total_var = np.sum(np.array(syst_uncerts)**2, axis=0)
+        total_var = np.sum(np.array(syst_uncerts) ** 2, axis=0)
         return np.sqrt(total_var)

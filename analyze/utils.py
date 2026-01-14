@@ -2,6 +2,7 @@
 Utility functions for jet analysis calculations.
 """
 
+import scipy.optimize as opt
 import numpy as np
 import awkward as ak
 import vector
@@ -11,11 +12,50 @@ import multiprocessing
 import dask
 import dask.array as da
 from tqdm import tqdm
+from numba import njit, prange
 
 import sys
 
 sys.path.append("../utils")
 import data_utils as du  # noqa: E402
+
+
+@njit(parallel=True, cache=True)
+def parallel_argsort_rows(matrix: np.ndarray) -> np.ndarray:
+    """Sort each row of a matrix in parallel using numba.
+
+    Arguments:
+    matrix - A 2D numpy array to sort along axis 1.
+
+    Returns:
+    sort_indices - A 2D array of sorting indices with the same shape as matrix.
+    """
+    n_rows, n_cols = matrix.shape
+    result = np.empty((n_rows, n_cols), dtype=np.int64)
+    for i in prange(n_rows):
+        result[i] = np.argsort(matrix[i])
+    return result
+
+
+@njit(parallel=True, cache=True)
+def parallel_take_along_axis(arr: np.ndarray, indices: np.ndarray) -> np.ndarray:
+    """Apply sorting indices to reorder each row in parallel.
+
+    Equivalent to np.take_along_axis(arr, indices, axis=1) but parallelized.
+
+    Arguments:
+    arr - A 2D numpy array to reorder.
+    indices - A 2D array of indices (same shape as arr).
+
+    Returns:
+    result - The reordered array.
+    """
+    n_rows, n_cols = arr.shape
+    result = np.empty((n_rows, n_cols), dtype=arr.dtype)
+    for i in prange(n_rows):
+        for j in range(n_cols):
+            result[i, j] = arr[i, indices[i, j]]
+    return result
 
 
 def calculate_jet_4vectors(jets: list[np.ndarray]) -> list:
@@ -179,23 +219,14 @@ def calculate_emds_from_file(
 
     # Get kinematics from the tree
     print(f"Getting kinematics from tree (get_truth={get_truth})")
-    if isinstance(tree, list):
-        kinematics, _, pdgids = du.get_kinematics_multiple(
-            tree,
-            pass190_flags,
-            get_truth=get_truth,
-            get_truth_pdgids=get_truth,
-            take_log_pt=False,
-        )
-    else:
-        kinematics, _, pdgids = du.get_kinematics(
-            tree,
-            pass190_flags,
-            get_truth=get_truth,
-            get_truth_pdgids=get_truth,
-            take_log_pt=False,
-            stop=len(pass190_flags),
-        )
+    kinematics, _, pdgids = du.get_kinematics(
+        tree,
+        pass190_flags,
+        get_truth=get_truth,
+        get_truth_pdgids=get_truth,
+        take_log_pt=False,
+        stop=len(pass190_flags),
+    )
 
     # Extract pT, eta, phi from kinematics array
     # kinematics shape is (n_events, 3, n_particles) where axis 1 is [pT, eta, phi]
@@ -500,3 +531,164 @@ def calculate_correlation_dimension_from_file(
             results[hist_name] = (dims, dims_var, midbins)
 
     return results
+
+
+def sort_emd_matrix(
+    emds: np.ndarray,
+) -> np.ndarray:
+    """Sort EMD matrix rows by distance.
+
+    This function performs the expensive sorting operation once, allowing the
+    sorted matrix to be reused for multiple NNID calculations with different
+    weight sets.
+
+    Arguments:
+    emds - A numpy array of EMD values with shape (n_jets, n_jets).
+        Can be upper triangular (will be symmetrized).
+
+    Returns:
+    sorted_emds - A 2D array where each row i contains distances from jet i
+        to all other jets, sorted in ascending order. Shape is (n_jets, n_jets).
+        The last column contains inf (self-distance).
+    """
+    # Calculate symmetric matrix of EMDs
+    full_emds = emds + emds.T
+
+    # Handle zeros - set to small value to avoid division issues
+    full_emds = np.where(full_emds == 0, 1e-10, full_emds)
+
+    # Set diagonal to inf so self-distances sort to the end
+    np.fill_diagonal(full_emds, np.inf)
+
+    # Parallel sort: get sorting indices for all rows using numba parallelization.
+    # First call compiles the function (~1-2s overhead), subsequent calls are fast.
+    print("Sorting EMD matrix (parallel with numba)...")
+    sort_indices = parallel_argsort_rows(full_emds)
+
+    # Apply sorting to EMDs using parallel advanced indexing
+    sorted_emds = parallel_take_along_axis(full_emds, sort_indices)
+
+    print(f"Sorted EMD matrix with shape {sorted_emds.shape}")
+    return sorted_emds
+
+
+def calculate_nnids_from_sorted_emds(
+    sorted_emds: np.ndarray,
+    weights_dict: dict[str, np.ndarray],
+    points: np.ndarray,
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Calculate nearest neighbor intrinsic dimension from pre-sorted EMDs.
+
+    This function takes pre-sorted EMD matrices (from sort_emd_matrix) and
+    calculates NNIDs for each point and each weight set.
+
+    The jet weights are used to weight each jet's contribution to the
+    likelihood function.
+
+    Arguments:
+    sorted_emds - A 2D array of sorted EMD values from sort_emd_matrix.
+    weights_dict - Dictionary mapping weight set names to 1D weight arrays.
+    points - A numpy array of points to use in the calculation.
+
+    Returns:
+    results - Dictionary mapping weight set names to (nnids, avg_r) tuples.
+    """
+    n_weight_sets = len(weights_dict)
+    print(f"Processing {n_weight_sets} weight sets for {len(points)} points...")
+
+    # Pre-compute EMD ratios for each point (these don't depend on weights)
+    emd_ratios_by_point = {}
+    for point in points:
+        emd_ratios_by_point[point] = sorted_emds[:, 2 * point] / sorted_emds[:, point]
+
+    results = {}
+    for weight_name, jet_weights in tqdm(
+        weights_dict.items(),
+        total=n_weight_sets,
+        desc="Processing weight sets",
+        unit="set",
+    ):
+        jet_weights = np.asarray(jet_weights).flatten()
+
+        # Prepare output arrays for this weight set
+        nnids = np.zeros(len(points))
+        avg_r = np.zeros(len(points))
+
+        # Loop through each point
+        for pidx, point in enumerate(points):
+            emd_ratios = emd_ratios_by_point[point]
+
+            # Weighted average distance
+            avg_r[pidx] = np.average(sorted_emds[:, point], weights=jet_weights)
+
+            # Minimize the likelihood function
+            nnid = opt.minimize(
+                nnid_nll,
+                x0=2.0,
+                args=(emd_ratios, jet_weights, point, 2 * point),
+                method="L-BFGS-B",
+                bounds=[(0.01, None)],
+                options={"disp": False, "iprint": -1},
+            )
+            nnids[pidx] = nnid.x
+
+        results[weight_name] = (nnids, avg_r) 
+
+    return results
+
+
+def nnid_nll(
+    d: float,
+    emd_ratios: np.ndarray,
+    jet_weights: np.ndarray,
+    i: int,
+    j: int,
+) -> float:
+    """Calculate the weighted negative log-likelihood for intrinsic dimension.
+
+    This computes the NLL for the NNID estimator, where each jet's contribution
+    to the likelihood is weighted by its jet_weight. The EMD ratios μ = r_j/r_i
+    must satisfy μ >= 1 (since j > i means r_j >= r_i for sorted distances).
+
+    For the unweighted case, the likelihood is:
+        L(d) = d^n * prod_k [ μ_k^(-(1+i*d)) * (1 - μ_k^(-d))^(j-i-1) ]
+
+    For weighted samples, we weight each jet's log-likelihood contribution:
+        -log L(d) = -(Σw) log(d) + (1+i*d) Σ(w * log(μ)) - (j-i-1) Σ(w * log(1-μ^(-d)))
+
+    Arguments:
+    d - The intrinsic dimension to evaluate.
+    emd_ratios - Array of EMD ratios μ = r_j/r_i. Must be >= 1.
+    jet_weights - Array of per-jet weights (same length as emd_ratios).
+    i - Index of first nearest neighbor (e.g., i=1 for 1st NN).
+    j - Index of second nearest neighbor (e.g., j=2 for 2nd NN).
+
+    Returns:
+    nll - The weighted negative log-likelihood.
+    """
+    # Validate that ratios are >= 1 (required for the likelihood to be valid)
+    if np.any(emd_ratios < 1):
+        n_invalid = np.sum(emd_ratios < 1)
+        min_ratio = np.min(emd_ratios)
+        # For ratios very close to 1, this is fine numerically
+        # Only warn/error for significantly < 1
+        if min_ratio < 0.99:
+            print(f"Warning: {n_invalid} EMD ratios < 1 (min={min_ratio:.6f})")
+
+    # Compute weighted sums
+    sum_w = np.sum(jet_weights)
+
+    # Term 1: -( Σ w_i ) * log(d)
+    t1 = -sum_w * np.log(d)
+
+    # Term 2: (1 + i*d) * Σ( w_i * log(μ_i) )
+    t2 = (1 + i * d) * np.sum(jet_weights * np.log(emd_ratios))
+
+    # Term 3: -(j - i - 1) * Σ( w_i * log(1 - μ_i^(-d)) )
+    # Note: μ >= 1 implies μ^(-d) <= 1, so 1 - μ^(-d) >= 0
+    powers = np.power(emd_ratios, -d)
+    # Clip to avoid log(0) when μ = 1 exactly
+    log_arg = np.clip(1 - powers, 1e-300, None)
+    t3 = -(j - i - 1) * np.sum(jet_weights * np.log(log_arg))
+
+    return t1 + t2 + t3
