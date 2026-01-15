@@ -42,6 +42,8 @@ class UncertaintyPlotter(plotter.Plotter):
         data_comparison_mode=False,
         normalize_targets=False,
         do_chi2_test=False,
+        uncertainty_definitions=None,
+        uncertainty_groups=None,
         **kwargs,
     ):
         """
@@ -71,6 +73,10 @@ class UncertaintyPlotter(plotter.Plotter):
                 the source histograms. Default is False.
             do_chi2_test (bool): If True, performs a chi^2 test and prints the results.
                 Default is False.
+            uncertainty_definitions (dict): Dictionary mapping uncertainty keys to their
+                definitions (name, color, etc.). If None, uses default definitions.
+            uncertainty_groups (dict): Dictionary mapping group names to lists of
+                uncertainty keys. If None, uses default groups.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         # Ensure target_path is a single string (not a list)
@@ -99,7 +105,10 @@ class UncertaintyPlotter(plotter.Plotter):
         self.do_chi2_test = do_chi2_test
 
         # Create UncertaintyCalculator instance
-        self.uncertainty_calculator = uncert_module.UncertaintyCalculator()
+        self.uncertainty_calculator = uncert_module.UncertaintyCalculator(
+            uncertainty_definitions=uncertainty_definitions,
+            uncertainty_groups=uncertainty_groups,
+        )
 
         # Hardcode luminosity
         self.luminosity = 140.1  # fb^-1
