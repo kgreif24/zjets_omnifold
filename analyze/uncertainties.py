@@ -30,7 +30,7 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
-        smooth_hv: bool = True,
+        smooth_hv: bool = False,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -54,7 +54,7 @@ class UncertaintyCalculator:
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
         smooth_hv : bool, optional
-            If True, smooth the hidden variable uncertainty only (default: True)
+            If True, smooth the hidden variable uncertainty only (default: False)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()

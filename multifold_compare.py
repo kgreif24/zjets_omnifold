@@ -468,9 +468,16 @@ for obs_dict in plots:
 
     # Chi-squared test (only when comparing to target, i.e., not in data mode)
     if not args.data and target_hist is not None:
+
+        # Calculate covariance matrix for test, exclude muon and track uncertainties
+        test_covs = []
+        for syst_key in syst_covs.keys():
+            if syst_key not in ["Muon", "Tracking", "lumi", "pileup"]:
+                test_covs.append(syst_covs[syst_key])
+        test_cov = np.sum(test_covs, axis=0)
         dof = len(bins) - 1
         D = source_hist - target_hist
-        chi2 = D.dot(np.linalg.inv(total_cov)).dot(D.T)
+        chi2 = D.dot(np.linalg.inv(test_cov)).dot(D.T)
         p_value = 1 - stats.chi2.cdf(chi2, dof)
         print(f"{key:<20} dof: {dof:<7} χ2: {chi2:.5f} \t p value: {p_value:.4f}")
         # Store results for saving to .npz file

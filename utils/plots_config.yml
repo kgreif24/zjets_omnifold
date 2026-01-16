@@ -37,11 +37,12 @@ plots:
     binlow: 0
     binhigh: 1000
     ibubins: 
-      - 100.0
+      - 25.0
+      - 125.0
       - 200.0
       - 300.0
       - 400.0
-      - 600.0
+      - 500.0
       - 800.0
     region_bins:
       "1":
@@ -68,7 +69,6 @@ plots:
       - 100.0
       - 150.0
       - 200.0
-      - 300.0
       - 400.0
     verbosity_level: 1
     modified: ["muon_id", "muon_ms", "muon_resbias", "muon_rho", "muon_scale"]
@@ -467,9 +467,8 @@ plots:
     binhigh: 150
     ibubins: 
       - 0.0
-      - 2.5
-      - 7.0
-      - 12.0
+      - 5.0
+      - 10.0
       - 20.0
       - 40.0
     region_bins:

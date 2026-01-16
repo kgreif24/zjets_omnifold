@@ -95,16 +95,6 @@ parser.add_argument(
     action="store_true",
     help="Perform a chi^2 test and print the results",
 )
-parser.add_argument(
-    "--smooth_hv",
-    action="store_true",
-    help="If true, will smooth the hidden variable uncertainty",
-)
-parser.add_argument(
-    "--smooth_all",
-    action="store_true",
-    help="If true, will smooth all Hessian uncertainties",
-)
 args = parser.parse_args()
 
 # Validate arguments

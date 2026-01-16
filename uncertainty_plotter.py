@@ -503,7 +503,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 [
                     syst_covs[key]
                     for key in syst_covs.keys()
-                    if "muon" not in key and "track" not in key and "mc-stat" not in key
+                    if key not in ["Muon", "Tracking", "lumi", "pileup"]
                 ],
                 axis=0,
             )
