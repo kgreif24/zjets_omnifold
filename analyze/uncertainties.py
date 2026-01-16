@@ -7,6 +7,7 @@ from correlation dimension histograms.
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
+import scipy.stats as stats
 
 
 class UncertaintyCalculator:
@@ -29,6 +30,7 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
+        smooth_hv: bool = False,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -51,6 +53,8 @@ class UncertaintyCalculator:
         multifold_nn_init : bool, optional
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
+        smooth_hv : bool, optional
+            If True, smooth the hidden variable uncertainty only (default: False)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -62,6 +66,7 @@ class UncertaintyCalculator:
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
         self.multifold_nn_init = multifold_nn_init
+        self.smooth_hv = smooth_hv
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -191,6 +196,12 @@ class UncertaintyCalculator:
                 "stochastic": True,
                 "prefix": None,
             },
+            "mc-stat-bs": {
+                "name": "MC stat (bootstrap)",
+                "color": "teal",
+                "stochastic": True,
+                "prefix": "bootstrap_mc_",
+            },
             "lumi": {
                 "name": "Luminosity",
                 "color": "pink",
@@ -203,48 +214,48 @@ class UncertaintyCalculator:
                 "stochastic": True,
                 "prefix": "bootstrap_data_",
             },
-            # "theoryQCD": {
-            #     "name": "Theory QCD",
-            #     "color": "chartreuse",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPDF": {
-            #     "name": "Theory PDF",
-            #     "color": "lawngreen",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryAlphaS": {
-            #     "name": "Theory AlphaS",
-            #     "color": "olive",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPSsoft": {
-            #     "name": "Theory PS soft",
-            #     "color": "palegreen",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPSjet": {
-            #     "name": "Theory PS jet",
-            #     "color": "lightgreen",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryMPI": {
-            #     "name": "Theory MPI",
-            #     "color": "aquamarine",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPSscale": {
-            #     "name": "Theory PS scale",
-            #     "color": "lime",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
+            "theoryQCD": {
+                "name": "Theory QCD",
+                "color": "chartreuse",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPDF": {
+                "name": "Theory PDF",
+                "color": "lawngreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryAlphaS": {
+                "name": "Theory AlphaS",
+                "color": "olive",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPSsoft": {
+                "name": "Theory PS soft",
+                "color": "palegreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPSjet": {
+                "name": "Theory PS jet",
+                "color": "lightgreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryMPI": {
+                "name": "Theory MPI",
+                "color": "aquamarine",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPSscale": {
+                "name": "Theory PS scale",
+                "color": "lime",
+                "stochastic": False,
+                "prefix": None,
+            },
         }
 
     @staticmethod
@@ -268,15 +279,16 @@ class UncertaintyCalculator:
                 "muEffTrack",
                 "muEffTrig",
             ],
-            # "Theory": [
-            #     # "theoryQCD",
-            #     # "theoryPDF",
-            #     "theoryAlphaS",
-            #     # "theoryPSsoft",
-            #     # "theoryPSjet",
-            #     # "theoryMPI",
-            #     # "theoryPSscale",
-            # ],
+            "MC Stat": ["mc-stat", "mc-stat-bs"],
+            "Theory": [
+                "theoryQCD",
+                "theoryPDF",
+                "theoryAlphaS",
+                "theoryPSsoft",
+                "theoryPSjet",
+                "theoryMPI",
+                "theoryPSscale",
+            ],
         }
 
     def add_uncertainty(
@@ -363,6 +375,10 @@ class UncertaintyCalculator:
         Will only calculate uncertainties that are defined in the
         uncertainty_definitions dictionary, the rest will be ignored.
 
+        Will also fill the covariance matrices for all uncertainties and
+        return a dictionary of covariance matrices for all of the uncertainties
+        which can be used for plotting.
+
         Arguments:
         ----------
         all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
@@ -378,6 +394,8 @@ class UncertaintyCalculator:
         --------
         syst_uncerts : dict[str, np.ndarray]
             Dictionary mapping uncertainty names to fractional uncertainty arrays.
+        syst_covs : dict[str, np.ndarray]
+            Dictionary mapping uncertainty names to covariance matrices.
         syst_info : dict[str, dict]
             Dictionary mapping uncertainty names to metadata (name, color, etc.).
             Useful for plotting only uncertainties that are active (in the dictionary)
@@ -390,17 +408,37 @@ class UncertaintyCalculator:
                 f"Key '{measured_key}' not found in all_hists."
                 f" Available keys: {available}"
             )
-        measured_hist, measured_hist_var, _ = all_hists[measured_key]
+        measured_hist, measured_hist_var, bins = all_hists[measured_key]
+        bin_centers = (bins[1:] + bins[:-1]) / 2
 
         # Calculate systematic uncertainties
         syst_uncerts = {}
+        syst_covs = {}
         syst_info = {}
 
-        # MC statistical uncertainty (from variance in measured distribution)
+        # MC statistical uncertainty (from raw MC stat uncertainty)
         mc_stat_def = self.uncertainty_definitions.get("mc-stat")
         if mc_stat_def is not None:
-            syst_uncerts["mc-stat"] = np.sqrt(measured_hist_var) / measured_hist
+            mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
+            syst_uncerts["mc-stat"] = mc_stat_uncert_unnorm / measured_hist
+            syst_covs["mc-stat"] = np.diag(mc_stat_uncert_unnorm**2)
             syst_info["mc-stat"] = mc_stat_def.copy()
+
+        # MC statistical uncertainty (from bootstrap MC stat uncertainty)
+        mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-bs")
+        if mc_stat_bs_def is not None:
+            prefix = mc_stat_bs_def.get("prefix", "bootstrap_mc_")
+            mc_stat_bs_keys = [
+                key for key in all_hists.keys() if key.startswith(prefix)
+            ]
+            mc_stat_bs_hists = np.array([all_hists[key][0] for key in mc_stat_bs_keys])
+            mc_stat_bs_uncert_unnorm = np.std(mc_stat_bs_hists, axis=0)
+            syst_uncerts["mc-stat-bs"] = mc_stat_bs_uncert_unnorm / measured_hist
+            syst_covs["mc-stat-bs"] = self._fill_covariance_matrix(
+                mc_stat_bs_hists,
+                means=np.mean(mc_stat_bs_hists, axis=0),
+            )
+            syst_info["mc-stat-bs"] = mc_stat_bs_def.copy()
 
         # Data statistical uncertainty
         data_stat_def = self.uncertainty_definitions.get("data-stat")
@@ -408,7 +446,12 @@ class UncertaintyCalculator:
             prefix = data_stat_def.get("prefix", "bootstrap_data_")
             data_stat_keys = [key for key in all_hists.keys() if key.startswith(prefix)]
             data_stat_hists = np.array([all_hists[key][0] for key in data_stat_keys])
-            syst_uncerts["data-stat"] = np.std(data_stat_hists, axis=0) / measured_hist
+            data_stat_uncert_unnorm = np.std(data_stat_hists, axis=0)
+            syst_uncerts["data-stat"] = data_stat_uncert_unnorm / measured_hist
+            syst_covs["data-stat"] = self._fill_covariance_matrix(
+                data_stat_hists,
+                means=np.mean(data_stat_hists, axis=0),
+            )
             syst_info["data-stat"] = data_stat_def.copy()
 
         # NN initialization uncertainty
@@ -419,10 +462,19 @@ class UncertaintyCalculator:
             ensemble_hists = np.array([all_hists[key][0] for key in nn_init_keys])
             nens = len(ensemble_hists)
             # Calculate variance across ensemble members
-            nn_init_uncert = np.std(ensemble_hists, axis=0) / np.sqrt(nens)
+            nn_init_uncert_unnorm = np.std(ensemble_hists, axis=0) / np.sqrt(nens)
             if self.multifold_nn_init:
-                nn_init_uncert *= 1.253  # Additional factor for multifold nn-stability
-            syst_uncerts["nn-stability"] = nn_init_uncert / measured_hist
+                nn_init_uncert_unnorm *= (
+                    1.253  # Additional factor for multifold nn-stability
+                )
+            syst_uncerts["nn-stability"] = nn_init_uncert_unnorm / measured_hist
+            syst_covs["nn-stability"] = (
+                self._fill_covariance_matrix(
+                    ensemble_hists,
+                    means=np.mean(ensemble_hists, axis=0),
+                )
+                / nens
+            )
             syst_info["nn-stability"] = nn_init_def.copy()
 
         # Data driven uncertainty (from difference between "dd" and "dd-target")
@@ -430,7 +482,12 @@ class UncertaintyCalculator:
         if dd_def is not None:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
-            syst_uncerts["dd"] = np.abs(dd_hist - dd_target_hist) / dd_target_hist
+            dd_uncert_unnorm = dd_hist - dd_target_hist
+            syst_uncerts["dd"] = np.abs(dd_uncert_unnorm) / measured_hist
+            # Note we re-normalize the dd uncertainty to match the measured histogram!
+            syst_covs["dd"] = self._fill_covariance_matrix(
+                [dd_uncert_unnorm * (measured_hist / dd_target_hist)],
+            )
             syst_info["dd"] = dd_def.copy()
 
         # Other systematic uncertainties (from differences with nominal)
@@ -441,29 +498,35 @@ class UncertaintyCalculator:
             # Check if this systematic exists in all_hists
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
-
-                # Calculate variance as squared difference
-                uncert = np.abs(syst_hist - measured_hist) / measured_hist
-                syst_uncerts[syst_key] = uncert
+                uncert_unnorm = syst_hist - measured_hist
+                if syst_key == "hv" and self.smooth_hv:
+                    uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
+                syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
+                syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
                 syst_info[syst_key] = syst_def.copy()
 
         # Apply uncertainty grouping
         if self.uncertainty_groups:
-            syst_uncerts, syst_info = self._apply_grouping(syst_uncerts, syst_info)
+            syst_uncerts, syst_covs, syst_info = self._apply_grouping(
+                syst_uncerts, syst_covs, syst_info
+            )
 
-        return syst_uncerts, syst_info
+        return syst_uncerts, syst_covs, syst_info
 
     def _apply_grouping(
         self,
         syst_uncerts: Dict[str, np.ndarray],
+        syst_covs: Dict[str, np.ndarray],
         syst_info: Dict[str, Dict],
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Dict]]:
         """Apply uncertainty grouping by merging in quadrature.
 
         Arguments:
         ----------
         syst_uncerts : dict[str, np.ndarray]
             Dictionary of individual uncertainty fractional uncertainties.
+        syst_covs : dict[str, np.ndarray]
+            Dictionary of individual uncertainty covariance matrices.
         syst_info : dict[str, dict]
             Dictionary of individual uncertainty metadata.
 
@@ -471,6 +534,8 @@ class UncertaintyCalculator:
         --------
         syst_uncerts : dict[str, np.ndarray]
             Dictionary with grouped uncertainties added.
+        syst_covs : dict[str, np.ndarray]
+            Dictionary with grouped uncertainty covariance matrices added.
         syst_info : dict[str, dict]
             Dictionary with grouped uncertainty metadata added.
         """
@@ -488,20 +553,33 @@ class UncertaintyCalculator:
                 continue
 
             # Merge variances in quadrature
-            merged_uncert = np.sqrt(np.sum(
-                [syst_uncerts[uncert]**2 for uncert in available_uncertainties],
+            merged_uncert = np.sqrt(
+                np.sum(
+                    [syst_uncerts[uncert] ** 2 for uncert in available_uncertainties],
+                    axis=0,
+                )
+            )
+
+            # Merge covariance matrices by adding
+            merged_cov = np.sum(
+                [syst_covs[uncert] for uncert in available_uncertainties],
                 axis=0,
-            ))
+            )
 
             # Get color from first available uncertainty
             first_color = syst_info[available_uncertainties[0]]["color"]
 
             # Create merged uncertainty entry
             merged_uncertainties[group_name] = {
-                "name": group_name.title(),
-                "color": first_color,
                 "uncert": merged_uncert,
+                "cov": merged_cov,
                 "merged_from": available_uncertainties,
+                "info": {
+                    "name": group_name.title(),
+                    "color": first_color,
+                    "stochastic": False,
+                    "prefix": None,
+                },
             }
 
             # Hide individual uncertainties if enabled
@@ -509,21 +587,20 @@ class UncertaintyCalculator:
                 for uncert_name in available_uncertainties:
                     hidden_uncertainties[uncert_name] = {
                         "uncert": syst_uncerts[uncert_name],
+                        "cov": syst_covs[uncert_name],
                         "info": syst_info[uncert_name],
                     }
                     del syst_uncerts[uncert_name]
+                    del syst_covs[uncert_name]
                     del syst_info[uncert_name]
 
         # Add merged uncertainties to syst_vars and syst_info
         for group_name, merged_uncert in merged_uncertainties.items():
             syst_uncerts[group_name] = merged_uncert["uncert"]
-            syst_info[group_name] = {
-                "name": merged_uncert["name"],
-                "color": merged_uncert["color"],
-                "stochastic": False,
-            }
+            syst_covs[group_name] = merged_uncert["cov"]
+            syst_info[group_name] = merged_uncert["info"]
 
-        return syst_uncerts, syst_info
+        return syst_uncerts, syst_covs, syst_info
 
     def get_total_uncertainty(
         self,
@@ -544,8 +621,8 @@ class UncertaintyCalculator:
         --------
         np.ndarray : Total uncertainty (standard deviation) array.
         """
-        syst_uncerts, _ = self.calculate_uncertainties(all_hists, measured_key)
-        total_var = np.sum(np.array(list(syst_uncerts.values()))**2, axis=0)
+        syst_uncerts, _, _ = self.calculate_uncertainties(all_hists, measured_key)
+        total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
         return np.sqrt(total_var)
 
     def get_total_theory_uncertainty(
@@ -584,5 +661,78 @@ class UncertaintyCalculator:
                 syst_hist, _, _ = all_hists[weight_name]
                 syst_uncert = np.abs(syst_hist - central_hist) / central_hist
                 syst_uncerts.append(syst_uncert)
-        total_var = np.sum(np.array(syst_uncerts)**2, axis=0)
+        total_var = np.sum(np.array(syst_uncerts) ** 2, axis=0)
         return np.sqrt(total_var)
+
+    # Method that calculates a covariance matrix based on one of two types of inputs:
+    # 1. a list of Hessian uncertainty variations (aka 'nuisance parameters')
+    #    this is activated when there is no third argument
+    #    as usual, such uncertainty components are uncorrelated wrt each other but
+    #    fully correlated across bins.
+    # 2. Bootstrap variations (aka resamplings), activated when uncerts_mean is defined
+    #    These uncertainties have a magnitude corresponding to the sample covariance
+    # Note method includes an option to decorrelate the uncertainties between bins,
+    # as is usually done for unfolding uncertainties
+    def _fill_covariance_matrix(
+        self,
+        syst_hists: List[np.ndarray],
+        means: np.ndarray = None,
+    ):
+        """Fill the covariance matrix for a list of uncertainty histograms.
+
+        Note uncertainties are not normalized by the measured histogram, so the
+        covariance matrix is not normalized by the measured histogram.
+
+        Arguments:
+        ----------
+        syst_hists : List[np.ndarray]
+            List of histograms representing the uncertainty variations.
+        means : np.ndarray, optional
+            Mean values of the uncertainty variations.
+            Including this argument activates the bootstrap covariance calculation
+            as opposed to the Hessian one.
+
+        Returns:
+        --------
+        np.ndarray : Covariance matrix with shape (n_bins, n_bins).
+        """
+        # Convert to 2D array: shape (n_hists, n_bins)
+        H = np.asarray(syst_hists)
+
+        if means is None:
+            # Hessian: v[i,j] = sum_k(H[k,i] * H[k,j]) = H.T @ H
+            cov = H.T @ H
+        else:
+            # Bootstrap: sample covariance = (H - means).T @ (H - means) / (n - 1)
+            centered = H - means  # Broadcasting: (n_hists, n_bins) - (n_bins,)
+            cov = centered.T @ centered / (len(syst_hists) - 1)
+        return cov
+
+    # Gaussian Kernel smoothing
+    # Does not consider the 'uncertainty on the uncertainty'
+    def _smooth_uncertainty(
+        self, uncert: np.ndarray, bin_centers: np.ndarray
+    ) -> np.ndarray:
+        # Parameter for smoothing
+        # The Gaussian Kernel width will be 'full-range'/Nsig
+        Nsig = 10
+        xrange = bin_centers[-1] - bin_centers[0]
+        logScale = bin_centers[0] > 0
+        if logScale:
+            xrange = np.log(bin_centers[-1]) - np.log(bin_centers[0])
+        kernel_width = xrange / Nsig
+
+        # will hold the uncertainty
+        smooth = uncert.copy()
+        for bin_i in range(0, len(bin_centers)):
+            x_i = np.log(bin_centers[bin_i]) if logScale else bin_centers[bin_i]
+            sumw = sumwy = 0
+            for bin_j in range(0, len(bin_centers)):
+                x_j = np.log(bin_centers[bin_j]) if logScale else bin_centers[bin_j]
+                # Kernel weight
+                w = stats.norm.pdf((x_j - x_i) / kernel_width)
+                sumw += w
+                sumwy += w * uncert[bin_j]
+
+            smooth[bin_i] = sumwy / sumw
+        return smooth

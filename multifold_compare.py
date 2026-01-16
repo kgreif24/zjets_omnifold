@@ -13,6 +13,7 @@ import yaml
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import scipy.stats as stats
 import pathlib
 from analyze.uncertainties import UncertaintyCalculator
 
@@ -24,6 +25,12 @@ parser.add_argument(
     type=str,
     default=None,
     help="Path to omnifold_histograms.npz file to overlay (only with --data)",
+)
+parser.add_argument(
+    "--store",
+    type=str,
+    default="./plot_storage/multifold/pd",
+    help="Path to store the plots (default: ./plot_storage/multifold/pd)",
 )
 args = parser.parse_args()
 
@@ -62,9 +69,11 @@ plots = [
 uncertainty_calculator = UncertaintyCalculator()
 
 # Create output directory for plots
-dir_key = "data" if args.data else "pd"
-plot_dir = pathlib.Path("./plot_storage/multifold/" + dir_key)
+plot_dir = pathlib.Path(args.store)
 plot_dir.mkdir(parents=True, exist_ok=True)
+
+# Dictionary to store chi-squared test results (only used in pseudodata mode)
+chi2_results = {}
 
 # Loop through the observables
 for obs_dict in plots:
@@ -167,7 +176,8 @@ for obs_dict in plots:
         all_hists[uncert_name] = (uncert_hist, None, bins)
 
     # Calculate the uncertainties and total uncertainty
-    syst_uncerts, syst_info = uncertainty_calculator.calculate_uncertainties(all_hists)
+    output = uncertainty_calculator.calculate_uncertainties(all_hists)
+    syst_uncerts, syst_covs, syst_info = output
 
     # If not in data mode, calculate bias between unfolded data and truth
     if not args.data:
@@ -178,7 +188,7 @@ for obs_dict in plots:
         rel_mbias = None
 
     # Calculate total variance and uncertainty from syst_vars
-    total_var = np.sum(np.array(list(syst_uncerts.values()))**2, axis=0)
+    total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
     rel_total_uncert = np.sqrt(total_var)
     total_uncert = rel_total_uncert * source_hist
 
@@ -316,7 +326,6 @@ for obs_dict in plots:
     plot_name = plot_dir / (key + ".pdf")
     fig.savefig(plot_name, dpi=300)
     plt.close(fig)
-    print(f"Saved plot: {plot_name}")
 
     # Build uncertainty budget plot
     budget_fig, budget_ax = plt.subplots(figsize=(6.4, 4.8))
@@ -388,4 +397,96 @@ for obs_dict in plots:
     budget_name = plot_dir / (key + "_uncert_budget.pdf")
     budget_fig.savefig(budget_name, dpi=300)
     plt.close(budget_fig)
-    print(f"Saved uncertainty budget plot: {budget_name}")
+
+    # Calculate total covariance matrix from syst_covs
+    total_cov = np.sum(list(syst_covs.values()), axis=0)
+
+    # Create and save correlation matrix plot
+    n_bins = total_cov.shape[0]
+    std_devs = np.sqrt(np.diag(total_cov))
+
+    # Handle zero standard deviations to avoid division by zero
+    std_devs = np.where(std_devs == 0, 1, std_devs)
+
+    # Calculate correlation matrix
+    corr_matrix = total_cov / np.outer(std_devs, std_devs)
+
+    # Clip values to [-1, 1] to handle numerical precision issues
+    corr_matrix = np.clip(corr_matrix, -1, 1)
+
+    # Create figure
+    corr_fig, corr_ax = plt.subplots(figsize=(8, 7))
+
+    # Create the heatmap with origin='lower' (smallest bins at bottom-left)
+    im = corr_ax.imshow(
+        corr_matrix,
+        cmap="viridis",
+        vmin=-1,
+        vmax=1,
+        aspect="equal",
+        origin="lower",
+    )
+
+    # Add colorbar
+    corr_fig.colorbar(im, ax=corr_ax, shrink=0.8)
+
+    # Create bin labels from bin edges (round to hundredths for decimal edges)
+    bin_labels = [f"({bins[i]:.2f}, {bins[i+1]:.2f})" for i in range(len(bins) - 1)]
+
+    # Set ticks and labels
+    corr_ax.set_xticks(np.arange(n_bins))
+    corr_ax.set_yticks(np.arange(n_bins))
+    corr_ax.set_xticklabels(bin_labels, rotation=45, ha="right")
+    corr_ax.set_yticklabels(bin_labels)
+
+    # Add correlation values as text annotations
+    for i in range(n_bins):
+        for j in range(n_bins):
+            # Choose text color based on background for readability
+            corr_val = corr_matrix[i, j]
+            text_color = "white" if abs(corr_val) < 0.5 else "black"
+            corr_ax.text(
+                j,
+                i,
+                f"{corr_val:.2f}",
+                ha="center",
+                va="center",
+                color=text_color,
+                fontsize=10,
+            )
+
+    # Set title using the xlabel from plot config
+    corr_ax.set_title(f"Correlation Matrix: {obs_dict.get('xlabel', key)}", fontsize=12)
+
+    # Finalize layout
+    corr_fig.tight_layout()
+
+    # Save correlation matrix plot
+    corr_name = plot_dir / (key + "_corr_matrix.pdf")
+    corr_fig.savefig(corr_name, dpi=300)
+    plt.close(corr_fig)
+
+    # Chi-squared test (only when comparing to target, i.e., not in data mode)
+    if not args.data and target_hist is not None:
+
+        # Calculate covariance matrix for test, exclude muon and track uncertainties
+        test_covs = []
+        for syst_key in syst_covs.keys():
+            if syst_key not in ["Muon", "Tracking", "lumi", "pileup"]:
+                test_covs.append(syst_covs[syst_key])
+        test_cov = np.sum(test_covs, axis=0)
+        dof = len(bins) - 1
+        D = source_hist - target_hist
+        chi2 = D.dot(np.linalg.inv(test_cov)).dot(D.T)
+        p_value = 1 - stats.chi2.cdf(chi2, dof)
+        print(f"{key:<20} dof: {dof:<7} χ2: {chi2:.5f} \t p value: {p_value:.4f}")
+        # Store results for saving to .npz file
+        chi2_results[key + "_chi2"] = chi2
+        chi2_results[key + "_p_value"] = p_value
+        chi2_results[key + "_dof"] = dof
+
+# Save chi-squared results to .npz file (only in pseudodata mode)
+if not args.data and chi2_results:
+    chi2_npz_path = plot_dir / "chi2_results.npz"
+    np.savez(chi2_npz_path, **chi2_results)
+    print(f"\nSaved chi-squared results to: {chi2_npz_path}")
