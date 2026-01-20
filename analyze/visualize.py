@@ -846,13 +846,17 @@ def plot_jets_eta_phi(
 
 
 def compare_to_target(
-    all_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    measurement_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     prior_key: str = "prior",
     measured_key: str = "nominal",
     target_key: str = "truthpd",
     prior_label: str = "Prior",
     measured_label: str = "Reweighted",
     target_label: str = "Target",
+    llab: str = "Simulation Preliminary",
+    rlab: str = "Z+jets Omnifold",
+    normalize: bool = False,
     figsize=(6.4, 4.8),
     ylabel: str = "A.U.",
     xlabel: str = "Obs",
@@ -880,18 +884,25 @@ def compare_to_target(
         - dims: The correlation dimension values
         - dims_var: The variance of the correlation dimension values
         - midbins: The midpoints of the bins used in the calculation
+    target_hists : same as measurement_hists but for the target
     prior_key : str, optional
         Key in all_hists for the prior distribution (default: "prior").
     measured_key : str, optional
         Key in all_hists for the measured/reweighted distribution (default: "nominal").
     truth_key : str, optional
         Key in all_hists for the truth pseudodata distribution (default: "truthpd").
+    llab : str, optional
+        Left label for ATLAS label (default: "Simulation Preliminary").
+    rlab : str, optional
+        Right label for ATLAS label (default: "Z+jets Omnifold").
     prior_label : str, optional
         Label for the prior distribution in the legend (default: "Prior").
     measured_label : str, optional
         Label for the measured distribution in the legend (default: "Reweighted").
     truth_label : str, optional
         Label for the truth distribution in the legend (default: "Truth Pseudodata").
+    normalize : bool, optional
+        If True, normalize the histograms (default: False).
     figsize : tuple, optional
         Figure size in inches (width, height) (default: (10, 8)).
     ylabel : str, optional
@@ -922,25 +933,31 @@ def compare_to_target(
     """
 
     # Extract the histograms
-    if prior_key not in all_hists:
-        available = list(all_hists.keys())
+    if prior_key not in measurement_hists:
+        available = list(measurement_hists.keys())
         raise KeyError(
             f"Key '{prior_key}' not found in all_hists. Available keys: {available}"
         )
-    if measured_key not in all_hists:
-        available = list(all_hists.keys())
+    if measured_key not in measurement_hists:
+        available = list(measurement_hists.keys())
         raise KeyError(
             f"Key '{measured_key}' not found in all_hists. Available keys: {available}"
         )
-    if target_key not in all_hists:
-        available = list(all_hists.keys())
+    if target_key not in target_hists:
+        available = list(target_hists.keys())
         raise KeyError(
             f"Key '{target_key}' not found in all_hists. Available keys: {available}"
         )
 
-    prior_hist, _, bin_edges = all_hists[prior_key]
-    measured_hist, _, _ = all_hists[measured_key]
-    target_hist, _, _ = all_hists[target_key]
+    prior_hist, _, bin_edges = measurement_hists[prior_key]
+    measured_hist, _, _ = measurement_hists[measured_key]
+    target_hist, _, _ = target_hists[target_key]
+
+    # Normalize the histograms if desired
+    if normalize:
+        prior_hist = prior_hist / np.sum(prior_hist)
+        measured_hist = measured_hist / np.sum(measured_hist)
+        target_hist = target_hist / np.sum(target_hist)
 
     # Create figure and axes if not provided
     if fig is None:
@@ -1041,15 +1058,17 @@ def compare_to_target(
 
     mh.atlas.label(
         ax=ax,
-        llabel="Simulation Preliminary",
-        rlabel="Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+        llabel=llab,
+        rlabel=rlab,
     )
 
     return fig
 
 
 def plot_measurement_with_uncertainties(
-    all_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    measurement_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    target2_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = None,
     measured_key: str = "nominal",
     measured_label: str = "Measurement",
     target_key: str = "truthpd",
@@ -1057,6 +1076,9 @@ def plot_measurement_with_uncertainties(
     target2_key: str = None,
     target2_label: str = "MadGraph",
     data_measurement_mode: bool = False,
+    normalize: bool = False,
+    llab: str = "Simulation Preliminary",
+    rlab: str = "Z+jets Omnifold",
     figsize=(6.4, 4.8),
     ylabel: str = "Corr. Dim.",
     xlabel: str = "Q [GeV]",
@@ -1080,12 +1102,14 @@ def plot_measurement_with_uncertainties(
 
     Arguments:
     ----------
-    all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
+    measurement_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
         Dictionary mapping histogram names to tuples of (dims, dims_var, midbins)
         where:
         - dims: The correlation dimension values
         - dims_var: The variance of the correlation dimension values
         - midbins: The bin edges (despite the name, these are edges not midpoints)
+    target_hists : same as measurement_hists but for the target
+    target2_hists : same as measurement_hists but for the second target
     measured_key : str, optional
         Key in all_hists for the measured/unfolded distribution (default: "nominal").
     measured_label : str, optional
@@ -1101,6 +1125,12 @@ def plot_measurement_with_uncertainties(
         Label for the second target distribution in the legend (default: "MadGraph").
     data_measurement_mode : bool, optional
         If True, compares data measurement to truth generators
+    normalize : bool, optional
+        If True, normalize the histograms (default: False).
+    llab : str, optional
+        Left label for ATLAS label (default: "Simulation Preliminary").
+    rlab : str, optional
+        Right label for ATLAS label (default: "Z+jets Omnifold").
     figsize : tuple, optional
         Figure size in inches (width, height) (default: (6.4, 4.8)).
     ylabel : str, optional
@@ -1129,31 +1159,60 @@ def plot_measurement_with_uncertainties(
         Figure with uncertainty budget plot showing individual contributions.
     """
 
-    # Extract measured and target histograms
-    if measured_key not in all_hists:
-        available = list(all_hists.keys())
-        raise KeyError(
-            f"Key '{measured_key}' not found in all_hists. Available keys: {available}"
+    # Normalize all histograms if desired
+    if normalize:
+        norm_factor_measurement = np.sum(measurement_hists[measured_key][0])
+        norm_factor_target = np.sum(target_hists[target_key][0])
+        norm_factor_target2 = (
+            np.sum(target2_hists[target2_key][0]) if target2_key is not None else None
         )
-    if target_key not in all_hists:
-        available = list(all_hists.keys())
+        for key in measurement_hists:
+            measurement_hists[key] = (
+                measurement_hists[key][0] / norm_factor_measurement,
+                measurement_hists[key][1] / norm_factor_measurement**2,
+                measurement_hists[key][2],
+            )
+        for key in target_hists:
+            target_hists[key] = (
+                target_hists[key][0] / norm_factor_target,
+                target_hists[key][1] / norm_factor_target**2,
+                target_hists[key][2],
+            )
+        if target2_key is not None:
+            for key in target2_hists:
+                target2_hists[key] = (
+                    target2_hists[key][0] / norm_factor_target2,
+                    target2_hists[key][1] / norm_factor_target2**2,
+                    target2_hists[key][2],
+                )
+
+    # Extract measured and target histograms
+    if measured_key not in measurement_hists:
+        available = list(measurement_hists.keys())
         raise KeyError(
-            f"Key '{target_key}' not found in all_hists. Available keys: {available}"
+            f"Key '{measured_key}' not found in measurement_hists. "
+            f"Available keys: {available}"
+        )
+    if target_key not in target_hists:
+        available = list(target_hists.keys())
+        raise KeyError(
+            f"Key '{target_key}' not found in target_hists. "
+            f"Available keys: {available}"
         )
 
-    measured_hist, _, bin_edges = all_hists[measured_key]
-    target_hist, _, _ = all_hists[target_key]
+    measured_hist, _, bin_edges = measurement_hists[measured_key]
+    target_hist, _, _ = target_hists[target_key]
 
     # Extract second target if provided
     target2_hist = None
     if target2_key is not None:
-        if target2_key not in all_hists:
-            available = list(all_hists.keys())
+        if target2_key not in target2_hists:
+            available = list(target2_hists.keys())
             raise KeyError(
-                f"Key '{target2_key}' not found in all_hists. "
+                f"Key '{target2_key}' not found in target2_hists. "
                 f"Available keys: {available}"
             )
-        target2_hist, _, _ = all_hists[target2_key]
+        target2_hist, _, _ = target2_hists[target2_key]
 
     # Calculate method bias (only in standard mode, not data comparison mode)
     if data_measurement_mode:
@@ -1172,7 +1231,7 @@ def plot_measurement_with_uncertainties(
 
     # Calculate systematic uncertainties using UncertaintyCalculator
     syst, syst_info = uncertainty_calculator.calculate_uncertainties(
-        all_hists, measured_key=measured_key
+        measurement_hists, measured_key=measured_key
     )
     total_vars = np.sum(np.array(list(syst.values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)
@@ -1180,11 +1239,11 @@ def plot_measurement_with_uncertainties(
     # If in data measurement mode, calculate theory uncertainties for targets
     if data_measurement_mode:
         target_uncert = uncertainty_calculator.get_total_theory_uncertainty(
-            all_hists, measured_key=target_key, is_madgraph=True
+            target_hists, measured_key=target_key, is_madgraph=True
         )
         if target2_key is not None:
             target2_uncert = uncertainty_calculator.get_total_theory_uncertainty(
-                all_hists, measured_key=target2_key, is_madgraph=False
+                target2_hists, measured_key=target2_key, is_madgraph=False
             )
 
     # Duplicate last values for step plots
@@ -1351,9 +1410,8 @@ def plot_measurement_with_uncertainties(
 
     mh.atlas.label(
         ax=ax,
-        llabel="Simulation Preliminary" if not data else "Preliminary",
-        data=data,
-        rlabel="Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+        llabel=llab,
+        rlabel=rlab,
     )
 
     # ===== Figure 2: Uncertainty budget plot =====
@@ -1411,7 +1469,7 @@ def plot_measurement_with_uncertainties(
     if top_uncert > 0.2 or np.isnan(top_uncert):
         ax.set_ylim(bottom=0.0, top=0.2)
     else:
-        ax.set_ylim(bottom=0.0, top=top_uncert * 1.1)
+        ax.set_ylim(bottom=0.0, top=top_uncert * 1.2)
 
     ax.legend(
         loc="upper center",
@@ -1423,8 +1481,8 @@ def plot_measurement_with_uncertainties(
 
     mh.atlas.label(
         ax=ax,
-        llabel="Simulation Preliminary" if not data else "Preliminary",
-        rlabel="Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+        llabel=llab,
+        rlabel=rlab,
     )
 
     fig_uncertainty_budget.tight_layout()

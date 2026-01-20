@@ -1,10 +1,9 @@
 """
-Utility functions for jet analysis calculations.
+Utility functions for intrinsic dimension calculations.
 """
 
 import scipy.optimize as opt
 import numpy as np
-import awkward as ak
 import vector
 import energyflow as ef
 import jet_clusterer
@@ -14,10 +13,7 @@ import dask.array as da
 from tqdm import tqdm
 from numba import njit, prange
 
-import sys
-
-sys.path.append("../utils")
-import data_utils as du  # noqa: E402
+from common_utils import extract_kinematics
 
 
 @njit(parallel=True, cache=True)
@@ -160,6 +156,8 @@ def calculate_emds_from_file(
     max_jets=None,
     get_truth=True,
     n_jobs=-1,
+    random_seed: int | None = None,
+    save_jet_info: bool = False,
     save_path=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Calculate Earth Mover's Distances (EMDs) from a ROOT file TTree.
@@ -199,10 +197,16 @@ def calculate_emds_from_file(
     n_jobs : int, optional
         Number of parallel jobs for jet clustering and EMD calculation.
         If -1, uses all available CPUs (default: -1).
+    random_seed : int, optional
+        Random seed used when subsampling jets (default: None).
+    save_jet_info : bool, optional
+        If True and save_path is provided, save jet pT / mass values to the .npz
+        file under the key 'jet_pts' / 'jet_ms' (default: False).
     save_path : str, optional
         Optional path to save the EMDs and event indices to a .npz file.
         If provided, the EMDs and event indices will be saved with keys 'emds'
-        and 'event_indices'. If None, the data will not be saved (default: None).
+        and 'event_indices'. If save_jet_pts is True, 'jet_pts' will also be
+        saved. If None, the data will not be saved (default: None).
 
     Returns:
     --------
@@ -218,30 +222,11 @@ def calculate_emds_from_file(
         ptmin = 500.0
 
     # Get kinematics from the tree
-    print(f"Getting kinematics from tree (get_truth={get_truth})")
-    kinematics, _, pdgids = du.get_kinematics(
+    pt, eta, phi, masses = extract_kinematics(
         tree,
         pass190_flags,
         get_truth=get_truth,
-        get_truth_pdgids=get_truth,
-        take_log_pt=False,
-        stop=len(pass190_flags),
     )
-
-    # Extract pT, eta, phi from kinematics array
-    # kinematics shape is (n_events, 3, n_particles) where axis 1 is [pT, eta, phi]
-    pt = kinematics[:, 0, :]  # Extract pT
-    eta = kinematics[:, 1, :]  # Extract eta
-    phi = kinematics[:, 2, :]  # Extract phi
-
-    # Get masses from pdgids
-    masses = du.get_masses(pdgids)[:, 0, :]
-
-    print(f"Extracted kinematics: {len(pt)} events")
-    print(f"pT shape: {ak.type(pt)}")
-    print(f"eta shape: {ak.type(eta)}")
-    print(f"phi shape: {ak.type(phi)}")
-    print(f"masses shape: {ak.type(masses)}")
 
     # Cluster jets
     # Convert n_jobs=-1 to None for clusterer (which uses all CPUs)
@@ -293,6 +278,8 @@ def calculate_emds_from_file(
     if max_jets is not None and len(filtered_jets) > max_jets:
         n_dropped = len(filtered_jets) - max_jets
         # Randomly sample indices
+        if random_seed is not None:
+            np.random.seed(random_seed)
         random_indices = np.random.choice(
             len(filtered_jets), size=max_jets, replace=False
         )
@@ -302,6 +289,9 @@ def calculate_emds_from_file(
         filtered_jet_4vectors = [filtered_jet_4vectors[i] for i in random_indices]
         filtered_event_indices = filtered_event_indices[random_indices]
         print(f"Randomly sampled {max_jets} jets (dropped {n_dropped} jets)")
+
+    jet_pts = np.array([jet_vec.pt for jet_vec in filtered_jet_4vectors])
+    jet_ms = np.array([jet_vec.mass for jet_vec in filtered_jet_4vectors])
 
     # Preprocess the filtered jets
     # (drop_mass=False to keep mass for EMD calculation)
@@ -324,7 +314,16 @@ def calculate_emds_from_file(
 
     # Save to file if path is provided
     if save_path is not None:
-        np.savez(save_path, emds=emds, event_indices=filtered_event_indices)
+        if save_jet_info:
+            np.savez(
+                save_path,
+                emds=emds,
+                event_indices=filtered_event_indices,
+                jet_pts=jet_pts,
+                jet_ms=jet_ms,
+            )
+        else:
+            np.savez(save_path, emds=emds, event_indices=filtered_event_indices)
         print(f"Saved EMDs and event indices to {save_path}")
 
     return emds, filtered_event_indices
@@ -576,7 +575,7 @@ def calculate_nnids_from_sorted_emds(
     sorted_emds: np.ndarray,
     weights_dict: dict[str, np.ndarray],
     points: np.ndarray,
-) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Calculate nearest neighbor intrinsic dimension from pre-sorted EMDs.
 
     This function takes pre-sorted EMD matrices (from sort_emd_matrix) and
@@ -591,7 +590,7 @@ def calculate_nnids_from_sorted_emds(
     points - A numpy array of points to use in the calculation.
 
     Returns:
-    results - Dictionary mapping weight set names to (nnids, avg_r) tuples.
+    results - Dictionary mapping weight set names to (nnids, avg_ris, avg_rjs) tuples.
     """
     n_weight_sets = len(weights_dict)
     print(f"Processing {n_weight_sets} weight sets for {len(points)} points...")
@@ -612,14 +611,16 @@ def calculate_nnids_from_sorted_emds(
 
         # Prepare output arrays for this weight set
         nnids = np.zeros(len(points))
-        avg_r = np.zeros(len(points))
+        avg_ris = np.zeros(len(points))
+        avg_rjs = np.zeros(len(points))
 
         # Loop through each point
         for pidx, point in enumerate(points):
             emd_ratios = emd_ratios_by_point[point]
 
             # Weighted average distance
-            avg_r[pidx] = np.average(sorted_emds[:, point], weights=jet_weights)
+            avg_ris[pidx] = np.average(sorted_emds[:, point], weights=jet_weights)
+            avg_rjs[pidx] = np.average(sorted_emds[:, 2 * point], weights=jet_weights)
 
             # Minimize the likelihood function
             nnid = opt.minimize(
@@ -632,7 +633,7 @@ def calculate_nnids_from_sorted_emds(
             )
             nnids[pidx] = nnid.x
 
-        results[weight_name] = (nnids, avg_r) 
+        results[weight_name] = (nnids, avg_ris, avg_rjs)
 
     return results
 
