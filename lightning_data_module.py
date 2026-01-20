@@ -65,6 +65,7 @@ class LOfData(L.LightningDataModule):
         testing=False,
         use_truth=False,
         syst_kw=None,
+        theory_weight_mode=False,
         data_bootstrap_path=None,
         mc_bootstrap_path=None,
         mc_bootstrap_both=False,
@@ -143,6 +144,7 @@ class LOfData(L.LightningDataModule):
         self.testing = testing
         self.use_truth = use_truth
         self.syst_kw = syst_kw
+        self.theory_weight_mode = theory_weight_mode
         self.data_bootstrap_path = data_bootstrap_path
         self.mc_bootstrap_path = mc_bootstrap_path
         self.mc_bootstrap_both = mc_bootstrap_both
@@ -598,8 +600,9 @@ class LOfData(L.LightningDataModule):
         net_weights = np.ones_like(root_weights, dtype=np.float32)
 
         # Load and multiply root weights by the systematic weights if needed
-        if self.syst_kw is not None and which_file == "source":
-            assert not self.use_truth
+        if self.syst_kw is not None and (
+            which_file == "source" or self.theory_weight_mode
+        ):
             if "msf" in self.syst_kw:
                 nom_sf = ak.to_numpy(
                     tree["singleMuonTrigSF"].array(entry_stop=max_read)
@@ -791,7 +794,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start:start + idx])
+        acquired_good_evts = np.sum(pass190[start : start + idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts
