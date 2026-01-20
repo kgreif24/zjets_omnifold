@@ -56,6 +56,9 @@ syst_kw: null
 # If set, bootstrap the data. The seed used will depend on the ensemble index.
 bootstrap_data: False
 
+# If set, bootstrap the MC. The seed used will depend on the ensemble index.
+bootstrap_mc: False
+
 # Batch size for training
 batch_size: 10
 

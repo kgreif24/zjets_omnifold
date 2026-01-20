@@ -7,6 +7,45 @@ import numpy as np
 from uncertainty_plotter import UncertaintyPlotter
 
 
+test_uncertainty_definitions = {
+    "nn-init": {
+        "name": "NN Initialization",
+        "color": "red",
+        "stochastic": True,
+        "prefix": "weights_",
+    },
+    "data-stat": {
+        "name": "Data Stat",
+        "color ": "blue",
+        "stochastic": True,
+        "prefix": "bootstrap_data_",
+    },
+    "mc-stat": {
+        "name": "MC Stat",
+        "color": "green",
+        "stochastic": True,
+        "prefix": "bootstrap_mc_",
+    },
+    "muon-id": {
+        "name": "Muon ID",
+        "color": "yellow",
+        "stochastic": False,
+        "prefix": None,
+    },
+    "muon-ms": {
+        "name": "Muon MS",
+        "color": "orange",
+        "stochastic": False,
+        "prefix": None,
+    },
+}
+
+test_uncertainty_groups = {
+    "Muon": ["muon-id", "muon-ms"],
+    "Statistics": ["mc-stat", "data-stat"],
+}
+
+
 def test_uncertainty_plotter_init(tmp_path):
     """Test basic initialization with all required trees"""
     plotter = UncertaintyPlotter(
@@ -34,10 +73,12 @@ def test_uncertainty_plotter_plot_basic(tmp_path):
         store=tmp_path,
         verbosity=0,
         max_events=100,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test basic plot generation
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
     # Check that plots were generated
     png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
@@ -55,6 +96,8 @@ def test_systematic_uncertainties(tmp_path):
         store=tmp_path,
         verbosity=0,
         max_events=100,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test that systematic uncertainties are handled
@@ -73,7 +116,7 @@ def test_systematic_uncertainties(tmp_path):
     assert all([key in weights_data.keys() for key in expected_systematics])
 
     # Test plot generation with systematic weights
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
 
 def test_dual_target_mode(tmp_path):
@@ -85,13 +128,15 @@ def test_dual_target_mode(tmp_path):
         store=tmp_path,
         target2_path="./assets/truth_evts_100_200.root",
         verbosity=0,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test that target2_path is set correctly
     assert plotter.target2_path == "./assets/truth_evts_100_200.root"
 
     # Test basic functionality with dual target mode
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
 
 def test_uncertainty_budget_plot(tmp_path):
@@ -103,11 +148,13 @@ def test_uncertainty_budget_plot(tmp_path):
         store=tmp_path,
         verbosity=0,
         max_events=100,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test uncertainty budget plot generation
     # This tests the budget plot functionality
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
     # Check that budget plots were generated
     png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
@@ -123,6 +170,8 @@ def test_cached_pass190_for_all_trees(tmp_path):
         store=tmp_path,
         target2_path="./assets/truth_evts_100_200.root",
         verbosity=0,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test that all paths are set correctly
@@ -130,7 +179,7 @@ def test_cached_pass190_for_all_trees(tmp_path):
 
     # Test that caching works for all trees
     # This tests the _get_cached_pass190 method
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
 
 def test_kinematic_cuts_all_trees(tmp_path):
@@ -142,6 +191,8 @@ def test_kinematic_cuts_all_trees(tmp_path):
         store=tmp_path,
         verbosity=0,
         max_events=100,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Apply kinematic cuts after initialization to avoid constructor timing issues
@@ -149,7 +200,7 @@ def test_kinematic_cuts_all_trees(tmp_path):
 
     # Test that kinematic cuts are applied to all trees
     # This tests the kinematic filtering functionality
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
     # Verify that kinematic cuts work
     source_pT_ll = plotter._get_data("pT_ll", is_target=False)
@@ -171,11 +222,13 @@ def test_track_weights_batch(tmp_path):
         store=tmp_path,
         verbosity=0,
         max_events=100,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test track weight batch processing
     # This tests the batch processing functionality for track weights
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
     # Verify that track weights are processed correctly
     # The exact implementation depends on the track weight processing method
@@ -190,11 +243,13 @@ def test_efficient_weight_loading(tmp_path):
         store=tmp_path,
         verbosity=0,
         max_events=100,
+        uncertainty_definitions=test_uncertainty_definitions,
+        uncertainty_groups=test_uncertainty_groups,
     )
 
     # Test efficient weight loading
     # This tests the optimized weight loading functionality
-    _ = plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz")
 
     # Verify that weights are loaded efficiently
     # The exact implementation depends on the weight loading optimization

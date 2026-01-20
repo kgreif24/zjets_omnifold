@@ -3,7 +3,7 @@ It builds OfDatasets from the input ROOT files and provides dataloaders for trai
 and testing.
 
 Author: Kevin Greif
-Last updated 12/05/2025
+Last updated 12/22/2025
 python3
 """
 
@@ -67,6 +67,8 @@ class LOfData(L.LightningDataModule):
         syst_kw=None,
         theory_weight_mode=False,
         data_bootstrap_path=None,
+        mc_bootstrap_path=None,
+        mc_bootstrap_both=False,
         **kwargs,
     ):
         """__init__ - This method initializes the LOfData class. It takes
@@ -113,10 +115,12 @@ class LOfData(L.LightningDataModule):
                 for the data module. Defaults to false.
             syst_kw {dict} - Keyword of the systematic variation that should be
                 activated for this data module.
-            theory_weight_mode {bool} - Set to true if we are using theory systematics
-                to modify the weights. Defaults to False.
             data_bootstrap_path {str} - The path to the data bootstrap in this training
                 If None, no bootstrap will be used.
+            mc_bootstrap_path {str} - The path to the MC bootstrap in this training
+                If None, no bootstrap will be used.
+            mc_bootstrap_both {bool} - Set to true if we want to bootstrap the MC
+                for both the source and target in step 2. Defaults to False.
             **kwargs - Passed to the OfDataset classes
         """
 
@@ -142,6 +146,8 @@ class LOfData(L.LightningDataModule):
         self.syst_kw = syst_kw
         self.theory_weight_mode = theory_weight_mode
         self.data_bootstrap_path = data_bootstrap_path
+        self.mc_bootstrap_path = mc_bootstrap_path
+        self.mc_bootstrap_both = mc_bootstrap_both
 
         # Find total number of events in source and target, and get the pass190 filters
         # for the source dataset
@@ -190,6 +196,19 @@ class LOfData(L.LightningDataModule):
                 f"We have {len(self.data_bootstrap_weights)} bootstrap weights"
             )
             assert len(self.data_bootstrap_weights) == self.num_target
+
+        # If we are using a MC bootstrap, load the weights
+        self.mc_bootstrap_weights = None
+        if self.mc_bootstrap_path is not None:
+            rank_zero_info(f"Loading MC bootstrap from {self.mc_bootstrap_path}")
+            self.mc_bootstrap_weights = np.load(self.mc_bootstrap_path)
+            rank_zero_info(
+                f"We have {len(self.mc_bootstrap_weights)} bootstrap weights"
+            )
+            assert len(self.mc_bootstrap_weights) == self.num_source
+            if self.mc_bootstrap_both:
+                assert self.target_file is not None
+                assert len(self.mc_bootstrap_weights) == self.num_target
 
         # Determine start / stop indeces for each data piece, note we don't
         # trucate in the case of non-divisible data, since it is fine if
@@ -368,6 +387,23 @@ class LOfData(L.LightningDataModule):
             )
             # Apply the bootstrap to the weights for this piece and shard
             weights *= self.data_bootstrap_weights[start:stop][piece190 == 1]
+
+        # The case where we bootstrap the MC
+        # MC is the source in step 1 and the source and target in step 2
+        if self.mc_bootstrap_weights is not None:
+            if filename == "source":
+                self.source_all_weights = (
+                    self.source_all_weights * self.mc_bootstrap_weights
+                )
+                weights *= self.mc_bootstrap_weights[start:stop][piece190 == 1]
+            elif filename == "target" and self.mc_bootstrap_both:
+                # Should always be using truth level data when MC bootstrap
+                # is used for both the source and target
+                assert self.use_truth
+                self.target_all_weights = (
+                    self.target_all_weights * self.mc_bootstrap_weights
+                )
+                weights *= self.mc_bootstrap_weights[start:stop][piece190 == 1]
 
         # ---------------------- Build dataset ----------------------------
 
@@ -758,7 +794,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start:start + idx])
+        acquired_good_evts = np.sum(pass190[start : start + idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts

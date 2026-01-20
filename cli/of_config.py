@@ -170,7 +170,12 @@ class OfConfig:
         self.parser.add_argument(
             "--bootstrap_data",
             action="store_true",
-            help="If set, bootstrap the data. The seed used will depend on the ensemble index.",
+            help="If set, bootstrap the data. Seed will depend on the ensemble index.",
+        )
+        self.parser.add_argument(
+            "--bootstrap_mc",
+            action="store_true",
+            help="If set, bootstrap the MC. Seed will depend on the ensemble index.",
         )
 
         # Training

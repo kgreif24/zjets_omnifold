@@ -182,7 +182,57 @@ def test_lofdata_bootstrap():
     total_events = np.sum(data_module.target_use190) + np.sum(data_module.source_use190)
     target_divisor = 2 * np.sum(filtered_weights) / total_events
     filtered_weights /= target_divisor
-    assert np.all(np.isclose(data_module.target_dataset.weights.numpy().flatten(), filtered_weights))
+    assert np.all(
+        np.isclose(
+            data_module.target_dataset.weights.numpy().flatten(), filtered_weights
+        )
+    )
+
+
+def test_lofdata_mc_bootstrap():
+
+    # Load the MC bootstrap
+    mc_bootstrap = np.load("./assets/test_bootstrap.npy")
+
+    # Get data class
+    data_module = LOfData(
+        source_file="./assets/evts_000_100.root",
+        target_file="./assets/evts_000_100.root",
+        source_weight_path=None,
+        target_weight_path=None,
+        batch_size=1,
+        mc_bootstrap_path="./assets/test_bootstrap.npy",
+        mc_bootstrap_both=True,
+        use_truth=True,
+    )
+
+    # Check that the MC bootstrap is loaded
+    assert data_module.mc_bootstrap_weights is not None
+    assert len(data_module.mc_bootstrap_weights) == len(data_module.source_use190)
+    assert len(data_module.mc_bootstrap_weights) == len(data_module.target_use190)
+
+    # Check that the source and target datasets are multiplied by the MC bootstrap
+    source_weights = mc_bootstrap * data_module.source_root_weights
+    filtered_source_weights = source_weights[data_module.source_use190 == 1].flatten()
+    total_events = np.sum(data_module.source_use190) + np.sum(data_module.target_use190)
+    source_divisor = 2 * np.sum(filtered_source_weights) / total_events
+    filtered_source_weights /= source_divisor
+    assert np.all(
+        np.isclose(
+            data_module.source_dataset.weights.numpy().flatten(),
+            filtered_source_weights,
+        )
+    )
+    target_weights = mc_bootstrap * data_module.target_root_weights
+    filtered_target_weights = target_weights[data_module.target_use190 == 1].flatten()
+    target_divisor = 2 * np.sum(filtered_target_weights) / total_events
+    filtered_target_weights /= target_divisor
+    assert np.all(
+        np.isclose(
+            data_module.target_dataset.weights.numpy().flatten(),
+            filtered_target_weights,
+        )
+    )
 
 
 def test_data_pieces():
