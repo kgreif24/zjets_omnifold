@@ -9,6 +9,7 @@ import matplotlib.gridspec as gs
 from matplotlib.patches import Rectangle
 import vector
 import uncertainties
+import scipy.stats as stats
 from typing import Optional
 
 
@@ -62,7 +63,7 @@ def get_nnid_uncertainties(
         hists[measured_key] = (nominal_val, mc_stat_var, None)
 
     # Get individual uncertainty components
-    syst_uncerts, syst_info = calc.calculate_uncertainties(
+    syst_uncerts, _, syst_info = calc.calculate_uncertainties(
         hists, measured_key=measured_key
     )
 
@@ -1065,6 +1066,108 @@ def compare_to_target(
     return fig
 
 
+def plot_correlation_matrix(
+    total_cov: np.ndarray,
+    bins: np.ndarray,
+    llab: str = "Simulation Preliminary",
+    figsize: tuple[float, float] = (8, 7),
+    simple_labels: bool = False,
+) -> plt.Figure:
+    """Create a correlation matrix plot from the covariance matrix.
+
+    Arguments:
+    ----------
+    total_cov : np.ndarray
+        Total covariance matrix (n_bins x n_bins).
+    bins : np.ndarray
+        Array of bin edges for labeling.
+    llab : str, optional
+        Left label for ATLAS label (default: "Simulation Preliminary").
+    figsize : tuple, optional
+        Figure size in inches (width, height). Default: (8, 7).
+    simple_labels : bool, optional
+        If True, use bin indices instead of bin edge labels and omit
+        correlation value annotations. Useful for observables with many
+        bins (e.g., EEC). Default: False.
+
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        Figure object for the correlation matrix plot.
+    """
+    # Calculate correlation matrix from covariance matrix
+    # correlation[i,j] = covariance[i,j] / sqrt(covariance[i,i] * covariance[j,j])
+    n_bins = total_cov.shape[0]
+    std_devs = np.sqrt(np.diag(total_cov))
+
+    # Handle zero standard deviations to avoid division by zero
+    std_devs = np.where(std_devs == 0, 1, std_devs)
+
+    # Calculate correlation matrix
+    corr_matrix = total_cov / np.outer(std_devs, std_devs)
+
+    # Clip values to [-1, 1] to handle numerical precision issues
+    corr_matrix = np.clip(corr_matrix, -1, 1)
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Create the heatmap with origin='lower' to match standard convention
+    # (smallest bins at bottom-left)
+    im = ax.imshow(
+        corr_matrix,
+        cmap="viridis",
+        vmin=-1,
+        vmax=1,
+        aspect="equal",
+        origin="lower",
+    )
+
+    # Add colorbar
+    fig.colorbar(im, ax=ax, shrink=0.8)
+
+    if simple_labels:
+        # Use bin indices for axes labels (useful for many bins)
+        ax.set_xlabel("Bin index")
+        ax.set_ylabel("Bin index")
+        # Let matplotlib auto-select tick positions for cleaner display
+        ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    else:
+        # Create bin labels from bin edges (round to hundredths for decimal edges)
+        bin_labels = [f"({bins[i]:.2f}, {bins[i+1]:.2f})" for i in range(len(bins) - 1)]
+
+        # Set ticks and labels
+        ax.set_xticks(np.arange(n_bins))
+        ax.set_yticks(np.arange(n_bins))
+        ax.set_xticklabels(bin_labels, rotation=45, ha="right")
+        ax.set_yticklabels(bin_labels)
+
+        # Add correlation values as text annotations
+        for i in range(n_bins):
+            for j in range(n_bins):
+                # Choose text color based on background for readability
+                corr_val = corr_matrix[i, j]
+                text_color = "white" if abs(corr_val) < 0.5 else "black"
+                ax.text(
+                    j,
+                    i,
+                    f"{corr_val:.2f}",
+                    ha="center",
+                    va="center",
+                    color=text_color,
+                    fontsize=10,
+                )
+
+    mh.atlas.label(
+        loc=0,
+        llabel=llab,
+        rlabel="",
+    )
+
+    return fig
+
+
 def plot_measurement_with_uncertainties(
     measurement_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
@@ -1088,8 +1191,9 @@ def plot_measurement_with_uncertainties(
     log_xscale: bool = True,
     linear_yscale: bool = False,
     color: str = "blue",
-    data: bool = False,
-) -> tuple[plt.Figure, plt.Figure]:
+    do_chi2_test: bool = False,
+    simple_corr_labels: bool = False,
+) -> tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot cross-section measurement and uncertainty budget.
 
     This function produces two figures from correlation dimension histograms:
@@ -1149,14 +1253,22 @@ def plot_measurement_with_uncertainties(
         If True, use linear scale for y-axis (default: False, i.e., log scale).
     color : str, optional
         Color to use for the measured distribution (default: "blue").
-    data : bool, optional
-        If True, use data labels (default: False).
+    do_chi2_test : bool, optional
+        If True and not in data_measurement_mode, performs chi-squared test
+        comparing measurement to target and prints results (default: False).
+    simple_corr_labels : bool, optional
+        If True, use bin indices instead of bin edge labels in the correlation
+        matrix plot and omit correlation value annotations. Useful for
+        observables with many bins (e.g., EEC). Default: False.
+
     Returns:
     --------
     fig_cross_section : matplotlib.figure.Figure
         Figure with cross-section measurement plot (main plot + ratio).
     fig_uncertainty_budget : matplotlib.figure.Figure
         Figure with uncertainty budget plot showing individual contributions.
+    fig_correlation_matrix : matplotlib.figure.Figure
+        Figure with correlation matrix plot.
     """
 
     # Normalize all histograms if desired
@@ -1230,11 +1342,24 @@ def plot_measurement_with_uncertainties(
     uncertainty_calculator = uncertainties.UncertaintyCalculator()
 
     # Calculate systematic uncertainties using UncertaintyCalculator
-    syst, syst_info = uncertainty_calculator.calculate_uncertainties(
+    syst, syst_covs, syst_info = uncertainty_calculator.calculate_uncertainties(
         measurement_hists, measured_key=measured_key
     )
     total_vars = np.sum(np.array(list(syst.values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)
+
+    # Calculate total covariance matrix
+    total_cov = np.sum(list(syst_covs.values()), axis=0)
+
+    # Calculate chi2 covariance matrix (excludes certain systematics)
+    chi2_cov = np.sum(
+        [
+            syst_covs[key]
+            for key in syst_covs.keys()
+            if key not in ["Muon", "Tracking", "lumi", "pileup"]
+        ],
+        axis=0,
+    )
 
     # If in data measurement mode, calculate theory uncertainties for targets
     if data_measurement_mode:
@@ -1350,7 +1475,7 @@ def plot_measurement_with_uncertainties(
         ax.set_ylim(0, 12)
     ax.set_ylabel(ylabel)
     ax.set_xticks([])
-    ax.legend()
+    ax.legend(fontsize=12, loc="lower right")
     ax.tick_params(axis="x", direction="in", top=True)
 
     # Ratio plot
@@ -1408,10 +1533,20 @@ def plot_measurement_with_uncertainties(
     else:
         rax.set_ylim(0.9, 1.1)
 
+    # Calculate chi-squared test if requested (only when not in data_measurement_mode)
+    chi2_label = ""
+    if do_chi2_test and not data_measurement_mode:
+        dof = len(bin_edges) - 1
+        D = measured_hist - target_hist
+        chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
+        p_value = 1 - stats.chi2.cdf(chi2, dof)
+        chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
+        print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
+
     mh.atlas.label(
         ax=ax,
         llabel=llab,
-        rlabel=rlab,
+        rlabel=rlab + chi2_label,
     )
 
     # ===== Figure 2: Uncertainty budget plot =====
@@ -1488,4 +1623,12 @@ def plot_measurement_with_uncertainties(
     fig_uncertainty_budget.tight_layout()
     fig_uncertainty_budget.subplots_adjust(bottom=0.2)
 
-    return fig_cross_section, fig_uncertainty_budget
+    # ===== Figure 3: Correlation matrix plot =====
+    fig_correlation_matrix = plot_correlation_matrix(
+        total_cov=total_cov,
+        bins=bin_edges,
+        llab=llab,
+        simple_labels=simple_corr_labels,
+    )
+
+    return fig_cross_section, fig_uncertainty_budget, fig_correlation_matrix
