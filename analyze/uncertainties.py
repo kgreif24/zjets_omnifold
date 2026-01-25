@@ -214,48 +214,48 @@ class UncertaintyCalculator:
                 "stochastic": True,
                 "prefix": "bootstrap_data_",
             },
-            # "theoryQCD": {
-            #     "name": "Theory QCD",
-            #     "color": "chartreuse",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPDF": {
-            #     "name": "Theory PDF",
-            #     "color": "lawngreen",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryAlphaS": {
-            #     "name": "Theory AlphaS",
-            #     "color": "olive",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPSsoft": {
-            #     "name": "Theory PS soft",
-            #     "color": "palegreen",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPSjet": {
-            #     "name": "Theory PS jet",
-            #     "color": "lightgreen",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryMPI": {
-            #     "name": "Theory MPI",
-            #     "color": "aquamarine",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
-            # "theoryPSscale": {
-            #     "name": "Theory PS scale",
-            #     "color": "lime",
-            #     "stochastic": False,
-            #     "prefix": None,
-            # },
+            "theoryQCD": {
+                "name": "Theory QCD",
+                "color": "chartreuse",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPDF": {
+                "name": "Theory PDF",
+                "color": "lawngreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryAlphaS": {
+                "name": "Theory AlphaS",
+                "color": "olive",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPSsoft": {
+                "name": "Theory PS soft",
+                "color": "palegreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPSjet": {
+                "name": "Theory PS jet",
+                "color": "lightgreen",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryMPI": {
+                "name": "Theory MPI",
+                "color": "aquamarine",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "theoryPSscale": {
+                "name": "Theory PS scale",
+                "color": "lime",
+                "stochastic": False,
+                "prefix": None,
+            },
         }
 
     @staticmethod
@@ -280,15 +280,15 @@ class UncertaintyCalculator:
                 "muEffTrig",
             ],
             "MC Stat": ["mc-stat", "mc-stat-bs"],
-            # "Theory": [
-            #     "theoryQCD",
-            #     "theoryPDF",
-            #     "theoryAlphaS",
-            #     "theoryPSsoft",
-            #     "theoryPSjet",
-            #     "theoryMPI",
-            #     "theoryPSscale",
-            # ],
+            "Theory": [
+                "theoryQCD",
+                "theoryPDF",
+                "theoryAlphaS",
+                "theoryPSsoft",
+                "theoryPSjet",
+                "theoryMPI",
+                "theoryPSscale",
+            ],
         }
 
     def add_uncertainty(
@@ -421,7 +421,7 @@ class UncertaintyCalculator:
         if mc_stat_def is not None:
             mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
             syst_uncerts["mc-stat"] = mc_stat_uncert_unnorm / measured_hist
-            syst_covs["mc-stat"] = np.diag(mc_stat_uncert_unnorm**2)
+            syst_covs["mc-stat"] = np.diag(measured_hist_var)
             syst_info["mc-stat"] = mc_stat_def.copy()
 
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
