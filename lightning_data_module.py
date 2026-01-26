@@ -604,35 +604,34 @@ class LOfData(L.LightningDataModule):
             which_file == "source" or self.theory_weight_mode
         ):
             if "msf" in self.syst_kw:
-                nom_sf = ak.to_numpy(
-                    tree["singleMuonTrigSF"].array(entry_stop=max_read)
-                )
                 if self.syst_kw == "msf_effreco":
-                    syst_weights = (
-                        ak.to_numpy(tree["syst_recoSFDown"].array(entry_stop=max_read))
-                        / nom_sf
+                    nom_sf = ak.to_numpy(tree["mu_recoSF"].array(entry_stop=max_read))
+                    var_sf = ak.to_numpy(
+                        tree["syst_recoSFDown"].array(entry_stop=max_read)
                     )
                 elif self.syst_kw == "msf_effiso":
-                    syst_weights = (
-                        ak.to_numpy(tree["syst_isoSFDown"].array(entry_stop=max_read))
-                        / nom_sf
+                    nom_sf = ak.to_numpy(tree["mu_isoSF"].array(entry_stop=max_read))
+                    var_sf = ak.to_numpy(
+                        tree["syst_isoSFDown"].array(entry_stop=max_read)
                     )
                 elif self.syst_kw == "msf_efftrk":
-                    syst_weights = (
-                        ak.to_numpy(tree["syst_TTVASFDown"].array(entry_stop=max_read))
-                        / nom_sf
+                    nom_sf = ak.to_numpy(tree["mu_TTVASF"].array(entry_stop=max_read))
+                    var_sf = ak.to_numpy(
+                        tree["syst_TTVASFDown"].array(entry_stop=max_read)
                     )
                 elif self.syst_kw == "msf_efftrig":
-                    syst_weights = (
-                        ak.to_numpy(tree["syst_trigSFDown"].array(entry_stop=max_read))
-                        / nom_sf
+                    nom_sf = ak.to_numpy(
+                        tree["singleMuonTrigSF"].array(entry_stop=max_read)
+                    )
+                    var_sf = ak.to_numpy(
+                        tree["syst_trigSFDown"].array(entry_stop=max_read)
                     )
                 elif self.syst_kw == "prw":
-                    syst_weights = (
-                        ak.to_numpy(tree["syst_prwDown"].array(entry_stop=max_read))
-                        / nom_sf
+                    nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
+                    var_sf = ak.to_numpy(
+                        tree["syst_prwDown"].array(entry_stop=max_read)
                     )
-                root_weights *= syst_weights
+                root_weights *= var_sf / nom_sf
             elif "theory" in self.syst_kw:
                 if self.syst_kw == "theory_qcd":
                     syst_weights = ak.to_numpy(
@@ -794,7 +793,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start : start + idx])
+        acquired_good_evts = np.sum(pass190[start:start + idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts
