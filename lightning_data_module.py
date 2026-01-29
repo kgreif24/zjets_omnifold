@@ -66,6 +66,7 @@ class LOfData(L.LightningDataModule):
         use_truth=False,
         syst_kw=None,
         theory_weight_mode=False,
+        theory_weight_path=None,
         data_bootstrap_path=None,
         mc_bootstrap_path=None,
         mc_bootstrap_both=False,
@@ -115,6 +116,10 @@ class LOfData(L.LightningDataModule):
                 for the data module. Defaults to false.
             syst_kw {dict} - Keyword of the systematic variation that should be
                 activated for this data module.
+            theory_weight_mode {bool} - Set to true if we want to use theory weights
+                for propagating theory systematics. Defaults to False.
+            theory_weight_path {str} - The path to the theory weights for propagating
+                theory systematics. If None, no theory weights will be used.
             data_bootstrap_path {str} - The path to the data bootstrap in this training
                 If None, no bootstrap will be used.
             mc_bootstrap_path {str} - The path to the MC bootstrap in this training
@@ -145,6 +150,7 @@ class LOfData(L.LightningDataModule):
         self.use_truth = use_truth
         self.syst_kw = syst_kw
         self.theory_weight_mode = theory_weight_mode
+        self.theory_weight_path = theory_weight_path
         self.data_bootstrap_path = data_bootstrap_path
         self.mc_bootstrap_path = mc_bootstrap_path
         self.mc_bootstrap_both = mc_bootstrap_both
@@ -635,13 +641,7 @@ class LOfData(L.LightningDataModule):
             elif "theory" in self.syst_kw:
 
                 # Load theory weights from .npz file
-                if which_file == "source":
-                    weight_path = self.train_theory_weights
-                elif which_file == "target":
-                    weight_path = self.test_theory_weights
-                else:
-                    raise ValueError("Invalid file argument")
-                weight_file = np.load(weight_path)
+                weight_file = np.load(self.theory_weight_path)
 
                 # Select correct theory weights
                 if self.syst_kw == "theory_qcd":

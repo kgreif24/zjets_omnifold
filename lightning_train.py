@@ -409,6 +409,7 @@ class OfTrain:
             syst_kw=use_syst,
             # Active theory weight mode only for step two trainings
             theory_weight_mode=is_theory_syst and self.step == 2,
+            theory_weight_path=self.config.train_theory_weights,
             data_bootstrap_path=self.data_bootstrap_path,
             mc_bootstrap_path=self.mc_bootstrap_path,
             mc_bootstrap_both=mc_bootstrap_both,

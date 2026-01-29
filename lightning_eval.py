@@ -297,6 +297,7 @@ class OfEval:
             use_truth=self.use_truth,
             syst_kw=use_syst,
             theory_weight_mode=is_theory_syst and self.step == 2,
+            theory_weight_path=self.config.test_theory_weights,
         )
 
         self.trainer.test(self.model, d_module_test)
@@ -332,6 +333,7 @@ class OfEval:
             use_truth=self.use_truth,
             syst_kw=use_syst,
             theory_weight_mode=is_theory_syst and self.step == 2,
+            theory_weight_path=self.config.train_theory_weights,
         )
         d_module_test = LOfData(
             source_file=self.test_source_file,
@@ -350,6 +352,7 @@ class OfEval:
             use_truth=self.use_truth,
             syst_kw=use_syst,
             theory_weight_mode=is_theory_syst and self.step == 2,
+            theory_weight_path=self.config.test_theory_weights,
         )
 
         # Run predictions, note this only produces predictions for the source events
