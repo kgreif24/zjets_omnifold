@@ -633,36 +633,37 @@ class LOfData(L.LightningDataModule):
                     )
                 root_weights *= var_sf / nom_sf
             elif "theory" in self.syst_kw:
+
+                # Load theory weights from .npz file
+                if which_file == "source":
+                    weight_path = self.train_theory_weights
+                elif which_file == "target":
+                    weight_path = self.test_theory_weights
+                else:
+                    raise ValueError("Invalid file argument")
+                weight_file = np.load(weight_path)
+
+                # Select correct theory weights
                 if self.syst_kw == "theory_qcd":
-                    syst_weights = ak.to_numpy(
-                        tree["w_QCD_dd"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_QCD_dd"]
                 elif self.syst_kw == "theory_pdf":
-                    syst_weights = ak.to_numpy(
-                        tree["w_PDF_CT18nnlo"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_PDF_CT18nnlo"]
                 elif self.syst_kw == "theory_alphas":
-                    syst_weights = ak.to_numpy(
-                        tree["w_Alpha_s1"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_Alpha_s1"]
                 elif self.syst_kw == "theory_pssoft":
-                    syst_weights = ak.to_numpy(
-                        tree["w_Var1Down"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_Var1Down"]
                 elif self.syst_kw == "theory_psjet":
-                    syst_weights = ak.to_numpy(
-                        tree["w_Var2Down"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_Var2Down"]
                 elif self.syst_kw == "theory_mpi":
-                    syst_weights = ak.to_numpy(
-                        tree["w_MPIDown"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_MPIDown"]
                 elif self.syst_kw == "theory_psscale":
-                    syst_weights = ak.to_numpy(
-                        tree["w_RenDown"].array(entry_stop=max_read)
-                    )
+                    syst_weights = weight_file["w_RenDown"]
                 else:
                     raise ValueError(f"Systematic {self.syst_kw} not recognized!")
+
+                # Truncate and multiply by root weights
+                if len(syst_weights) > len(root_weights):
+                    syst_weights = syst_weights[:len(root_weights)]
                 root_weights *= syst_weights
 
         # Load weights from the path
