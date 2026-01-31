@@ -609,7 +609,13 @@ class LOfData(L.LightningDataModule):
         if self.syst_kw is not None and (
             which_file == "source" or self.theory_weight_mode
         ):
-            if "msf" in self.syst_kw:
+            if self.syst_kw == "prw":
+                nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
+                var_sf = ak.to_numpy(
+                    tree["syst_prwDown"].array(entry_stop=max_read)
+                )
+                root_weights *= var_sf / nom_sf
+            elif "msf" in self.syst_kw:
                 if self.syst_kw == "msf_effreco":
                     nom_sf = ak.to_numpy(tree["mu_recoSF"].array(entry_stop=max_read))
                     var_sf = ak.to_numpy(
@@ -631,11 +637,6 @@ class LOfData(L.LightningDataModule):
                     )
                     var_sf = ak.to_numpy(
                         tree["syst_trigSFDown"].array(entry_stop=max_read)
-                    )
-                elif self.syst_kw == "prw":
-                    nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
-                    var_sf = ak.to_numpy(
-                        tree["syst_prwDown"].array(entry_stop=max_read)
                     )
                 root_weights *= var_sf / nom_sf
             elif "theory" in self.syst_kw:
