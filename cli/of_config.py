@@ -168,6 +168,18 @@ class OfConfig:
             ),
         )
         self.parser.add_argument(
+            "--train_theory_weights",
+            type=str,
+            default="/pscratch/sd/k/kgreif/data/theory-weights-train.npz",
+            help="Path to the train theory weights for propagating theory systs",
+        )
+        self.parser.add_argument(
+            "--test_theory_weights",
+            type=str,
+            default="/pscratch/sd/k/kgreif/data/theory-weights-test.npz",
+            help="Path to the test theory weights for propagating theory systs",
+        )
+        self.parser.add_argument(
             "--bootstrap_data",
             action="store_true",
             help="If set, bootstrap the data. Seed will depend on the ensemble index.",
