@@ -662,6 +662,8 @@ def get_syst_pre_and_post_keys(syst_kw):
         return "syst_pTScale_", ""
     elif "theory" in syst_kw:
         return "", ""
+    elif syst_kw in ["dd", "hv2", "hvhad"]:
+        return "", ""
     else:
         raise ValueError(f"Systematic {syst_kw} not recognized!")
 

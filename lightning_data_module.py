@@ -607,7 +607,7 @@ class LOfData(L.LightningDataModule):
 
         # Load and multiply root weights by the systematic weights if needed
         if self.syst_kw is not None and (
-            which_file == "source" or self.theory_weight_mode
+            which_file == "source" or self.prior_weight_mode
         ):
 
             # Pileup re-weighting scale factor systematic
