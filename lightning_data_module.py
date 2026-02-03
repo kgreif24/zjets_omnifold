@@ -3,7 +3,7 @@ It builds OfDatasets from the input ROOT files and provides dataloaders for trai
 and testing.
 
 Author: Kevin Greif
-Last updated 12/22/2025
+Last updated 02/02/2026
 python3
 """
 
@@ -65,8 +65,8 @@ class LOfData(L.LightningDataModule):
         testing=False,
         use_truth=False,
         syst_kw=None,
-        theory_weight_mode=False,
-        theory_weight_path=None,
+        prior_weight_mode=False,
+        prior_weight_path=None,
         data_bootstrap_path=None,
         mc_bootstrap_path=None,
         mc_bootstrap_both=False,
@@ -116,10 +116,10 @@ class LOfData(L.LightningDataModule):
                 for the data module. Defaults to false.
             syst_kw {dict} - Keyword of the systematic variation that should be
                 activated for this data module.
-            theory_weight_mode {bool} - Set to true if we want to use theory weights
-                for propagating theory systematics. Defaults to False.
-            theory_weight_path {str} - The path to the theory weights for propagating
-                theory systematics. If None, no theory weights will be used.
+            prior_weight_mode {bool} - Set to true if we want to use prior weights
+                for propagating prior systematics. Defaults to False.
+            prior_weight_path {str} - The path to the prior weights for propagating
+                prior systematics. If None, no prior weights will be used.
             data_bootstrap_path {str} - The path to the data bootstrap in this training
                 If None, no bootstrap will be used.
             mc_bootstrap_path {str} - The path to the MC bootstrap in this training
@@ -149,8 +149,8 @@ class LOfData(L.LightningDataModule):
         self.testing = testing
         self.use_truth = use_truth
         self.syst_kw = syst_kw
-        self.theory_weight_mode = theory_weight_mode
-        self.theory_weight_path = theory_weight_path
+        self.prior_weight_mode = prior_weight_mode
+        self.prior_weight_path = prior_weight_path
         self.data_bootstrap_path = data_bootstrap_path
         self.mc_bootstrap_path = mc_bootstrap_path
         self.mc_bootstrap_both = mc_bootstrap_both
@@ -609,12 +609,16 @@ class LOfData(L.LightningDataModule):
         if self.syst_kw is not None and (
             which_file == "source" or self.theory_weight_mode
         ):
+
+            # Pileup re-weighting scale factor systematic
             if self.syst_kw == "prw":
                 nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
                 var_sf = ak.to_numpy(
                     tree["syst_prwDown"].array(entry_stop=max_read)
                 )
                 root_weights *= var_sf / nom_sf
+
+            # Other scale factor systematics
             elif "msf" in self.syst_kw:
                 if self.syst_kw == "msf_effreco":
                     nom_sf = ak.to_numpy(tree["mu_recoSF"].array(entry_stop=max_read))
@@ -639,33 +643,46 @@ class LOfData(L.LightningDataModule):
                         tree["syst_trigSFDown"].array(entry_stop=max_read)
                     )
                 root_weights *= var_sf / nom_sf
+
+            # Theory systematics, note we replace the root weights
             elif "theory" in self.syst_kw:
 
                 # Load theory weights from .npz file
-                weight_file = np.load(self.theory_weight_path)
+                weight_file = np.load(self.prior_weight_path)
 
-                # Select correct theory weights
+                # Determine the key to pull from the weight file
+                postfix = "_truth" if self.use_truth else "_reco"
                 if self.syst_kw == "theory_qcd":
-                    syst_weights = weight_file["w_QCD_dd"]
+                    key = f"w_QCD_dd{postfix}"
                 elif self.syst_kw == "theory_pdf":
-                    syst_weights = weight_file["w_PDF_CT18nnlo"]
+                    key = f"w_PDF_CT18nnlo{postfix}"
                 elif self.syst_kw == "theory_alphas":
-                    syst_weights = weight_file["w_Alpha_s1"]
+                    key = f"w_Alpha_s1{postfix}"
                 elif self.syst_kw == "theory_pssoft":
-                    syst_weights = weight_file["w_Var1Down"]
+                    key = f"w_Var1Down{postfix}"
                 elif self.syst_kw == "theory_psjet":
-                    syst_weights = weight_file["w_Var2Down"]
+                    key = f"w_Var2Down{postfix}"
                 elif self.syst_kw == "theory_mpi":
-                    syst_weights = weight_file["w_MPIDown"]
+                    key = f"w_MPIDown{postfix}"
                 elif self.syst_kw == "theory_psscale":
-                    syst_weights = weight_file["w_RenDown"]
+                    key = f"w_RenDown{postfix}"
                 else:
                     raise ValueError(f"Systematic {self.syst_kw} not recognized!")
 
-                # Truncate and multiply by root weights
-                if len(syst_weights) > len(root_weights):
-                    syst_weights = syst_weights[:len(root_weights)]
-                root_weights *= syst_weights
+                # Pull weights and truncate if needed
+                root_weights = weight_file[key]
+                if len(root_weights) > max_read:
+                    root_weights = root_weights[:max_read]
+
+            # HV2 and HVHad systematics, note again we replace the root weights
+            elif self.syst_kw in ["hv2", "hvhad"]:
+
+                # Load weights from .npz file (HC_weights for both)
+                weight_file = np.load(self.prior_weight_path)
+                key = "HC_weight_mc" if self.use_truth else "HC_weight"
+                root_weights = weight_file[key]
+                if len(root_weights) > max_read:
+                    root_weights = root_weights[:max_read]
 
         # Load weights from the path
         if path is not None:

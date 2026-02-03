@@ -276,10 +276,13 @@ class OfEval:
 
         # Build data module, note we do not split the data into pieces
         # and use distibuted evaluation for testing
-        is_theory_syst = (
-            self.config.syst_kw is not None and "theory" in self.config.syst_kw
-        )
-        use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
+        is_prior_syst = False
+        if self.config.syst_kw is not None:
+            if "theory" in self.config.syst_kw:
+                is_prior_syst = True
+            elif self.config.syst_kw in ["hv2", "hvhad"]:
+                is_prior_syst = True
+        use_syst = self.config.syst_kw if (self.step == 1 or is_prior_syst) else None
         d_module_test = LOfData(
             source_file=self.test_source_file,
             target_file=self.test_target_file,
@@ -296,8 +299,8 @@ class OfEval:
             testing=True,
             use_truth=self.use_truth,
             syst_kw=use_syst,
-            theory_weight_mode=is_theory_syst and self.step == 2,
-            theory_weight_path=self.config.test_theory_weights,
+            prior_weight_mode=is_prior_syst and self.step == 2,
+            prior_weight_path=self.config.test_prior_weights,
         )
 
         self.trainer.test(self.model, d_module_test)
@@ -312,10 +315,13 @@ class OfEval:
         """
 
         # Build data modules
-        is_theory_syst = (
-            self.config.syst_kw is not None and "theory" in self.config.syst_kw
-        )
-        use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
+        is_prior_syst = False
+        if self.config.syst_kw is not None:
+            if "theory" in self.config.syst_kw:
+                is_prior_syst = True
+            elif self.config.syst_kw in ["hv2", "hvhad"]:
+                is_prior_syst = True
+        use_syst = self.config.syst_kw if (self.step == 1 or is_prior_syst) else None
         d_module_train = LOfData(
             source_file=self.train_source_file,
             target_file=self.train_target_file,
@@ -332,8 +338,8 @@ class OfEval:
             testing=False,
             use_truth=self.use_truth,
             syst_kw=use_syst,
-            theory_weight_mode=is_theory_syst and self.step == 2,
-            theory_weight_path=self.config.train_theory_weights,
+            prior_weight_mode=is_prior_syst and self.step == 2,
+            prior_weight_path=self.config.train_prior_weights,
         )
         d_module_test = LOfData(
             source_file=self.test_source_file,
@@ -351,8 +357,8 @@ class OfEval:
             testing=True,
             use_truth=self.use_truth,
             syst_kw=use_syst,
-            theory_weight_mode=is_theory_syst and self.step == 2,
-            theory_weight_path=self.config.test_theory_weights,
+            prior_weight_mode=is_prior_syst and self.step == 2,
+            prior_weight_path=self.config.test_prior_weights,
         )
 
         # Run predictions, note this only produces predictions for the source events
