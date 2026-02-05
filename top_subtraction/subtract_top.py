@@ -3,10 +3,10 @@ volume by training a classifier to distinguish between the top subtracted
 pseudodata and the raw pseudodata.
 
 Because the top contribution is very subtle, subtraction will only be differential
-in 3 observables: Ntracks, HT_tracks, and the isTop logit.
+in 5 observables: Ntracks, HT_tracks, pT_trackj1, m_trackj1, and the isTop logit.
 
 Author: Kevin Greif
-Last updated September 12, 2025
+Last updated February 2, 2026
 """
 
 import sys
@@ -18,7 +18,6 @@ import torch
 import lightning as L
 from sklearn.model_selection import train_test_split
 
-# from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.rank_zero import rank_zero_only, rank_zero_info
 
 sys.path.append("..")
@@ -168,7 +167,8 @@ if __name__ == "__main__":
     # Load pseudodata file and data
     f_pd = uproot.open(args.data_path)
     t_pd = f_pd["OmniTree"]
-    pd_data = get_observables(t_pd, observables)
+    pass190_pd = ak.to_numpy(t_pd["pass190"].array())
+    pd_data = get_observables(t_pd, observables, pass190_pd)
     pd_data = replace_exits(pd_data)
     pd_data_full = pd_data.copy()
     pd_weights = np.ones(len(pd_data))
@@ -188,7 +188,7 @@ if __name__ == "__main__":
             np.sum(pass190_top) / len(pass190_top)
         )
     )
-    top_data = get_observables(t_top, observables)
+    top_data = get_observables(t_top, observables, pass190_top)
     top_data = replace_exits(top_data)
     top_data_full = top_data.copy()
     top_weights = ak.to_numpy(t_top["weight"].array())
@@ -286,7 +286,7 @@ if __name__ == "__main__":
         max_epochs=30,
         logger=None,
         enable_progress_bar=False,
-        # logger=WandbLogger(project="top-subtraction", group="sub-1x"),
+        # logger=WandbLogger(project="top-subtraction", group="alt-sub"),
         callbacks=[
             L.pytorch.callbacks.ModelCheckpoint(
                 monitor="val_loss", mode="min", save_top_k=1, save_last=True

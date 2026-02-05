@@ -45,6 +45,18 @@ def parse_args():
         default=None,
         help="Name of the copied data tree, containing the top classifier outputs",
     )
+    parser.add_argument(
+        "--top_path",
+        type=str,
+        default=None,
+        help="Path to the top MC file to evaluate",
+    )
+    parser.add_argument(
+        "--plot_path",
+        type=str,
+        default=None,
+        help="Path to the directory to save the plot",
+    )
     args = parser.parse_args()
     return args
 
@@ -89,9 +101,11 @@ def main():
     # Load the data
     f = uproot.open(args.data_path)
     t = f["OmniTree"]
-    kinematics, indices = du.get_kinematics(t, muon_only=False)
+    pass190 = ak.to_numpy(t["pass190"].array())
+    kinematics, indices, pdgids = du.get_kinematics(t, pass190, muon_only=False)
     if args.is_pseudodata:
         is_top = ak.to_numpy(t["isTop"].array())
+        is_top = is_top[pass190 == 1]
         is_top = np.expand_dims(is_top, axis=1)
     else:
         is_top = np.ones((len(kinematics), 1), dtype=np.int32)
@@ -103,6 +117,7 @@ def main():
         weights=np.ones((len(kinematics), 1)),
         object_indeces=indices,
         w1_obs=np.zeros((len(kinematics), 1)),  # Dummy W1 observable
+        pdgids=pdgids,
         n_jets=5,
         max_tracks=264,
     )
@@ -123,19 +138,21 @@ def main():
     if args.is_pseudodata:
 
         # Also get predictions for the pure top events
-        f_top = uproot.open(
-            "/pscratch/sd/k/kgreif/data/"
-            "ZjetOmnifold_14May2025_Background_Sherpa2212_AllTop_"
-            "WithTracks_slim_Systematics.root"
-        )
+        f_top = uproot.open(args.top_path)
         t_top = f_top["OmniTree"]
-        kinematics_top, indices_top = du.get_kinematics(t_top, muon_only=False)
+        pass190_top = ak.to_numpy(t_top["pass190"].array())
+        kinematics_top, indices_top, pdgids_top = du.get_kinematics(
+            t_top, pass190_top, muon_only=False
+        )
         dataset_top = OfDataset(
             kinematics=kinematics_top,
             labels=np.ones((len(kinematics_top), 1)),
             weights=np.ones((len(kinematics_top), 1)),
             object_indeces=indices_top,
             w1_obs=np.zeros((len(kinematics_top), 1)),
+            pdgids=pdgids_top,
+            n_jets=5,
+            max_tracks=264,
         )
         dataloader_top = torch.utils.data.DataLoader(
             dataset_top, batch_size=1024, shuffle=False, collate_fn=du.null_collate
@@ -146,30 +163,40 @@ def main():
         )
 
         is_top = is_top.flatten()
-        bins = np.linspace(-10, 10, 100)
-        plt.hist(
-            predictions[is_top == 0], bins=bins, alpha=0.5, label=" PD Z+jets"
-        )
-        plt.hist(
-            predictions[is_top == 1],
-            bins=bins,
-            alpha=0.5,
-            label="PD Top",
-            color="red",
-        )
+        bins = np.linspace(-2.5, 7.5, 100)
+        plt.hist(predictions[is_top == 0], bins=bins, alpha=0.5, label=" PD Z+jets")
+        # plt.hist(
+        #     predictions[is_top == 1],
+        #     bins=bins,
+        #     alpha=0.5,
+        #     label="PD Top",
+        #     color="red",
+        # )
         plt.hist(
             predictions_top,
             bins=bins,
             alpha=0.5,
-            label="Sherpa Top",
-            histtype="step",
+            label="Madgraph Top",
+            # histtype="step",
             color="red",
         )
         plt.legend()
         plt.xlabel("Top Classifier Logit")
         plt.ylabel("Number of Events")
         plt.yscale("log")
-        plt.savefig("./plot_storage/top_classifier_predictions.png", dpi=300)
+        plt.savefig(args.plot_path, dpi=300)
+        plt.close()
+
+    # Otherwise this is data and we just plot the predictions
+    else:
+
+        bins = np.linspace(-2.5, 7.5, 100)
+        plt.hist(predictions, bins=bins, alpha=0.5, label="Data")
+        plt.legend()
+        plt.xlabel("Top Classifier Logit")
+        plt.ylabel("Number of Events")
+        plt.yscale("log")
+        plt.savefig(args.plot_path, dpi=300)
         plt.close()
 
     # Copy the ROOT file with predictions as new branch
