@@ -179,7 +179,8 @@ def get_kinematics(
     prekey = ""
     muon_prekey, muon_postkey = "", ""
     if get_truth:
-        assert syst_kw is None or "theory" in syst_kw
+        if syst_kw is not None:
+            assert "theory" in syst_kw or syst_kw in ["hv2", "hvhad"]
         prekey = "truth_"
         muon_prekey = "truth_"
     # Note we only adjust the muon keys if we are running muon systematics
