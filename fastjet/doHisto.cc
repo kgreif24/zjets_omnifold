@@ -19,6 +19,7 @@ int main(int argc, char* argv[]){
 	int maxEvents = -1;
 	int nEns = 0;
 	int nBootstrapData = 0;
+	int nBootstrapMC = 0;
 	int kinematic_region = 0;
 	string track_format = "vector";  // Default to vector format
     for (int i = 1; i < argc; ++i) {
@@ -77,7 +78,15 @@ int main(int argc, char* argv[]){
 				return 1;
 			}
 		}
-		
+		if (arg == "--nBootstrapMC") {
+			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
+				nBootstrapMC = std::stoi(argv[i+1]);
+				i++; // Move to the next arg
+			} else { // Throw error if no argument provided
+				std::cerr << "--nBootstrapMC option requires one argument." << std::endl;
+				return 1;
+			}
+		}
 		if (arg == "--outFile") {
 			if (i + 1 < argc) { // Make sure we aren't at the end of argv!
 				outFile = TString(argv[i+1]);
@@ -160,7 +169,7 @@ int main(int argc, char* argv[]){
 	cout << "Track format: " << track_format << endl;
 
 	// Run the analysis
-	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, nBootstrapData, kinematic_region, track_format);
+	MakeOmni* myAnalysis = new MakeOmni(myChain, weight_file, weight_names, outFile, isTruth, nEns, nBootstrapData, nBootstrapMC, kinematic_region, track_format);
 	myAnalysis->Loop(maxEvents);
 
 	return 0;

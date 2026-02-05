@@ -124,6 +124,7 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    vector<vector<float>> central_weights;
    vector<vector<float>> ens_weights;
    vector<vector<float>> bootstrap_data_weights;
+   vector<vector<float>> bootstrap_mc_weights;
 
    // Load weights individually (more reliable for large files with many arrays)
    // Loading the entire npz file at once can fail with large files due to cnpy limitations
@@ -177,6 +178,20 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       }
    }
 
+   // Load the bootstrap MC weights
+   for (int i = 0; i < nBootstrapMC; ++i) {
+      string key = "weights_bootstrap_mc_" + to_string(i);
+      cout << "  Loading: " << key << "..." << flush;
+      try {
+         bootstrap_mc_weights.push_back(LoadWeights(weightFilename, key));
+         cout << " done" << endl;
+      } catch (const std::exception& e) {
+         cout << " FAILED" << endl;
+         cerr << "Error loading weight '" << key << "': " << e.what() << endl;
+         throw;
+      }
+   }
+
    // Jet definitions to consider
    JetDefinition jetdef_kt(kt_algorithm, 0.4);
    JetDefinition jetdef_r04(antikt_algorithm, 0.4);
@@ -219,14 +234,15 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    vector<vector<HistoGroup>> thread_central_histos(num_threads);
    vector<vector<HistoGroup>> thread_ens_histos(num_threads);
    vector<vector<HistoGroup>> thread_bootstrap_histos(num_threads);
+   vector<vector<HistoGroup>> thread_bootstrap_mc_histos(num_threads);
    
    // Calculate total number of histogram groups per thread
    int total_central = weightBranchNames.size();
-   int total_per_thread = total_central + nEns + nBootstrapData;
+   int total_per_thread = total_central + nEns + nBootstrapData + nBootstrapMC;
    int total_groups = total_per_thread * num_threads;
    
    std::cout << " === initializing " << num_threads << " thread-local histogram groups ===" << std::endl;
-   std::cout << "  Per thread: " << total_central << " central + " << nEns << " ensemble + " << nBootstrapData << " bootstrap = " << total_per_thread << " groups" << std::endl;
+   std::cout << "  Per thread: " << total_central << " central + " << nEns << " ensemble + " << nBootstrapData << " bootstrap data + " << nBootstrapMC << " bootstrap MC = " << total_per_thread << " groups" << std::endl;
    std::cout << "  Total: " << total_groups << " histogram groups" << std::endl;
    
    // Initialize thread-local histogram groups
@@ -281,6 +297,16 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       // Initialize bootstrap data weight histograms
       for (int i = 0; i < nBootstrapData; ++i) {
          thread_bootstrap_histos[t].push_back(HistoGroup("bootstrap_data_" + to_string(i) + "-", kinematicRegion));
+         group_count++;
+         if (group_count % progress_interval == 0) {
+            std::cout << "    Progress: " << group_count << "/" << total_groups << " groups initialized (" 
+                      << (100 * group_count / total_groups) << "%)" << std::endl;
+         }
+      }
+      
+      // Initialize bootstrap MC weight histograms
+      for (int i = 0; i < nBootstrapMC; ++i) {
+         thread_bootstrap_mc_histos[t].push_back(HistoGroup("bootstrap_mc_" + to_string(i) + "-", kinematicRegion));
          group_count++;
          if (group_count % progress_interval == 0) {
             std::cout << "    Progress: " << group_count << "/" << total_groups << " groups initialized (" 
@@ -542,8 +568,8 @@ void MakeOmni::Loop(Long64_t maxEvents) {
          // Note we are filling with values only from leading jet for now
          // Can also use the FillEEC function for the TEEC
 
-         // Loop through all groups (central, ensemble, bootstrap)
-         unsigned int total_groups = centralHistoGroups.size() + ensHistoGroups.size() + bootstrapHistoGroups.size();
+         // Loop through all groups (central, ensemble, bootstrap data, bootstrap MC)
+         unsigned int total_groups = centralHistoGroups.size() + ensHistoGroups.size() + bootstrapHistoGroups.size() + bootstrapMCHistoGroups.size();
          for (unsigned int i = 0; i < total_groups; ++i) {
 
             // Get weight
@@ -572,10 +598,14 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                // Ensemble weights
                unsigned int ens_idx = i - centralHistoGroups.size();
                use_weight = ens_weights[ens_idx][jentry];
-            } else {
+            } else if (i < centralHistoGroups.size() + ensHistoGroups.size() + bootstrapHistoGroups.size()) {
                // Bootstrap data weights
                unsigned int bootstrap_idx = i - centralHistoGroups.size() - ensHistoGroups.size();
                use_weight = bootstrap_data_weights[bootstrap_idx][jentry];
+            } else {
+               // Bootstrap MC weights
+               unsigned int bootstrap_mc_idx = i - centralHistoGroups.size() - ensHistoGroups.size() - bootstrapHistoGroups.size();
+               use_weight = bootstrap_mc_weights[bootstrap_mc_idx][jentry];
             }
 
             // Get thread-local histogram group
@@ -583,7 +613,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
                thread_central_histos[thread_id][i] : 
                (i < centralHistoGroups.size() + ensHistoGroups.size()) ?
                thread_ens_histos[thread_id][i - centralHistoGroups.size()] :
-               thread_bootstrap_histos[thread_id][i - centralHistoGroups.size() - ensHistoGroups.size()];
+               (i < centralHistoGroups.size() + ensHistoGroups.size() + bootstrapHistoGroups.size()) ?
+               thread_bootstrap_histos[thread_id][i - centralHistoGroups.size() - ensHistoGroups.size()] :
+               thread_bootstrap_mc_histos[thread_id][i - centralHistoGroups.size() - ensHistoGroups.size() - bootstrapHistoGroups.size()];
 
             // // KT R=0.4 jets
             if (KT_jets.size() > 0) {
@@ -667,6 +699,9 @@ void MakeOmni::Loop(Long64_t maxEvents) {
       for (unsigned int i = 0; i < bootstrapHistoGroups.size(); ++i) {
          bootstrapHistoGroups[i].MergeHistos(thread_bootstrap_histos[t][i]);
       }
+      for (unsigned int i = 0; i < bootstrapMCHistoGroups.size(); ++i) {
+         bootstrapMCHistoGroups[i].MergeHistos(thread_bootstrap_mc_histos[t][i]);
+      }
    }
    
    // Complete the progress bar
@@ -687,6 +722,10 @@ void MakeOmni::Loop(Long64_t maxEvents) {
    }
 
    for (auto& histoGroup : bootstrapHistoGroups) {
+      histoGroup.WriteHistos(foutput);
+   }
+
+   for (auto& histoGroup : bootstrapMCHistoGroups) {
       histoGroup.WriteHistos(foutput);
    }
 
