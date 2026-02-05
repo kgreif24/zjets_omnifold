@@ -23,7 +23,11 @@ import data_utils as du  # noqa: E402
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 
-def pull_weights(campaign_path, run_group, iteration,):
+def pull_weights(
+    campaign_path,
+    run_group,
+    iteration,
+):
     """pull_weights - This function will pull the weights produced by a given
     run group. For example, if the nominal run group is titled "nominal-run-[1-10],
     the function will build a numpy array of weights from all of the step 2 trainings
@@ -79,8 +83,12 @@ def group_name_to_write_name(gn, idx=None):
     """
     if gn == "nominal" and idx is None:
         return "weights_nominal"
-    elif gn == "hv":  # Not a bug! HV uncertainty re-weights the sherpa sample
+    elif (
+        gn == "hv" or gn == "hv2"
+    ):  # Not a bug! HV uncertainty re-weights the sherpa sample
         return "weights_nominal"
+    elif gn == "hvhad":
+        return "weights_hvhad"
     elif gn == "nominal" and idx is not None:
         return f"weights_ensemble_{idx}"
     elif gn == "dd":
@@ -138,17 +146,20 @@ def group_name_to_write_name(gn, idx=None):
         raise ValueError(f"Group name {gn} not recognized!")
 
 
-def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
+def get_truth_to_reco_ratio(gn, t_mc, prior_weights, reco_pass, truth_pass):
     """get_truth_to_reco_ratio - This function will calculate the ratio of the truth
     to the reconstructed events for a given run group. Typically this is just the
     sum of the `weight_mc` branch divided by the sum of the `weight` branch, unless
     either of these things are modified by the systematic applied to the run group.
 
     Note we don't consider the HV systematic here, it is handled separately.
+    HVHAD however is handled here.
 
     Args:
         gn (str): The name of the run group.
         t_mc (uproot.TTree): The tree to get the weights from.
+        prior_weights (dict of np.ndarrays):
+            The prior weights to use for the systematic
         reco_pass (np.ndarray): The pass190 filter for the reconstructed events.
         truth_pass (np.ndarray): The pass190 filter for the truth events.
 
@@ -156,62 +167,76 @@ def get_truth_to_reco_ratio(gn, t_mc, reco_pass, truth_pass):
         float: The ratio of the truth to the reconstructed events.
     """
 
-    nominal_weight_mc = ak.to_numpy(t_mc["weight_mc"].array())
-    nominal_weight = ak.to_numpy(t_mc["weight"].array())
+    # If systematic shifts the prior, do calculation using the weights from .npz
+    if gn == "hvhad" or "theory" in gn:
+        truth_prior_weights = get_prior_weights(gn, prior_weights, use_truth=True)
+        reco_prior_weights = get_prior_weights(gn, prior_weights, use_truth=False)
+        numerator = np.sum(truth_prior_weights[truth_pass == 1])
+        denominator = np.sum(reco_prior_weights[reco_pass == 1])
+        factor = numerator / denominator
+        print(f"Factor for {gn} is {factor}")
+        return factor
 
-    nominal_weight_mc_filtered = nominal_weight_mc[truth_pass == 1]
-    nominal_weight_filtered = nominal_weight[reco_pass == 1]
-
-    nominal_numerator = np.sum(nominal_weight_mc_filtered)
-    nominal_denominator = np.sum(nominal_weight_filtered)
-    nominal_ratio = nominal_numerator / nominal_denominator
-
-    if "muon" in gn:
-        if gn == "muon-effreco":
-            nominal_sf = ak.to_numpy(t_mc["mu_recoSF"].array())
-            varied_sf = ak.to_numpy(t_mc["syst_recoSFDown"].array())
-            weight = varied_sf * nominal_weight / nominal_sf
-            usepass = reco_pass
-        elif gn == "muon-effiso":
-            nominal_sf = ak.to_numpy(t_mc["mu_isoSF"].array())
-            varied_sf = ak.to_numpy(t_mc["syst_isoSFDown"].array())
-            weight = varied_sf * nominal_weight / nominal_sf
-            usepass = reco_pass
-        elif gn == "muon-efftrk":
-            nominal_sf = ak.to_numpy(t_mc["mu_TTVASF"].array())
-            varied_sf = ak.to_numpy(t_mc["syst_TTVASFDown"].array())
-            weight = varied_sf * nominal_weight / nominal_sf
-            usepass = reco_pass
-        elif gn == "muon-efftrig":
-            nominal_sf = ak.to_numpy(t_mc["singleMuonTrigSF"].array())
-            varied_sf = ak.to_numpy(t_mc["syst_trigSFDown"].array())
-            weight = varied_sf * nominal_weight / nominal_sf
-            usepass = reco_pass
-        elif gn == "muon-id":
-            weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_id", pt_thresh=200)
-        elif gn == "muon-ms":
-            weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(t_mc, syst_kw="muon_ms", pt_thresh=200)
-        elif gn == "muon-resbias":
-            weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(
-                t_mc, syst_kw="muon_resbias", pt_thresh=200
-            )
-        elif gn == "muon-scale":
-            weight = nominal_weight
-            usepass = du.calc_muon_syst_pass190(
-                t_mc, syst_kw="muon_scale", pt_thresh=200
-            )
-        else:
-            raise ValueError(f"Systematic {gn} not recognized!")
-        weight = weight[usepass == 1]
-        denominator = np.sum(weight)
-        return nominal_numerator / denominator
-    elif gn == "hv":
-        raise ValueError("HV systematic is handled separately")
+    # Else do the calculation using the weights from the tree
     else:
-        return nominal_ratio
+        nominal_weight_mc = ak.to_numpy(t_mc["weight_mc"].array())
+        nominal_weight = ak.to_numpy(t_mc["weight"].array())
+        nominal_weight_mc_filtered = nominal_weight_mc[truth_pass == 1]
+        nominal_weight_filtered = nominal_weight[reco_pass == 1]
+        nominal_numerator = np.sum(nominal_weight_mc_filtered)
+        nominal_denominator = np.sum(nominal_weight_filtered)
+        nominal_ratio = nominal_numerator / nominal_denominator
+
+        if "muon" in gn:
+            if gn == "muon-effreco":
+                nominal_sf = ak.to_numpy(t_mc["mu_recoSF"].array())
+                varied_sf = ak.to_numpy(t_mc["syst_recoSFDown"].array())
+                weight = varied_sf * nominal_weight / nominal_sf
+                usepass = reco_pass
+            elif gn == "muon-effiso":
+                nominal_sf = ak.to_numpy(t_mc["mu_isoSF"].array())
+                varied_sf = ak.to_numpy(t_mc["syst_isoSFDown"].array())
+                weight = varied_sf * nominal_weight / nominal_sf
+                usepass = reco_pass
+            elif gn == "muon-efftrk":
+                nominal_sf = ak.to_numpy(t_mc["mu_TTVASF"].array())
+                varied_sf = ak.to_numpy(t_mc["syst_TTVASFDown"].array())
+                weight = varied_sf * nominal_weight / nominal_sf
+                usepass = reco_pass
+            elif gn == "muon-efftrig":
+                nominal_sf = ak.to_numpy(t_mc["singleMuonTrigSF"].array())
+                varied_sf = ak.to_numpy(t_mc["syst_trigSFDown"].array())
+                weight = varied_sf * nominal_weight / nominal_sf
+                usepass = reco_pass
+            elif gn == "muon-id":
+                weight = nominal_weight
+                usepass = du.calc_muon_syst_pass190(
+                    t_mc, syst_kw="muon_id", pt_thresh=200
+                )
+            elif gn == "muon-ms":
+                weight = nominal_weight
+                usepass = du.calc_muon_syst_pass190(
+                    t_mc, syst_kw="muon_ms", pt_thresh=200
+                )
+            elif gn == "muon-resbias":
+                weight = nominal_weight
+                usepass = du.calc_muon_syst_pass190(
+                    t_mc, syst_kw="muon_resbias", pt_thresh=200
+                )
+            elif gn == "muon-scale":
+                weight = nominal_weight
+                usepass = du.calc_muon_syst_pass190(
+                    t_mc, syst_kw="muon_scale", pt_thresh=200
+                )
+            else:
+                raise ValueError(f"Systematic {gn} not recognized!")
+            weight = weight[usepass == 1]
+            denominator = np.sum(weight)
+            return nominal_numerator / denominator
+        elif gn in ["hv", "hv2"]:
+            raise ValueError("HV systematic is handled separately")
+        else:
+            return nominal_ratio
 
 
 def get_bs_n_data(campaign_path, run_name, truth_pass):
@@ -264,24 +289,29 @@ def apply_mc_bootstrap(weights):
     return weights * bs_weights
 
 
-def get_multiplier(gn, theory_weights):
-    """get_multiplier - Pull the correct multiplier from the theory
+def get_prior_weights(gn, prior_weights, use_truth=True):
+    """get_prior_weights - Pull the correct prior weights from the
     weights file.
     """
+    suffix = "_truth" if use_truth else "_reco"
     if gn == "theory-qcd":
-        return theory_weights["w_QCD_dd"]
+        return prior_weights[f"w_QCD_dd{suffix}"]
     elif gn == "theory-pdf":
-        return theory_weights["w_PDF_CT18nnlo"]
+        return prior_weights[f"w_PDF_CT18nnlo{suffix}"]
     elif gn == "theory-alphas":
-        return theory_weights["w_Alpha_s1"]
+        return prior_weights[f"w_Alpha_s1{suffix}"]
     elif gn == "theory-pssoft":
-        return theory_weights["w_Var1Down"]
+        return prior_weights[f"w_Var1Down{suffix}"]
     elif gn == "theory-psjet":
-        return theory_weights["w_Var2Down"]
+        return prior_weights[f"w_Var2Down{suffix}"]
     elif gn == "theory-mpi":
-        return theory_weights["w_MPIDown"]
+        return prior_weights[f"w_MPIDown{suffix}"]
     elif gn == "theory-psscale":
-        return theory_weights["w_RenDown"]
+        return prior_weights[f"w_RenDown{suffix}"]
+    elif gn == "hvhad" and use_truth:
+        return prior_weights["HC_weight_mc"]
+    elif gn == "hvhad" and not use_truth:
+        return prior_weights["HC_weight"]
     else:
         raise ValueError(f"Systematic {gn} not recognized!")
 
@@ -383,11 +413,11 @@ hv_root_weights = ak.to_numpy(t_hv["weight_mc"].array())
 hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 
 # Load weights for theory systs and target dd
-theory_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/theory-weights-test.npz"
+prior_weights = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/madgraph_test_prior_weights.npz"
 )
 dd_target_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/dd-weights-test.npz"
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/target_dd_weights.npz"
 )["target_dd"]
 
 # Calculate the pass200 filters for the nominal and HV samples at
@@ -398,6 +428,12 @@ data_pass200 = calc_pass_200(t_data, ptll_cut=args.ptll_cut)
 hv_pass200 = calc_pass_200(t_hv, ptll_cut=args.ptll_cut)
 hv_truth_pass200 = calc_pass_200(t_hv, truth=True, ptll_cut=args.ptll_cut)
 
+# Calculate the nominal fiducial factor
+nominal_factor = get_truth_to_reco_ratio(
+    "nominal", t, prior_weights, pass200, truth_pass200
+)
+print(f"Nominal fiducial factor is {nominal_factor}")
+
 # Define the names of the various run groups in a campaign
 all_weights = {}
 
@@ -405,7 +441,7 @@ all_weights = {}
 for gn in args.group_names:
 
     # Skip the HV group, it is handled separately
-    if gn == "hv":
+    if gn in ["hv", "hv2"]:
         continue
 
     # Pull the weights for a given group
@@ -424,16 +460,19 @@ for gn in args.group_names:
     # Calculate the central value weights
     if gn not in ["dbootstrap", "mcbootstrap"]:
         central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
-        if "theory" in gn:
-            multiplier = get_multiplier(gn, theory_weights)
-            central_weights *= multiplier * nominal_root_weights
+        if gn == "hvhad" or "theory" in gn:
+            alt_root_weights = get_prior_weights(gn, prior_weights)
+            central_weights *= alt_root_weights
+            use_factor = get_truth_to_reco_ratio(
+                gn, t, prior_weights, pass200, truth_pass200
+            )
         else:
             central_weights *= nominal_root_weights
-        ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
+            use_factor = nominal_factor
         central_weights = norm_weights(
             central_weights,
             truth_pass200,
-            ratio_mc,
+            use_factor,
             n_data_nominal,
             args.luminosity,
         )
@@ -445,7 +484,7 @@ for gn in args.group_names:
             lumi_weights = norm_weights(
                 central_weights,
                 truth_pass200,
-                ratio_mc,
+                nominal_factor,
                 n_data_nominal,
                 args.luminosity * (1.0 - 0.0083),  # 0.83% luminosity uncertainty
             )
@@ -457,7 +496,6 @@ for gn in args.group_names:
         bootstrap_stats = []
         for i, weight in enumerate(pulled_weights):
             weight *= nominal_root_weights
-            ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
             # If this is the data bootstraps need to get the number of data events
             # for this bootstrap run
             if gn == "dbootstrap":
@@ -471,22 +509,24 @@ for gn in args.group_names:
             else:
                 n_data = n_data_nominal
             weight = norm_weights(
-                weight, truth_pass200, ratio_mc, n_data, args.luminosity
+                weight, truth_pass200, nominal_factor, n_data, args.luminosity
             )
             # Add weights to the all_weights dictionary
             write_name = group_name_to_write_name(gn, i)
             all_weights[write_name] = weight
 
 # Add in dd-target weights, note this are already multiplied by the nominal root weights
-ratio_mc = get_truth_to_reco_ratio("target_dd", t, pass200, truth_pass200)
+# Use the nominal fiducial factor
 dd_target_weights = norm_weights(
-    dd_target_weights, truth_pass200, ratio_mc, n_data_nominal, args.luminosity
+    dd_target_weights, truth_pass200, nominal_factor, n_data_nominal, args.luminosity
 )
 all_weights["target_dd"] = dd_target_weights
 
 # Now handle the HV weights
 hv_weights = {}
-if "hv" in args.group_names:
+if "hv" in args.group_names or "hv2" in args.group_names:
+    if "hv2" in args.group_names:
+        raise NotImplementedError("HV2 weights are not implemented yet")
     pulled_weights, _ = pull_weights(
         args.campaign_path,
         "hv-data" if args.use_data else "hv",

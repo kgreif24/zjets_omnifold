@@ -190,6 +190,12 @@ class UncertaintyCalculator:
                 "stochastic": False,
                 "prefix": None,
             },
+            "hvhad": {
+                "name": "Hidden variable (HC)",
+                "color": "orange",
+                "stochastic": False,
+                "prefix": None,
+            },
             "mc-stat": {
                 "name": "MC stat",
                 "color": "green",
@@ -268,7 +274,7 @@ class UncertaintyCalculator:
         """
         return {
             "Tracking": ["trackEffMain", "trackEffJet", "trackFake", "trackPtScale"],
-            "Unfolding": ["dd", "hv"],
+            "Unfolding": ["dd", "hv", "hvhad"],
             "Muon": [
                 "muCalID",
                 "muCalMS",
