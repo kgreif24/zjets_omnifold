@@ -144,6 +144,9 @@ class TestMain:
     @patch("eval_classify_top.du.get_kinematics")
     @patch("eval_classify_top.OfDataset")
     @patch("eval_classify_top.torch.utils.data.DataLoader")
+    @patch("eval_classify_top.ak.to_numpy", side_effect=lambda x: x)
+    @patch("eval_classify_top.plt.savefig")
+    @patch("eval_classify_top.plt.close")
     @patch(
         "sys.argv",
         [
@@ -156,6 +159,9 @@ class TestMain:
     )
     def test_main_with_data(
         self,
+        mock_plt_close,
+        mock_plt_savefig,
+        mock_ak_to_numpy,
         mock_dataloader,
         mock_dataset,
         mock_get_kinematics,
@@ -174,10 +180,23 @@ class TestMain:
         mock_open.return_value = mock_file
         mock_file.__getitem__ = Mock(return_value=mock_tree)
 
-        # Mock kinematics data
-        mock_kinematics = np.random.randn(100, 10, 10)
-        mock_indices = np.random.randint(0, 5, (100, 10))
-        mock_get_kinematics.return_value = (mock_kinematics, mock_indices)
+        # Mock tree data
+        n_events = 1000
+        # Create consistent pass190 array with some events passing
+        pass190_array = np.zeros(n_events).astype(bool)
+        pass190_array[:600] = 1  # First 600 events pass
+        mock_pass190 = Mock()
+        mock_pass190.array.return_value = pass190_array
+        mock_tree.__getitem__ = Mock(
+            side_effect=lambda key: {"pass190": mock_pass190}[key]
+        )
+
+        # Mock kinematics data - should match events that pass pass190
+        n_passing = 600
+        mock_kinematics = np.random.randn(n_passing, 10, 10)
+        mock_indices = np.random.randint(0, 5, (n_passing, 10))
+        mock_pdgids = 211 * np.ones_like(mock_indices)
+        mock_get_kinematics.return_value = (mock_kinematics, mock_indices, mock_pdgids)
 
         # Mock dataset
         mock_dataset_instance = Mock()
@@ -203,7 +222,13 @@ class TestMain:
 
         # Verify data loading
         mock_open.assert_called_once_with("test.root")
-        mock_get_kinematics.assert_called_once_with(mock_tree, muon_only=False)
+
+        # Verify get_kinematics call - use call_args to handle numpy array comparison
+        mock_get_kinematics.assert_called_once()
+        kin_call_args, kin_call_kwargs = mock_get_kinematics.call_args
+        assert kin_call_args[0] is mock_tree
+        np.testing.assert_array_equal(kin_call_args[1], pass190_array)
+        assert kin_call_kwargs == {"muon_only": False}
 
         # Verify dataset creation
         mock_dataset.assert_called_once()
@@ -218,6 +243,7 @@ class TestMain:
         mock_copy_root.assert_not_called()
 
     @patch("eval_classify_top.plt.savefig")
+    @patch("eval_classify_top.plt.close")
     @patch("eval_classify_top.copy_root_with_predictions")
     @patch("eval_classify_top.L.Trainer")
     @patch("eval_classify_top.LOfTransformer.load_from_checkpoint")
@@ -225,6 +251,7 @@ class TestMain:
     @patch("eval_classify_top.du.get_kinematics")
     @patch("eval_classify_top.OfDataset")
     @patch("eval_classify_top.torch.utils.data.DataLoader")
+    @patch("eval_classify_top.ak.to_numpy", side_effect=lambda x: x)
     @patch(
         "sys.argv",
         [
@@ -236,10 +263,13 @@ class TestMain:
             "--is_pseudodata",
             "--append_filename",
             "output.root",
+            "--top_path",
+            "top.root",
         ],
     )
     def test_main_with_pseudodata_and_append(
         self,
+        mock_ak_to_numpy,
         mock_dataloader,
         mock_dataset,
         mock_get_kinematics,
@@ -247,6 +277,7 @@ class TestMain:
         mock_load_checkpoint,
         mock_trainer,
         mock_copy_root,
+        mock_plt_close,
         mock_savefig,
     ):
         """Test main function with pseudodata and file appending."""
@@ -254,28 +285,41 @@ class TestMain:
         mock_model = Mock()
         mock_load_checkpoint.return_value = mock_model
 
-        mock_file = Mock()
-        mock_tree = Mock()
-        mock_open.return_value = mock_file
-        mock_file.__getitem__ = Mock(return_value=mock_tree)
+        # Mock tree data
+        n_events = 1000
+        pass190_array = np.zeros(n_events).astype(bool)
+        pass190_array[:600] = 1  # First 600 events pass
+        is_top_array = np.zeros(n_events).astype(int)
+        is_top_array[:300] = 1  # First 300 events are top
 
-        # Mock tree data for pseudodata
+        # Create mock branches for pass190 and isTop
+        mock_pass190_branch = Mock()
+        mock_pass190_branch.array.return_value = pass190_array
         mock_isTop_branch = Mock()
-        mock_isTop_branch.array.return_value = np.random.randint(0, 2, 100)
+        mock_isTop_branch.array.return_value = is_top_array
 
-        # Mock tree subscripting
-        def mock_tree_getitem(self, key):
-            if key == "isTop":
+        # Mock tree subscripting - returns different branches based on key
+        def mock_tree_getitem(key):
+            if key == "pass190":
+                return mock_pass190_branch
+            elif key == "isTop":
                 return mock_isTop_branch
             else:
                 return Mock()
 
-        mock_tree.__getitem__ = mock_tree_getitem
+        mock_tree = Mock()
+        mock_tree.__getitem__ = Mock(side_effect=mock_tree_getitem)
 
-        # Mock kinematics data
-        mock_kinematics = np.random.randn(100, 10, 10)
-        mock_indices = np.random.randint(0, 5, (100, 10))
-        mock_get_kinematics.return_value = (mock_kinematics, mock_indices)
+        mock_file = Mock()
+        mock_file.__getitem__ = Mock(return_value=mock_tree)
+        mock_open.return_value = mock_file
+
+        # Mock kinematics data - returns 3 values including pdgids
+        n_passing = 600
+        mock_kinematics = np.random.randn(n_passing, 10, 10)
+        mock_indices = np.random.randint(0, 5, (n_passing, 10))
+        mock_pdgids = 211 * np.ones_like(mock_indices)
+        mock_get_kinematics.return_value = (mock_kinematics, mock_indices, mock_pdgids)
 
         # Mock dataset
         mock_dataset_instance = Mock()
@@ -285,12 +329,12 @@ class TestMain:
         mock_dataloader_instance = Mock()
         mock_dataloader.return_value = mock_dataloader_instance
 
-        # Mock trainer
+        # Mock trainer - predictions should match kinematics size
         mock_trainer_instance = Mock()
         mock_trainer.return_value = mock_trainer_instance
         mock_trainer_instance.predict.return_value = [
-            torch.randn(50, 1),
-            torch.randn(50, 1),
+            torch.randn(n_passing // 2, 1),
+            torch.randn(n_passing - n_passing // 2, 1),
         ]
 
         # Test function
@@ -300,22 +344,18 @@ class TestMain:
         mock_load_checkpoint.assert_called_once_with("test.ckpt")
 
         # Verify data loading (multiple files when is_pseudodata=True)
-        assert mock_open.call_count >= 1  # At least one call to open
-        assert (
-            mock_get_kinematics.call_count >= 1
-        )  # Called at least once (twice when is_pseudodata=True)
+        assert mock_open.call_count == 2  # Opens both data and top files
+        assert mock_get_kinematics.call_count == 2  # Called for both data and top
 
         # Verify isTop data loading for pseudodata
         mock_isTop_branch.array.assert_called_once()
 
-        # Verify dataset creation
-        assert mock_dataset.call_count >= 1
+        # Verify dataset creation (twice for pseudodata - data and top)
+        assert mock_dataset.call_count == 2
 
         # Verify trainer setup and prediction
         mock_trainer.assert_called_once()
-        assert (
-            mock_trainer_instance.predict.call_count >= 1
-        )  # Called at least once (twice when is_pseudodata=True)
+        assert mock_trainer_instance.predict.call_count == 2  # Called for data and top
 
         # Verify file copying
         mock_copy_root.assert_called_once()

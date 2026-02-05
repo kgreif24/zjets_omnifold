@@ -35,7 +35,7 @@ class ModelConfig:
     """Configuration for the transformer model."""
 
     input_dim: int = 10
-    seed: int = 43
+    seed: int = 42
     pair_input_dim: int = 4
     embed_dims: list = None
     pair_embed_dims: list = None
@@ -75,7 +75,7 @@ class TrainingConfig:
 
 def load_and_filter_data(
     file_path: str, is_pseudodata: bool = True
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load and filter data from ROOT file.
 
     Args:
@@ -83,7 +83,7 @@ def load_and_filter_data(
         is_pseudodata: Whether this is pseudodata (affects filtering logic)
 
     Returns:
-        Tuple of (kinematics, indices, observables)
+        Tuple of (kinematics, indices, observables, pdgids)
     """
     f = uproot.open(file_path)
     t = f["OmniTree"]
@@ -91,7 +91,7 @@ def load_and_filter_data(
     # Load pass190 and isTop flags
     pass190 = ak.to_numpy(t["pass190"].array())
     if is_pseudodata:
-        is_top = ak.to_numpy(t["isTop"].array())
+        is_top = ak.to_numpy(t["isTop"].array()).astype(bool)
         pass190 = np.logical_and(pass190, ~is_top)
 
     rank_zero_info(f"{'PD' if is_pseudodata else 'Top'} events: {np.sum(pass190)}")
