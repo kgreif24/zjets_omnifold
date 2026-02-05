@@ -614,7 +614,9 @@ class LOfData(L.LightningDataModule):
                 var_sf = ak.to_numpy(
                     tree["syst_prwDown"].array(entry_stop=max_read)
                 )
-                root_weights *= var_sf / nom_sf
+                root_weights *= np.divide(
+                    var_sf, nom_sf, out=np.zeros_like(var_sf), where=nom_sf != 0
+                )
             elif "msf" in self.syst_kw:
                 if self.syst_kw == "msf_effreco":
                     nom_sf = ak.to_numpy(tree["mu_recoSF"].array(entry_stop=max_read))
