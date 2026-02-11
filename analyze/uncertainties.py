@@ -132,7 +132,7 @@ class UncertaintyCalculator:
             },
             "muCalMS": {
                 "name": "Muon MS",
-                "color": "lightblue",
+                "color": "red",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -144,31 +144,31 @@ class UncertaintyCalculator:
             },
             "muCalScale": {
                 "name": "Muon scale",
-                "color": "teal",
+                "color": "purple",
                 "stochastic": False,
                 "prefix": None,
             },
             "muEffReco": {
                 "name": "Muon eff. reco.",
-                "color": "lightseagreen",
+                "color": "orange",
                 "stochastic": False,
                 "prefix": None,
             },
             "muEffIso": {
                 "name": "Muon eff. iso.",
-                "color": "seagreen",
+                "color": "yellow",
                 "stochastic": False,
                 "prefix": None,
             },
             "muEffTrack": {
                 "name": "Muon eff. track.",
-                "color": "skyblue",
+                "color": "gold",
                 "stochastic": False,
                 "prefix": None,
             },
             "muEffTrig": {
                 "name": "Muon eff. trig.",
-                "color": "cadetblue",
+                "color": "pink",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -259,6 +259,12 @@ class UncertaintyCalculator:
             "theoryPSscale": {
                 "name": "Theory PS scale",
                 "color": "lime",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "topBackground": {
+                "name": "Top background",
+                "color": "tomato",
                 "stochastic": False,
                 "prefix": None,
             },

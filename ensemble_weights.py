@@ -142,6 +142,8 @@ def group_name_to_write_name(gn, idx=None):
         return "weights_theoryMPI"
     elif gn == "theory-psscale":
         return "weights_theoryPSscale"
+    elif gn == "top":
+        return "weights_topBackground"
     else:
         raise ValueError(f"Group name {gn} not recognized!")
 
@@ -168,7 +170,7 @@ def get_truth_to_reco_ratio(gn, t_mc, prior_weights, reco_pass, truth_pass):
     """
 
     # If systematic shifts the prior, do calculation using the weights from .npz
-    if gn == "hvhad" or "theory" in gn:
+    if "hv" in gn or "theory" in gn:
         truth_prior_weights = get_prior_weights(gn, prior_weights, use_truth=True)
         reco_prior_weights = get_prior_weights(gn, prior_weights, use_truth=False)
         numerator = np.sum(truth_prior_weights[truth_pass == 1])
@@ -233,8 +235,12 @@ def get_truth_to_reco_ratio(gn, t_mc, prior_weights, reco_pass, truth_pass):
             weight = weight[usepass == 1]
             denominator = np.sum(weight)
             return nominal_numerator / denominator
-        elif gn in ["hv", "hv2"]:
-            raise ValueError("HV systematic is handled separately")
+        elif gn == "prw":
+            nominal_sf = ak.to_numpy(t_mc["prw"].array())
+            varied_sf = ak.to_numpy(t_mc["syst_prwDown"].array())
+            weight = varied_sf * nominal_weight / nominal_sf
+            denominator = np.sum(weight[reco_pass == 1])
+            return nominal_numerator / denominator
         else:
             return nominal_ratio
 
@@ -308,9 +314,9 @@ def get_prior_weights(gn, prior_weights, use_truth=True):
         return prior_weights[f"w_MPIDown{suffix}"]
     elif gn == "theory-psscale":
         return prior_weights[f"w_RenDown{suffix}"]
-    elif gn == "hvhad" and use_truth:
+    elif "hv" in gn and use_truth:
         return prior_weights["HC_weight_mc"]
-    elif gn == "hvhad" and not use_truth:
+    elif "hv" in gn and not use_truth:
         return prior_weights["HC_weight"]
     else:
         raise ValueError(f"Systematic {gn} not recognized!")
@@ -384,11 +390,12 @@ args = parser.parse_args()
 
 # Set paths to trees
 base_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/"
-nominal_path = (
-    base_path + "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
+nominal_path = base_path + (
+    "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
 )
-hv_path = (
-    base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
+hv_path = base_path + (
+    "ZjetOmnifold_Mar10_Sherpa2211PlusNonStrong"
+    "_LookLike_MgFxFx_HadCompLikeSh_Test_shuffled.root"
 )
 
 # Load trees, n_data, and raw MC weights
@@ -412,9 +419,13 @@ nominal_root_weights = ak.to_numpy(t["weight_mc"].array())
 hv_root_weights = ak.to_numpy(t_hv["weight_mc"].array())
 hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 
-# Load weights for theory systs and target dd
+# Load weights for uncertainties involving prior shifts and data driven
+# target
 prior_weights = np.load(
     "/pscratch/sd/k/kgreif/zjets_plot_staging/madgraph_test_prior_weights.npz"
+)
+hv_prior_weights = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/sherpa_test_prior_weights.npz"
 )
 dd_target_weights = np.load(
     "/pscratch/sd/k/kgreif/zjets_plot_staging/target_dd_weights.npz"
@@ -524,9 +535,7 @@ all_weights["target_dd"] = dd_target_weights
 
 # Now handle the HV weights
 hv_weights = {}
-if "hv" in args.group_names or "hv2" in args.group_names:
-    if "hv2" in args.group_names:
-        raise NotImplementedError("HV2 weights are not implemented yet")
+if "hv" in args.group_names:
     pulled_weights, _ = pull_weights(
         args.campaign_path,
         "hv-data" if args.use_data else "hv",
@@ -535,10 +544,11 @@ if "hv" in args.group_names or "hv2" in args.group_names:
     print(f"Got {len(pulled_weights)} weights for group hv")
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
-    central_weights *= hv_root_weights
+    alt_root_weights = get_prior_weights("hv", hv_prior_weights)
+    central_weights *= alt_root_weights
     # Normalize the HV weights
-    ratio_hv = np.sum(hv_root_weights[hv_truth_pass200 == 1]) / np.sum(
-        hv_reco_weights[hv_pass200 == 1]
+    ratio_hv = get_truth_to_reco_ratio(
+        "hv", t_hv, hv_prior_weights, hv_pass200, hv_truth_pass200
     )
     central_weights = norm_weights(
         central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
