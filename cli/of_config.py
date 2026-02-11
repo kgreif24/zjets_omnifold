@@ -168,16 +168,16 @@ class OfConfig:
             ),
         )
         self.parser.add_argument(
-            "--train_theory_weights",
+            "--train_prior_weights",
             type=str,
-            default="/pscratch/sd/k/kgreif/data/theory-weights-train.npz",
-            help="Path to the train theory weights for propagating theory systs",
+            default="/pscratch/sd/k/kgreif/data/madgraph_train_prior_weights.npz",
+            help="Path to the train prior weights for propagating prior systs",
         )
         self.parser.add_argument(
-            "--test_theory_weights",
+            "--test_prior_weights",
             type=str,
-            default="/pscratch/sd/k/kgreif/data/theory-weights-test.npz",
-            help="Path to the test theory weights for propagating theory systs",
+            default="/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz",
+            help="Path to the test prior weights for propagating prior systs",
         )
         self.parser.add_argument(
             "--bootstrap_data",
