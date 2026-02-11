@@ -68,14 +68,14 @@ class TrainingConfig:
     num_nodes: int = 1
     devices: int = 4
     test_split: float = 0.2
-    patience: int = 10
+    patience: int = 20
     n_jets: int = 5
     max_tracks: int = 264
 
 
 def load_and_filter_data(
     file_path: str, is_pseudodata: bool = True
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load and filter data from ROOT file.
 
     Args:
@@ -83,7 +83,7 @@ def load_and_filter_data(
         is_pseudodata: Whether this is pseudodata (affects filtering logic)
 
     Returns:
-        Tuple of (kinematics, indices, observables)
+        Tuple of (kinematics, indices, observables, pdgids)
     """
     f = uproot.open(file_path)
     t = f["OmniTree"]
@@ -91,30 +91,17 @@ def load_and_filter_data(
     # Load pass190 and isTop flags
     pass190 = ak.to_numpy(t["pass190"].array())
     if is_pseudodata:
-        is_top = ak.to_numpy(t["isTop"].array())
+        is_top = ak.to_numpy(t["isTop"].array()).astype(bool)
+        pass190 = np.logical_and(pass190, ~is_top)
 
     rank_zero_info(f"{'PD' if is_pseudodata else 'Top'} events: {np.sum(pass190)}")
     rank_zero_info(f"Fraction of good events: {np.sum(pass190) / len(pass190):.3f}")
 
-    if is_pseudodata:
-        filtered_is_top = is_top[pass190 == 1]
-        rank_zero_info(f"Of these good events, {np.sum(filtered_is_top)} are top")
+    # Load kinematics and observables, filtering on pass190 and isTop if pseudodata
+    kinematics, indices, pdgids = du.get_kinematics(t, pass190, muon_only=False)
+    observables = du.get_observables(t, ["Ntracks", "HT_tracks", "pT_ll"], pass190)
 
-    # Load kinematics
-    kinematics, indices = du.get_kinematics(t, muon_only=False)
-
-    # Load observables
-    observables = np.stack(
-        du.get_observables(t, ["Ntracks", "HT_tracks", "pT_ll"]), axis=1
-    )
-
-    # Filter pseudodata to exclude top events
-    if is_pseudodata:
-        kinematics = kinematics[filtered_is_top == 0, ...]
-        indices = indices[filtered_is_top == 0, ...]
-        observables = observables[filtered_is_top == 0, ...]
-
-    return kinematics, indices, observables
+    return kinematics, indices, observables, pdgids
 
 
 def create_datasets(
