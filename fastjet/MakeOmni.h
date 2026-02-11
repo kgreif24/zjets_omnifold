@@ -33,6 +33,7 @@ public :
    vector<string> weightBranchNames;
    int nEns;
    int nBootstrapData;
+   int nBootstrapMC;
    TString saveName;
    int kinematicRegion;
    string trackFormat; // "vector" or "array" - format of track data in ROOT file
@@ -41,6 +42,7 @@ public :
    vector<HistoGroup> centralHistoGroups;
    vector<HistoGroup> ensHistoGroups;
    vector<HistoGroup> bootstrapHistoGroups;
+   vector<HistoGroup> bootstrapMCHistoGroups;
 
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
@@ -163,7 +165,7 @@ public :
    TBranch        *b_trackJetIndex_tracks;   //!
    TBranch        *b_pdgId_tracks;   //!
 
-   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int nBootstrapData = 0, int kinematic_region = 0, string track_format = "vector");
+   MakeOmni(TTree*, string, vector<string>, TString, bool runTruth = false, int nEnsembles = 0, int nBootstrapData = 0, int nBootstrapMC = 0, int kinematic_region = 0, string track_format = "vector");
    virtual ~MakeOmni();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -182,7 +184,7 @@ public :
 #endif
 
 #ifdef MakeOmni_cxx
-MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int nBootstrapData, int kinematic_region, string track_format) : fChain(0) 
+MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, TString outFile, bool runTruth, int nEnsembles, int nBootstrapData, int nBootstrapMC, int kinematic_region, string track_format) : fChain(0) 
 {
 
    // Store instance variables
@@ -190,6 +192,7 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
    weightBranchNames = weightNames; // Store the weight branch names
    nEns = nEnsembles; // Store the number of ensembles
    this->nBootstrapData = nBootstrapData; // Store the number of bootstrap data weights
+   this->nBootstrapMC = nBootstrapMC; // Store the number of bootstrap MC weights
    saveName = outFile; // Store the output file name
    isTruth = runTruth; // Store the truth flag
    kinematicRegion = kinematic_region; // Store the kinematic region
@@ -225,6 +228,11 @@ MakeOmni::MakeOmni(TTree *tree, string weightFile, vector<string> weightNames, T
    // Initialize the bootstrap data histograms
    for (int i = 0; i < nBootstrapData; ++i) {
       bootstrapHistoGroups.push_back(HistoGroup("weights_bootstrap_data_" + to_string(i) + "-", kinematicRegion));
+   }
+
+   // Initialize the bootstrap MC histograms
+   for (int i = 0; i < nBootstrapMC; ++i) {
+      bootstrapMCHistoGroups.push_back(HistoGroup("weights_bootstrap_mc_" + to_string(i) + "-", kinematicRegion));
    }
 
    // Initialize the tree

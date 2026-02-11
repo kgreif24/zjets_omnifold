@@ -613,12 +613,10 @@ class LOfData(L.LightningDataModule):
             # Pileup re-weighting scale factor systematic
             if self.syst_kw == "prw":
                 nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
-                var_sf = ak.to_numpy(
-                    tree["syst_prwDown"].array(entry_stop=max_read)
+                var_sf = ak.to_numpy(tree["syst_prwDown"].array(entry_stop=max_read))
+                root_weights *= np.divide(
+                    var_sf, nom_sf, out=np.zeros_like(var_sf), where=nom_sf != 0
                 )
-                root_weights *= var_sf / nom_sf
-
-            # Other scale factor systematics
             elif "msf" in self.syst_kw:
                 if self.syst_kw == "msf_effreco":
                     nom_sf = ak.to_numpy(tree["mu_recoSF"].array(entry_stop=max_read))
@@ -812,7 +810,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start:start + idx])
+        acquired_good_evts = np.sum(pass190[start : start + idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts
