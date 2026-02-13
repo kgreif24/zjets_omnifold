@@ -409,7 +409,6 @@ class UncertaintyCalculator:
                 f" Available keys: {available}"
             )
         measured_hist, measured_hist_var, bins = all_hists[measured_key]
-        bin_centers = (bins[1:] + bins[:-1]) / 2
 
         # Calculate systematic uncertainties
         syst_uncerts = {}
@@ -500,6 +499,7 @@ class UncertaintyCalculator:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
                 if syst_key == "hv" and self.smooth_hv:
+                    bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
                 syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])

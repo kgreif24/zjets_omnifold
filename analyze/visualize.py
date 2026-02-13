@@ -136,7 +136,7 @@ def plot_nnid_uncert_budget(
     high_limit: Optional[int] = None,
     point_indices: Optional[np.ndarray] = None,
     figsize: tuple = (6.4, 4.8),
-    llab: str = "Simulation Preliminary",
+    llab: str = "Simulation Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
     data: bool = False,
 ) -> tuple[plt.Figure, plt.Figure]:
@@ -288,7 +288,7 @@ def plot_nnid_uncert_budget(
 
     mh.atlas.label(
         ax=ax_nnid,
-        llabel=llab if not data else "Preliminary",
+        llabel=llab if not data else "Internal",
         data=data,
         rlabel=rlab,
     )
@@ -356,7 +356,7 @@ def plot_nnid_uncert_budget(
 
     mh.atlas.label(
         ax=ax_avgr,
-        llabel=llab if not data else "Preliminary",
+        llabel=llab if not data else "Internal",
         data=data,
         rlabel=rlab,
     )
@@ -381,7 +381,7 @@ def plot_nnid_pseudodata(
     ylim: tuple[float, float] = (0, 10),
     xlabel: str = r"$\langle r \rangle$ [GeV]",
     ylabel: str = "NNID",
-    llab: str = "Simulation Preliminary",
+    llab: str = "Simulation Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
     color: str = "blue",
     plot_uncertainty_budget: bool = False,
@@ -524,7 +524,7 @@ def plot_nnid_data(
     ylim: tuple[float, float] = (0, 10),
     xlabel: str = r"$\langle r \rangle$ [GeV]",
     ylabel: str = "NNID",
-    llab: str = "Preliminary",
+    llab: str = "Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
     plot_uncertainty_budget: bool = False,
 ) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
@@ -855,7 +855,7 @@ def compare_to_target(
     prior_label: str = "Prior",
     measured_label: str = "Reweighted",
     target_label: str = "Target",
-    llab: str = "Simulation Preliminary",
+    llab: str = "Simulation Internal",
     rlab: str = "Z+jets Omnifold",
     normalize: bool = False,
     figsize=(6.4, 4.8),
@@ -893,7 +893,7 @@ def compare_to_target(
     truth_key : str, optional
         Key in all_hists for the truth pseudodata distribution (default: "truthpd").
     llab : str, optional
-        Left label for ATLAS label (default: "Simulation Preliminary").
+        Left label for ATLAS label (default: "Simulation Internal").
     rlab : str, optional
         Right label for ATLAS label (default: "Z+jets Omnifold").
     prior_label : str, optional
@@ -1069,7 +1069,7 @@ def compare_to_target(
 def plot_correlation_matrix(
     total_cov: np.ndarray,
     bins: np.ndarray,
-    llab: str = "Simulation Preliminary",
+    llab: str = "Simulation Internal",
     figsize: tuple[float, float] = (8, 7),
     simple_labels: bool = False,
 ) -> plt.Figure:
@@ -1082,7 +1082,7 @@ def plot_correlation_matrix(
     bins : np.ndarray
         Array of bin edges for labeling.
     llab : str, optional
-        Left label for ATLAS label (default: "Simulation Preliminary").
+        Left label for ATLAS label (default: "Simulation Internal").
     figsize : tuple, optional
         Figure size in inches (width, height). Default: (8, 7).
     simple_labels : bool, optional
@@ -1180,7 +1180,7 @@ def plot_measurement_with_uncertainties(
     target2_label: str = "MadGraph",
     data_measurement_mode: bool = False,
     normalize: bool = False,
-    llab: str = "Simulation Preliminary",
+    llab: str = "Simulation Internal",
     rlab: str = "Z+jets Omnifold",
     figsize=(6.4, 4.8),
     ylabel: str = "Corr. Dim.",
@@ -1232,7 +1232,7 @@ def plot_measurement_with_uncertainties(
     normalize : bool, optional
         If True, normalize the histograms (default: False).
     llab : str, optional
-        Left label for ATLAS label (default: "Simulation Preliminary").
+        Left label for ATLAS label (default: "Simulation Internal").
     rlab : str, optional
         Right label for ATLAS label (default: "Z+jets Omnifold").
     figsize : tuple, optional
