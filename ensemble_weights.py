@@ -23,7 +23,7 @@ import data_utils as du  # noqa: E402
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 
-def pull_weights(campaign_path, run_group, iteration, indices=None):
+def pull_weights(campaign_path, run_group, iteration,):
     """pull_weights - This function will pull the weights produced by a given
     run group. For example, if the nominal run group is titled "nominal-run-[1-10],
     the function will build a numpy array of weights from all of the step 2 trainings
@@ -33,7 +33,6 @@ def pull_weights(campaign_path, run_group, iteration, indices=None):
         campaign_path (str): The path to the campaign directory.
         run_group (str): The name of the run group to pull weights from.
         iteration (int): The iteration number to pull weights for.
-        indices (np.ndarray, optional): Indices to reorder the weights. Default is None.
 
     Returns:
         tuple: A tuple containing:
@@ -68,10 +67,6 @@ def pull_weights(campaign_path, run_group, iteration, indices=None):
         run_name = os.path.basename(os.path.dirname(dir_path))
         run_names.append(run_name)
     iteration_weights = np.stack(iteration_weights, axis=0, dtype=np.float32)
-
-    # If indices are provided, reorder the weights
-    if indices is not None:
-        iteration_weights = iteration_weights[:, indices]
 
     return iteration_weights, run_names
 
@@ -248,7 +243,7 @@ def get_bs_n_data(campaign_path, run_name, truth_pass):
 
 
 def apply_mc_bootstrap(weights):
-    """apply_mc_bootstrap - This function will run a bootstrap of the 
+    """apply_mc_bootstrap - This function will run a bootstrap of the
     MC test sample used to construct the unfolded result.
     Note that this is independent of the MC bootstrap used in training,
     since that was performed on the MC training sample.
@@ -269,32 +264,24 @@ def apply_mc_bootstrap(weights):
     return weights * bs_weights
 
 
-def adjust_theory_weights(t, gn, root_weights):
-    """adjust_theory_weights - This function will adjust the theory weights to the
-    nominal weights.
-
-    Args:
-        t (uproot.TTree): The tree to get the weights from.
-        gn (str): The name of the run group.
-        root_weights (np.ndarray): The root weights to adjust.
-
-    Returns:
-        np.ndarray: The adjusted root weights.
+def get_multiplier(gn, theory_weights):
+    """get_multiplier - Pull the correct multiplier from the theory
+    weights file.
     """
     if gn == "theory-qcd":
-        return root_weights * ak.to_numpy(t["w_QCD_dd"].array())
+        return theory_weights["w_QCD_dd"]
     elif gn == "theory-pdf":
-        return root_weights * ak.to_numpy(t["w_PDF_CT18nnlo"].array())
+        return theory_weights["w_PDF_CT18nnlo"]
     elif gn == "theory-alphas":
-        return root_weights * ak.to_numpy(t["w_Alpha_s1"].array())
+        return theory_weights["w_Alpha_s1"]
     elif gn == "theory-pssoft":
-        return root_weights * ak.to_numpy(t["w_Var1Down"].array())
+        return theory_weights["w_Var1Down"]
     elif gn == "theory-psjet":
-        return root_weights * ak.to_numpy(t["w_Var2Down"].array())
+        return theory_weights["w_Var2Down"]
     elif gn == "theory-mpi":
-        return root_weights * ak.to_numpy(t["w_MPIDown"].array())
+        return theory_weights["w_MPIDown"]
     elif gn == "theory-psscale":
-        return root_weights * ak.to_numpy(t["w_RenDown"].array())
+        return theory_weights["w_RenDown"]
     else:
         raise ValueError(f"Systematic {gn} not recognized!")
 
@@ -365,30 +352,14 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# Load indices for unshuffling MC test events and HV events
-nominal_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
-if args.og_order:
-    nominal_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_og.npy"
-indices_nominal = np.load(nominal_path)
-indices_hv = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_hv.npy"
-)
-
 # Set paths to trees
 base_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/"
 nominal_path = (
-    base_path
-    + "ZjetOmnifold_May19_MGPy8FxFxPlusNonStrong_withdd_Test_23Nov25_shuffled.root"
+    base_path + "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
 )
 hv_path = (
     base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
 )
-if args.og_order:
-    base_path = "/global/cfs/cdirs/m3246/ZjetOmnifold/data/slimmed_files_v4/"
-    nominal_path = (
-        base_path + "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_withdd.root"
-    )
-    hv_path = base_path + "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5.root"
 
 # Load trees, n_data, and raw MC weights
 t = uproot.open(nominal_path)["OmniTree"]
@@ -410,7 +381,14 @@ else:
 nominal_root_weights = ak.to_numpy(t["weight_mc"].array())
 hv_root_weights = ak.to_numpy(t_hv["weight_mc"].array())
 hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
-dd_target_weights = ak.to_numpy(t["target_dd"].array())
+
+# Load weights for theory systs and target dd
+theory_weights = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/theory-weights-test.npz"
+)
+dd_target_weights = np.load(
+    "/pscratch/sd/k/kgreif/zjets_plot_staging/dd-weights-test.npz"
+)["target_dd"]
 
 # Calculate the pass200 filters for the nominal and HV samples at
 # both reco and truth level, and the data sample at reco level
@@ -430,14 +408,6 @@ for gn in args.group_names:
     if gn == "hv":
         continue
 
-    # Decide what indices to use
-    if args.og_order:
-        use_indices = indices_nominal
-    elif "theory" not in gn:
-        use_indices = indices_nominal
-    else:
-        use_indices = None
-
     # Pull the weights for a given group
     if args.use_data and gn != "dd":
         pull_gn = f"{gn}-data"
@@ -448,7 +418,6 @@ for gn in args.group_names:
         args.campaign_path,
         pull_gn,
         args.iteration,
-        indices=use_indices,
     )
     print(f"Got {len(pulled_weights)} weights for group {pull_gn}")
 
@@ -456,8 +425,8 @@ for gn in args.group_names:
     if gn not in ["dbootstrap", "mcbootstrap"]:
         central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
         if "theory" in gn:
-            multiplier = adjust_theory_weights(t, gn, nominal_root_weights)
-            central_weights *= multiplier
+            multiplier = get_multiplier(gn, theory_weights)
+            central_weights *= multiplier * nominal_root_weights
         else:
             central_weights *= nominal_root_weights
         ratio_mc = get_truth_to_reco_ratio(gn, t, pass200, truth_pass200)
@@ -522,8 +491,8 @@ if "hv" in args.group_names:
         args.campaign_path,
         "hv-data" if args.use_data else "hv",
         args.iteration,
-        indices=indices_hv if args.og_order else None,
     )
+    print(f"Got {len(pulled_weights)} weights for group hv")
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
     central_weights *= hv_root_weights

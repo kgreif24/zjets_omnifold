@@ -386,6 +386,10 @@ class OfTrain:
         mc_bootstrap_both = (
             True if self.mc_bootstrap_path is not None and self.step == 2 else False
         )
+        is_theory_syst = (
+            self.config.syst_kw is not None and "theory" in self.config.syst_kw
+        )
+        use_syst = self.config.syst_kw if (self.step == 1 or is_theory_syst) else None
         self.d_module = LOfData(
             source_file=source_file,
             target_file=target_file,
@@ -402,7 +406,10 @@ class OfTrain:
             testing=False,
             use_truth=use_truth,
             max_events_target=self.config.max_events_target,
-            syst_kw=self.config.syst_kw if self.step == 1 else None,
+            syst_kw=use_syst,
+            # Active theory weight mode only for step two trainings
+            theory_weight_mode=is_theory_syst and self.step == 2,
+            theory_weight_path=self.config.train_theory_weights,
             data_bootstrap_path=self.data_bootstrap_path,
             mc_bootstrap_path=self.mc_bootstrap_path,
             mc_bootstrap_both=mc_bootstrap_both,

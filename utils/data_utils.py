@@ -518,7 +518,7 @@ def get_w1_obs(get_truth=False, syst_kw=None):
     # Get pre and post keys
     if syst_kw is None:
         prekey, postkey = "", ""
-    elif get_truth or "theory" in syst_kw:
+    elif get_truth:
         prekey, postkey = "truth_", ""
     else:
         prekey, postkey = get_syst_pre_and_post_keys(syst_kw)
