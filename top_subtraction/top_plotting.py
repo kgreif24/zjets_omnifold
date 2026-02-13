@@ -7,7 +7,8 @@ and reweighted pseudodata for various observables.
 
 Usage:
     python top_plotting.py --weight_file <weight_file> --data_file <data_file>
-
+    --top_file <top_file>
+    --output <output_file>
 """
 
 import argparse
@@ -19,7 +20,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-def load_data(data_file):
+def load_data(data_file, top_file):
     """Load pseudodata and top background data from ROOT files."""
     print("Loading pseudodata...")
     f_pd = uproot.open(data_file)
@@ -31,10 +32,7 @@ def load_data(data_file):
     logit_pd = logit_pd[pass190_pd == 1]
 
     print("Loading top background...")
-    f_top = uproot.open(
-        "/pscratch/sd/k/kgreif/data/ZjetOmnifold_14May2025_Background"
-        "_Sherpa2212_AllTop_WithTracks_slim_Systematics_topLogit.root"
-    )
+    f_top = uproot.open(top_file)
     t_top = f_top["OmniTree"]
 
     pass190_top = ak.to_numpy(t_top["pass190"].array())
@@ -394,6 +392,12 @@ def main():
         required=True,
     )
     parser.add_argument(
+        "--top_file",
+        help="Path to the ROOT file containing the top background",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
         "--weight_file",
         help="Path to the NPZ file containing reweighting weights",
         type=str,
@@ -411,7 +415,7 @@ def main():
     try:
         # Load data
         t_pd, t_top, logit_pd, logit_top, weight_top, pass190_top = load_data(
-            args.data_file
+            args.data_file, args.top_file
         )
 
         # Load weights

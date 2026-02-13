@@ -7,12 +7,12 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --gpu-bind=none
 #SBATCH -q regular
-#SBATCH -J top-subtract
+#SBATCH -J top-alt-subtract-data
 #SBATCH --mail-user=kgreif@uci.edu
 #SBATCH --mail-type=ALL
-#SBATCH -A m3246
+#SBATCH -A m2616
 #SBATCH -t 0-00:05:00
-#SBATCH --array=3-100
+#SBATCH --array=1
 
 # Redirect stdout and stderr to output directory separated by job number
 #SBATCH -o ./outfiles/%x-%A-%a.out
@@ -23,4 +23,4 @@ module load conda
 conda activate zfjets
 
 # run the application:
-srun --nodes 1 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python subtract_top.py --data_path /pscratch/sd/k/kgreif/data/Pseudodata_SherpaDY_PowhegPythiaTop_June2025_shuffled_topLogit.root --top_path /pscratch/sd/k/kgreif/data/ZjetOmnifold_14May2025_Background_Sherpa2212_AllTop_WithTracks_slim_Systematics_topLogit.root --output_file ./weight_storage/bsv3_$(printf "%03d" $SLURM_ARRAY_TASK_ID).npz --split_seed $SLURM_ARRAY_TASK_ID
+srun --nodes 1 --ntasks-per-node 4 --gpus-per-task 1 --gpu-bind=none --cpus-per-task 32 --cpu-bind=none python subtract_top.py --data_path /pscratch/sd/k/kgreif/data/ZjetOmnifold_Nov11_data_WithTracks_slim_Systematics_shuffled_topLogit.root --top_path /pscratch/sd/k/kgreif/data/ZjetOmnifold_Mar10_Background_PowhegPythiattbar_AllTop_WithTracks_slim_Systematics_topLogit.root --output_file ./weight_storage/bs_alt_data_$(printf "%03d" $SLURM_ARRAY_TASK_ID).npz --split_seed $SLURM_ARRAY_TASK_ID

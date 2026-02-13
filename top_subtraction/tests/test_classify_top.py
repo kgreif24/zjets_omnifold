@@ -75,7 +75,7 @@ class TestTrainingConfig:
         assert config.num_nodes == 1
         assert config.devices == 4
         assert config.test_split == 0.2
-        assert config.patience == 10
+        assert config.patience == 20
         assert config.n_jets == 5
         assert config.max_tracks == 264
 
@@ -99,10 +99,11 @@ class TestLoadAndFilterData:
         # Mock tree data
         n_events = 1000
         # Create consistent pass190 array with some events passing
-        pass190_array = np.zeros(n_events)
+        pass190_array = np.zeros(n_events).astype(bool)
         pass190_array[:500] = 1  # First 500 events pass
-        is_top_array = np.zeros(n_events)
+        is_top_array = np.zeros(n_events).astype(bool)
         is_top_array[:250] = 1  # First 250 events are top
+        expected_pass_array = np.logical_and(pass190_array, ~is_top_array)
 
         mock_pass190 = Mock()
         mock_isTop = Mock()
@@ -118,29 +119,42 @@ class TestLoadAndFilterData:
         n_passing_events = 500  # events where pass190 == 1
         mock_kinematics = np.random.randn(n_passing_events, 10, 10)
         mock_indices = np.random.randint(0, 5, (n_passing_events, 10))
+        mock_pdgids = 211 * np.ones_like(mock_indices)
         # With the fix: np.stack(axis=1) creates (n_passing_events, 3) shape
         # This matches what the filtering expects
         mock_observables = np.random.randn(n_passing_events, 3)
 
-        mock_get_kinematics.return_value = (mock_kinematics, mock_indices)
-        # get_observables returns a list of arrays, each of shape (n_passing_events,)
-        mock_get_observables.return_value = [mock_observables[:, i] for i in range(3)]
+        mock_get_kinematics.return_value = (mock_kinematics, mock_indices, mock_pdgids)
+        # get_observables returns a stacked numpy array of shape
+        # (n_passing_events, n_observables)
+        mock_get_observables.return_value = mock_observables
 
         # Test function
         result = load_and_filter_data("test_file.root", is_pseudodata=True)
 
         # Verify calls
         mock_open.assert_called_once_with("test_file.root")
-        mock_get_kinematics.assert_called_once_with(mock_tree, muon_only=False)
-        mock_get_observables.assert_called_once_with(
-            mock_tree, ["Ntracks", "HT_tracks", "pT_ll"]
-        )
 
-        # Verify return values
-        kinematics, indices, observables = result
+        # Verify get_kinematics call - use call_args to handle numpy array comparison
+        mock_get_kinematics.assert_called_once()
+        kin_call_args, kin_call_kwargs = mock_get_kinematics.call_args
+        assert kin_call_args[0] is mock_tree
+        np.testing.assert_array_equal(kin_call_args[1], expected_pass_array)
+        assert kin_call_kwargs == {"muon_only": False}
+
+        # Verify get_observables call - use call_args to handle numpy array comparison
+        mock_get_observables.assert_called_once()
+        obs_call_args, obs_call_kwargs = mock_get_observables.call_args
+        assert obs_call_args[0] is mock_tree
+        assert obs_call_args[1] == ["Ntracks", "HT_tracks", "pT_ll"]
+        np.testing.assert_array_equal(obs_call_args[2], expected_pass_array)
+
+        # Verify return values - function returns 4 values
+        kinematics, indices, observables, pdgids = result
         assert isinstance(kinematics, np.ndarray)
         assert isinstance(indices, np.ndarray)
         assert isinstance(observables, np.ndarray)
+        assert isinstance(pdgids, np.ndarray)
 
     @patch("classify_top.uproot.open")
     @patch("classify_top.du.get_kinematics")
@@ -156,7 +170,7 @@ class TestLoadAndFilterData:
         # Mock tree data
         n_events = 1000
         # Create consistent pass190 array with some events passing
-        pass190_array = np.zeros(n_events)
+        pass190_array = np.zeros(n_events).astype(bool)
         pass190_array[:600] = 1  # First 600 events pass
 
         mock_pass190 = Mock()
@@ -166,28 +180,43 @@ class TestLoadAndFilterData:
         )
 
         # Mock kinematics and observables
-        mock_kinematics = np.random.randn(n_events, 10, 10)
-        mock_indices = np.random.randint(0, 5, (n_events, 10))
-        mock_observables = np.random.randn(n_events, 3)
+        n_passing_events = 600  # events where pass190 == 1
+        mock_kinematics = np.random.randn(n_passing_events, 10, 10)
+        mock_indices = np.random.randint(0, 5, (n_passing_events, 10))
+        mock_pdgids = 211 * np.ones_like(mock_indices)
+        # get_observables returns a stacked numpy array of shape
+        # (n_passing_events, n_observables)
+        mock_observables = np.random.randn(n_passing_events, 3)
 
-        mock_get_kinematics.return_value = (mock_kinematics, mock_indices)
-        mock_get_observables.return_value = [mock_observables[:, i] for i in range(3)]
+        mock_get_kinematics.return_value = (mock_kinematics, mock_indices, mock_pdgids)
+        mock_get_observables.return_value = mock_observables
 
         # Test function
         result = load_and_filter_data("test_file.root", is_pseudodata=False)
 
         # Verify calls
         mock_open.assert_called_once_with("test_file.root")
-        mock_get_kinematics.assert_called_once_with(mock_tree, muon_only=False)
-        mock_get_observables.assert_called_once_with(
-            mock_tree, ["Ntracks", "HT_tracks", "pT_ll"]
-        )
 
-        # Verify return values
-        kinematics, indices, observables = result
+        # Verify get_kinematics call - use call_args to handle numpy array comparison
+        mock_get_kinematics.assert_called_once()
+        kin_call_args, kin_call_kwargs = mock_get_kinematics.call_args
+        assert kin_call_args[0] is mock_tree
+        np.testing.assert_array_equal(kin_call_args[1], pass190_array)
+        assert kin_call_kwargs == {"muon_only": False}
+
+        # Verify get_observables call - use call_args to handle numpy array comparison
+        mock_get_observables.assert_called_once()
+        obs_call_args, obs_call_kwargs = mock_get_observables.call_args
+        assert obs_call_args[0] is mock_tree
+        assert obs_call_args[1] == ["Ntracks", "HT_tracks", "pT_ll"]
+        np.testing.assert_array_equal(obs_call_args[2], pass190_array)
+
+        # Verify return values - function returns 4 values
+        kinematics, indices, observables, pdgids = result
         assert isinstance(kinematics, np.ndarray)
         assert isinstance(indices, np.ndarray)
         assert isinstance(observables, np.ndarray)
+        assert isinstance(pdgids, np.ndarray)
 
 
 class TestCreateDatasets:

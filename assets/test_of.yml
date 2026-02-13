@@ -53,11 +53,11 @@ max_events_target: 500000
 # Keyword of the systematic variation to apply to MC. If this is None, then no systematic variation is used
 syst_kw: null
 
-# Path to the train theory weights for propagating theory systs
-train_theory_weights: /pscratch/sd/k/kgreif/data/theory-weights-train.npz
+# Path to the train prior weights for propagating prior systs
+train_prior_weights: null
 
-# Path to the test theory weights for propagating theory systs
-test_theory_weights: /pscratch/sd/k/kgreif/data/theory-weights-test.npz
+# Path to the test prior weights for propagating prior systs
+test_prior_weights: null
 
 # If set, bootstrap the data. The seed used will depend on the ensemble index.
 bootstrap_data: False

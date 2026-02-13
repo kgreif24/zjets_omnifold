@@ -54,10 +54,10 @@ max_events_target: 500000
 syst_kw: null
 
 # Path to the train theory weights for propagating theory systs
-train_theory_weights: /pscratch/sd/k/kgreif/data/theory-weights-train.npz
+train_prior_weights: null
 
 # Path to the test theory weights for propagating theory systs
-test_theory_weights: /pscratch/sd/k/kgreif/data/theory-weights-test.npz
+test_prior_weights: null
 
 # If set, bootstrap the data. The seed used will depend on the ensemble index.
 bootstrap_data: False
