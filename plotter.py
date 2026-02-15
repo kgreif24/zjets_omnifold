@@ -82,6 +82,7 @@ class Plotter:
                 1. High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2. Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3. Diboson enhanced: pT_j1 > 32 GeV
+                4. Require minimal hadronic activity: pT_j2 > 5 GeV
             syst_kw (str): Systematic to apply. Only needed to handle plotting
                 with active muon systematics. Defaults to None.
         """
@@ -244,6 +245,15 @@ class Plotter:
             # Calculate ratios
             start_ratio = source_start_hist / target_hist
             end_ratio = source_end_hist / target_hist
+
+            # Scale histograms by bin width for plotting
+            source_start_hist, _ = self._scale_histogram_by_bin_width(
+                source_start_hist, None, bins
+            )
+            source_end_hist, _ = self._scale_histogram_by_bin_width(
+                source_end_hist, None, bins
+            )
+            target_hist, _ = self._scale_histogram_by_bin_width(target_hist, None, bins)
 
             # Duplicate last bins for plotting
             source_start_hist = np.append(source_start_hist, source_start_hist[-1])
@@ -474,12 +484,6 @@ class Plotter:
                 # Variance scales as the square of the normalization factor
                 variance = variance / (norm_factor**2)
 
-        # Else divide by the bin width to produce a cross section
-        else:
-            bin_widths = bins[1:] - bins[:-1]
-            hist = hist / bin_widths
-            variance = variance / bin_widths**2
-
         return hist, variance, bins
 
     def _normalize_to(self, hist, val=1.0):
@@ -495,6 +499,15 @@ class Plotter:
         if np.sum(hist) == 0:
             return hist
         return hist / np.sum(hist) * val
+
+    def _scale_histogram_by_bin_width(self, hist, variance, bins):
+        """Scale histogram (and variance) by bin widths for plotting."""
+        if isinstance(bins, tuple):
+            return hist, variance
+        bin_widths = bins[1:] - bins[:-1]
+        scaled_hist = hist / bin_widths
+        scaled_variance = None if variance is None else variance / bin_widths**2
+        return scaled_hist, scaled_variance
 
     def _get_cached_root_object(self, root_index, key):
         """Get a cached ROOT object to avoid repeated file opening.
@@ -839,6 +852,7 @@ class Plotter:
                 1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3: Diboson enhanced: pT_j1 > 32 GeV
+                4: Require minimal hadronic activity: pT_j2 > 5 GeV
 
         Returns:
             None
@@ -869,6 +883,7 @@ class Plotter:
                 1: High pT_Z: pT_j2 > 50 GeV, pT_ll > 350 GeV
                 2: Electroweak enhanced: m_jj > 200 GeV, |dy_jj| > 2
                 3: Diboson enhanced: pT_j1 > 32 GeV
+                4: Require minimal hadronic activity: pT_j2 > 5 GeV
             evts (int): The maximum number of events to pull from the tree.
             use_truth (bool): If true, use truth information to apply cuts.
 
@@ -899,9 +914,13 @@ class Plotter:
         elif region == 3:
             m_j1 = ak.to_numpy(tree[prekey + "pT_trackj1"].array(entry_stop=N))
             return np.logical_and(m_j1 > 32, pT_ll > 200)
+        elif region == 4:
+            pT_j2 = ak.to_numpy(tree[prekey + "pT_trackj2"].array(entry_stop=N))
+            return np.logical_and(pT_j2 > 5, pT_ll > 200)
         else:
             raise ValueError(
-                f"Invalid kinematic region {region}. Must be one of -1, 0, 1, 2, or 3."
+                f"Invalid kinematic region {region}."
+                " Must be one of -1, 0, 1, 2, 3, or 4."
             )
 
     def _get_cached_pass190_flags(self, tree_type="source"):

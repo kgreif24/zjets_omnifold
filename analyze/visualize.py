@@ -4,9 +4,736 @@ Visualization functions for jet analysis.
 
 import numpy as np
 import matplotlib.pyplot as plt
+import mplhep as mh
 import matplotlib.gridspec as gs
+from matplotlib.patches import Rectangle
 import vector
 import uncertainties
+import scipy.stats as stats
+from typing import Optional
+
+
+# Set ATLAS plotting style
+mh.style.use("ATLAS")
+
+
+def get_nnid_uncertainties(
+    results_dict: dict[str, tuple[np.ndarray, np.ndarray]],
+    index: int,
+    measured_key: str = "nominal",
+) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, dict]]:
+    """Calculate uncertainties and uncertainty budget for NNID results.
+
+    Arguments:
+    ----------
+    results_dict : dict
+        Dictionary mapping weight set names to (nnids, avg_r) tuples.
+    index : int
+        0 for NNID uncertainties, 1 for avg_r uncertainties.
+    measured_key : str
+        Key for the nominal results.
+
+    Returns:
+    --------
+    abs_uncert : np.ndarray
+        Absolute total uncertainty array.
+    syst_uncerts : dict[str, np.ndarray]
+        Dictionary mapping uncertainty names to fractional uncertainty arrays.
+    syst_info : dict[str, dict]
+        Dictionary mapping uncertainty names to metadata (name, color, etc.).
+    """
+    # Create UncertaintyCalculator
+    calc = uncertainties.UncertaintyCalculator()
+
+    # Convert results to format expected by UncertaintyCalculator
+    hists = {}
+    for key, val in results_dict.items():
+        # val[index] is the array of values (nnids or avg_r)
+        # We provide zero for variance initially
+        hists[key] = (val[index], np.zeros_like(val[index]), None)
+
+    # Handle mc-stat from bootstrap_mc_ if present
+    mc_stat_keys = [k for k in results_dict.keys() if k.startswith("bootstrap_mc_")]
+    if mc_stat_keys:
+        mc_stat_vals = np.array([results_dict[k][index] for k in mc_stat_keys])
+        # Calculate variance across bootstrap_mc_ members
+        mc_stat_var = np.var(mc_stat_vals, axis=0)
+        # Put it in the nominal key's variance slot for the calculator
+        nominal_val, _, _ = hists[measured_key]
+        hists[measured_key] = (nominal_val, mc_stat_var, None)
+
+    # Get individual uncertainty components
+    syst_uncerts, _, syst_info = calc.calculate_uncertainties(
+        hists, measured_key=measured_key
+    )
+
+    # Compute total fractional uncertainty as sqrt(sum of squares)
+    total_rel_uncert = np.sqrt(
+        np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
+    )
+
+    # Convert to absolute uncertainty
+    nominal_vals = results_dict[measured_key][index]
+    abs_uncert = total_rel_uncert * nominal_vals
+
+    return abs_uncert, syst_uncerts, syst_info
+
+
+def get_theory_nnid_uncertainties(
+    results_dict: dict[str, tuple[np.ndarray, np.ndarray]],
+    index: int,
+    measured_key: str = "nominal",
+    is_madgraph: bool = True,
+) -> np.ndarray:
+    """Calculate absolute theory uncertainties for NNID results.
+
+    Arguments:
+    ----------
+    results_dict : dict
+        Dictionary mapping weight set names to (nnids, avg_r) tuples.
+        Should contain the nominal key and theory variation keys like
+        "weights_theoryQCD", "weights_theoryPDF", etc.
+    index : int
+        0 for NNID uncertainties, 1 for avg_r uncertainties.
+    measured_key : str
+        Key for the nominal results.
+    is_madgraph : bool
+        If True, use MadGraph theory uncertainties.
+        If False, use Sherpa theory uncertainties.
+
+    Returns:
+    --------
+    abs_uncert : np.ndarray
+        Absolute uncertainty array.
+    """
+    # Create UncertaintyCalculator
+    calc = uncertainties.UncertaintyCalculator()
+
+    # Convert results to format expected by UncertaintyCalculator
+    # MC stat is neglected since truth generator samples are very large
+    hists = {}
+    for key, val in results_dict.items():
+        # val[index] is the array of values (nnids or avg_r)
+        # We provide zero for variance (no MC stat)
+        hists[key] = (val[index], np.zeros_like(val[index]), None)
+
+    # Get total fractional theory uncertainty
+    rel_uncert = calc.get_total_theory_uncertainty(
+        hists, measured_key=measured_key, is_madgraph=is_madgraph
+    )
+
+    # Convert to absolute uncertainty
+    nominal_vals = results_dict[measured_key][index]
+    return rel_uncert * nominal_vals
+
+
+def plot_nnid_uncert_budget(
+    combined_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    measured_key: str = "nominal",
+    target_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
+    target_key: str = "truthpd",
+    low_limit: int = 0,
+    high_limit: Optional[int] = None,
+    point_indices: Optional[np.ndarray] = None,
+    figsize: tuple = (6.4, 4.8),
+    llab: str = "Simulation Internal",
+    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+    data: bool = False,
+) -> tuple[plt.Figure, plt.Figure]:
+    """Plot uncertainty budget for NNID measurement.
+
+    Produces two figures: one for NNID (y-axis) uncertainties and one for
+    avg_r (x-axis) uncertainties. Both are plotted as a function of point
+    index.
+
+    Arguments:
+    ----------
+    combined_results : dict
+        Dictionary of measurement results including systematic variations.
+        Should contain the nominal key and systematic variation keys.
+    measured_key : str
+        Key for the nominal measurement results.
+    target_results : dict, optional
+        Dictionary of target results (e.g., truth pseudodata).
+        If provided, method bias will be computed and shown.
+    target_key : str
+        Key for the target results (default: "truthpd").
+    low_limit : int
+        Low limit for the subset of points to plot.
+    high_limit : int, optional
+        High limit for the subset of points to plot. If None, plot all points.
+    point_indices : np.ndarray, optional
+        Array of point indices for x-axis. If None, uses np.arange(n_points).
+    figsize : tuple
+        Figure size.
+    llab : str
+        Left label for ATLAS label.
+    rlab : str
+        Right label for ATLAS label.
+    data : bool
+        If True, use data labels (default: False).
+
+    Returns:
+    --------
+    fig_nnid : matplotlib.figure.Figure
+        Figure with NNID (y-axis) uncertainty budget.
+    fig_avgr : matplotlib.figure.Figure
+        Figure with avg_r (x-axis) uncertainty budget.
+    """
+    # Get uncertainty components for both axes
+    # index 0 is NNID (y), index 1 is avg_r (x)
+    _, syst_uncerts_nnid, syst_info_nnid = get_nnid_uncertainties(
+        combined_results, index=0, measured_key=measured_key
+    )
+    _, syst_uncerts_avgr, syst_info_avgr = get_nnid_uncertainties(
+        combined_results, index=1, measured_key=measured_key
+    )
+
+    # Get nominal values
+    y_mc, x_mc = combined_results[measured_key]
+
+    # Apply slicing
+    slice_indices = slice(low_limit, high_limit)
+    n_points = len(y_mc[slice_indices])
+
+    # Use provided point indices or default to 0, 1, 2, ...
+    if point_indices is None:
+        plot_indices = np.arange(n_points)
+    else:
+        plot_indices = point_indices[slice_indices]
+
+    # Calculate total fractional uncertainties (sliced)
+    total_uncert_nnid = np.sqrt(
+        np.sum(
+            np.array(list(syst_uncerts_nnid.values()))[:, slice_indices] ** 2, axis=0
+        )
+    )
+    total_uncert_avgr = np.sqrt(
+        np.sum(
+            np.array(list(syst_uncerts_avgr.values()))[:, slice_indices] ** 2, axis=0
+        )
+    )
+
+    # Calculate method bias if target is provided
+    rel_mbias_nnid = None
+    rel_mbias_avgr = None
+    if target_results is not None and target_key in target_results:
+        y_target, x_target = target_results[target_key]
+        # Method bias as absolute difference divided by target (fractional)
+        # Avoid division by zero
+        y_target_safe = np.where(np.abs(y_target) > 0, y_target, 1)
+        x_target_safe = np.where(np.abs(x_target) > 0, x_target, 1)
+        rel_mbias_nnid = np.abs(y_mc - y_target) / np.abs(y_target_safe)
+        rel_mbias_avgr = np.abs(x_mc - x_target) / np.abs(x_target_safe)
+        rel_mbias_nnid = rel_mbias_nnid[slice_indices]
+        rel_mbias_avgr = rel_mbias_avgr[slice_indices]
+
+    # ===== Figure 1: NNID (y-axis) uncertainty budget =====
+    fig_nnid, ax_nnid = plt.subplots(figsize=figsize)
+
+    # Plot total uncertainty
+    ax_nnid.plot(
+        plot_indices,
+        total_uncert_nnid,
+        "--",
+        color="black",
+        label="Total unc.",
+        linewidth=2,
+    )
+
+    # Plot individual uncertainties
+    for syst_name in syst_info_nnid.keys():
+        syst_uncert = syst_uncerts_nnid[syst_name][slice_indices]
+        ax_nnid.plot(
+            plot_indices,
+            syst_uncert,
+            "-",
+            color=syst_info_nnid[syst_name]["color"],
+            label=syst_info_nnid[syst_name]["name"],
+        )
+
+    # Plot method bias if available
+    if rel_mbias_nnid is not None:
+        ax_nnid.fill_between(
+            plot_indices,
+            0,
+            rel_mbias_nnid,
+            color="gray",
+            alpha=0.3,
+            label="Method bias",
+        )
+
+    # Set plot properties
+    ax_nnid.set_xlabel("$i$")
+    ax_nnid.set_ylabel("NNID uncertainty")
+    ax_nnid.set_xlim(plot_indices[0], plot_indices[-1])
+
+    # Set y-axis limits
+    if rel_mbias_nnid is not None:
+        top_uncert = np.nanmax(np.concatenate([total_uncert_nnid, rel_mbias_nnid]))
+    else:
+        top_uncert = np.nanmax(total_uncert_nnid)
+    if top_uncert > 0.2 or np.isnan(top_uncert):
+        ax_nnid.set_ylim(bottom=0.0, top=0.2)
+    else:
+        ax_nnid.set_ylim(bottom=0.0, top=top_uncert * 1.4)
+
+    ax_nnid.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.4, -0.1),
+        ncol=4,
+        fontsize=8,
+        frameon=False,
+    )
+
+    mh.atlas.label(
+        ax=ax_nnid,
+        llabel=llab if not data else "Internal",
+        data=data,
+        rlabel=rlab,
+    )
+
+    fig_nnid.tight_layout()
+    fig_nnid.subplots_adjust(bottom=0.2)
+
+    # ===== Figure 2: avg_r (x-axis) uncertainty budget =====
+    fig_avgr, ax_avgr = plt.subplots(figsize=figsize)
+
+    # Plot total uncertainty
+    ax_avgr.plot(
+        plot_indices,
+        total_uncert_avgr,
+        "--",
+        color="black",
+        label="Total unc.",
+        linewidth=2,
+    )
+
+    # Plot individual uncertainties
+    for syst_name in syst_info_avgr.keys():
+        syst_uncert = syst_uncerts_avgr[syst_name][slice_indices]
+        ax_avgr.plot(
+            plot_indices,
+            syst_uncert,
+            "-",
+            color=syst_info_avgr[syst_name]["color"],
+            label=syst_info_avgr[syst_name]["name"],
+        )
+
+    # Plot method bias if available
+    if rel_mbias_avgr is not None:
+        ax_avgr.fill_between(
+            plot_indices,
+            0,
+            rel_mbias_avgr,
+            color="gray",
+            alpha=0.3,
+            label="Method bias",
+        )
+
+    # Set plot properties
+    ax_avgr.set_xlabel("$i$")
+    ax_avgr.set_ylabel(r"$\langle r \rangle$ uncertainty")
+    ax_avgr.set_xlim(plot_indices[0], plot_indices[-1])
+
+    # Set y-axis limits
+    if rel_mbias_avgr is not None:
+        top_uncert = np.nanmax(np.concatenate([total_uncert_avgr, rel_mbias_avgr]))
+    else:
+        top_uncert = np.nanmax(total_uncert_avgr)
+    if top_uncert > 0.2 or np.isnan(top_uncert):
+        ax_avgr.set_ylim(bottom=0.0, top=0.2)
+    else:
+        ax_avgr.set_ylim(bottom=0.0, top=top_uncert * 1.4)
+
+    ax_avgr.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.4, -0.1),
+        ncol=4,
+        fontsize=8,
+        frameon=False,
+    )
+
+    mh.atlas.label(
+        ax=ax_avgr,
+        llabel=llab if not data else "Internal",
+        data=data,
+        rlabel=rlab,
+    )
+
+    fig_avgr.tight_layout()
+    fig_avgr.subplots_adjust(bottom=0.2)
+
+    return fig_nnid, fig_avgr
+
+
+def plot_nnid_pseudodata(
+    mc_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    pd_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    hv_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
+    low_limit: int = 0,
+    high_limit: Optional[int] = None,
+    point_indices: Optional[np.ndarray] = None,
+    mc_label: str = "Measurement",
+    pd_label: str = "Truth Pseudodata",
+    figsize=(6.4, 4.8),
+    xlim: tuple[float, float] = (6, 70),
+    ylim: tuple[float, float] = (0, 10),
+    xlabel: str = r"$\langle r \rangle$ [GeV]",
+    ylabel: str = "NNID",
+    llab: str = "Simulation Internal",
+    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+    color: str = "blue",
+    plot_uncertainty_budget: bool = False,
+) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
+    """Plot NNID results with uncertainties.
+
+    Arguments:
+    ----------
+    mc_results : dict
+        Dictionary of measurement results (e.g. truth_mc_results).
+    pd_results : dict
+        Dictionary of pseudodata results (e.g. truth_pd_results).
+    hv_results : dict, optional
+        Dictionary of hidden variable results (e.g. truth_hv_results).
+    low_limit : int
+        Low limit for the subset of points to plot.
+    high_limit : int, optional
+        High limit for the subset of points to plot. If None, plot all points.
+        Take a subset of the points in the results indexed by these limits
+    point_indices : np.ndarray, optional
+        Array of point indices for uncertainty budget x-axis. If None, uses
+        np.arange(n_points).
+    mc_label : str
+        Label for the measurement in the legend.
+    pd_label : str
+        Label for the pseudodata in the legend.
+    figsize : tuple
+        Figure size.
+    xlabel : str
+        X-axis label.
+    ylabel : str
+        Y-axis label.
+    color : str
+        Color for the measurement crosses.
+    plot_uncertainty_budget : bool
+        If True, also generate uncertainty budget plots for NNID and avg_r.
+
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        The produced main figure. If plot_uncertainty_budget is True, returns
+        a tuple of (main_fig, nnid_uncert_fig, avgr_uncert_fig).
+    """
+    # Merge HV results into MC results for uncertainty calculation if provided
+    combined_results = mc_results.copy()
+    if hv_results is not None:
+        combined_results.update(hv_results)
+
+    # Calculate absolute uncertainties for both axes
+    # index 0 is NNID (y), index 1 is avg_r (x)
+    dy, _, _ = get_nnid_uncertainties(combined_results, index=0)
+    dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
+
+    # Extract nominal measurement and pseudodata
+    # Results are stored as (nnids, avg_r)
+    y_prior, x_prior = mc_results["prior"]
+    y_mc, x_mc = mc_results["nominal"]
+    y_pd, x_pd = pd_results["truthpd"]
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot truth pseudodata as black points
+    ax.scatter(
+        x_prior[low_limit:high_limit],
+        y_prior[low_limit:high_limit],
+        color="gray",
+        label="Prior",
+        s=15,
+        zorder=1,
+    )
+    ax.scatter(
+        x_pd[low_limit:high_limit],
+        y_pd[low_limit:high_limit],
+        color="black",
+        label=pd_label,
+        s=15,
+        zorder=2,
+    )
+
+    # Plot measurement as blue crosses with error bars in both directions
+    ax.errorbar(
+        x_mc[low_limit:high_limit],
+        y_mc[low_limit:high_limit],
+        xerr=dx[low_limit:high_limit],
+        yerr=dy[low_limit:high_limit],
+        fmt="+",
+        color=color,
+        label=mc_label,
+        markersize=8,
+        zorder=3,
+        capsize=2,
+        linewidth=1,
+    )
+
+    ax.set_ylim(ylim)
+    ax.set_xlim(xlim)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.legend(frameon=False)
+
+    mh.atlas.label(
+        ax=ax,
+        llabel=llab,
+        rlabel=rlab,
+    )
+
+    if plot_uncertainty_budget:
+        # Generate uncertainty budget plots with method bias
+        fig_nnid, fig_avgr = plot_nnid_uncert_budget(
+            combined_results=combined_results,
+            measured_key="nominal",
+            target_results=pd_results,
+            target_key="truthpd",
+            low_limit=low_limit,
+            high_limit=high_limit,
+            point_indices=point_indices,
+            figsize=figsize,
+            llab=llab,
+            rlab=rlab,
+            data=False,
+        )
+        return fig, fig_nnid, fig_avgr
+
+    return fig
+
+
+def plot_nnid_data(
+    mc_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    hv_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    madgraph_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    sherpa_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    low_limit: int = 0,
+    high_limit: Optional[int] = None,
+    point_indices: Optional[np.ndarray] = None,
+    mc_label: str = "Data",
+    madgraph_label: str = "MadGraph",
+    sherpa_label: str = "Sherpa",
+    figsize: tuple[float, float] = (6.4, 4.8),
+    xlim: tuple[float, float] = (6, 70),
+    ylim: tuple[float, float] = (0, 10),
+    xlabel: str = r"$\langle r \rangle$ [GeV]",
+    ylabel: str = "NNID",
+    llab: str = "Internal",
+    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+    plot_uncertainty_budget: bool = False,
+) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
+    """Plot NNID data measurement compared to truth generators.
+
+    Arguments:
+    ----------
+    mc_results : dict
+        Dictionary of measurement results (e.g. truth_mc_results).
+    hv_results : dict
+        Dictionary of hidden variable results for uncertainty calculation.
+    madgraph_results : dict
+        Dictionary of MadGraph truth generator results.
+    sherpa_results : dict
+        Dictionary of Sherpa truth generator results.
+    low_limit : int
+        Low limit for the subset of points to plot.
+    high_limit : int, optional
+        High limit for the subset of points to plot. If None, plot all points.
+    point_indices : np.ndarray, optional
+        Array of point indices for uncertainty budget x-axis. If None, uses
+        np.arange(n_points).
+    mc_label : str
+        Label for the measurement in the legend.
+    madgraph_label : str
+        Label for the MadGraph prediction in the legend.
+    sherpa_label : str
+        Label for the Sherpa prediction in the legend.
+    figsize : tuple
+        Figure size.
+    xlabel : str
+        X-axis label.
+    ylabel : str
+        Y-axis label.
+    llab : str
+        Left label for ATLAS label.
+    rlab : str
+        Right label for ATLAS label.
+    plot_uncertainty_budget : bool
+        If True, also generate uncertainty budget plots for NNID and avg_r.
+
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        The produced main figure. If plot_uncertainty_budget is True, returns
+        a tuple of (main_fig, nnid_uncert_fig, avgr_uncert_fig).
+    """
+    # Merge HV results into MC results for uncertainty calculation
+    combined_results = mc_results.copy()
+    combined_results.update(hv_results)
+
+    # Calculate absolute uncertainties for measurement (both axes)
+    # index 0 is NNID (y), index 1 is avg_r (x)
+    dy, _, _ = get_nnid_uncertainties(combined_results, index=0)
+    dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
+
+    # Calculate theory uncertainties for MadGraph and Sherpa
+    dy_madgraph = get_theory_nnid_uncertainties(
+        madgraph_results,
+        index=0,
+        is_madgraph=True,
+        measured_key="madgraph",
+    )
+    dx_madgraph = get_theory_nnid_uncertainties(
+        madgraph_results,
+        index=1,
+        is_madgraph=True,
+        measured_key="madgraph",
+    )
+    dy_sherpa = get_theory_nnid_uncertainties(
+        sherpa_results,
+        index=0,
+        is_madgraph=False,
+        measured_key="sherpa",
+    )
+    dx_sherpa = get_theory_nnid_uncertainties(
+        sherpa_results,
+        index=1,
+        is_madgraph=False,
+        measured_key="sherpa",
+    )
+
+    # Extract nominal measurement and generator predictions
+    # Results are stored as (nnids, avg_r)
+    y_mc, x_mc = mc_results["nominal"]
+    y_madgraph, x_madgraph = madgraph_results["madgraph"]
+    y_sherpa, x_sherpa = sherpa_results["sherpa"]
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot MadGraph prediction
+    ax.errorbar(
+        x_madgraph[low_limit:high_limit],
+        y_madgraph[low_limit:high_limit],
+        color="purple",
+        label=madgraph_label,
+        marker="o",
+        linestyle="none",
+        markersize=4,
+        linewidth=1,
+    )
+
+    box_height = 2 * dy_madgraph[low_limit:high_limit]
+    box_width = 2 * dx_madgraph[low_limit:high_limit]
+    for x, y, h, w in zip(
+        x_madgraph[low_limit:high_limit],
+        y_madgraph[low_limit:high_limit],
+        box_height,
+        box_width,
+    ):
+        ax.add_patch(
+            Rectangle(
+                (x - w / 2, y - h / 2),
+                w,
+                h,
+                alpha=0.3,
+                facecolor="purple",
+                edgecolor=None,
+            )
+        )
+
+    # Plot Sherpa prediction
+    ax.plot(
+        x_sherpa[low_limit:high_limit],
+        y_sherpa[low_limit:high_limit],
+        color="orange",
+        label=sherpa_label,
+        marker="o",
+        linestyle="none",
+        markersize=4,
+        linewidth=1,
+    )
+    box_height = 2 * dy_sherpa[low_limit:high_limit]
+    box_width = 2 * dx_sherpa[low_limit:high_limit]
+    for x, y, h, w in zip(
+        x_sherpa[low_limit:high_limit],
+        y_sherpa[low_limit:high_limit],
+        box_height,
+        box_width,
+    ):
+        ax.add_patch(
+            Rectangle(
+                (x - w / 2, y - h / 2),
+                w,
+                h,
+                alpha=0.3,
+                facecolor="orange",
+                edgecolor=None,
+            )
+        )
+
+    # Plot measurement as black crosses with error bars in both directions
+    ax.errorbar(
+        x_mc[low_limit:high_limit],
+        y_mc[low_limit:high_limit],
+        xerr=dx[low_limit:high_limit],
+        yerr=dy[low_limit:high_limit],
+        fmt="+",
+        color="black",
+        label=mc_label,
+        markersize=8,
+        capsize=2,
+        linewidth=1,
+    )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
+    # Set legend order: MadGraph, Sherpa, Measurement
+    handles, labels = ax.get_legend_handles_labels()
+    order = [
+        labels.index(madgraph_label),
+        labels.index(sherpa_label),
+        labels.index(mc_label),
+    ]
+    ax.legend(
+        [handles[i] for i in order],
+        [labels[i] for i in order],
+        frameon=False,
+    )
+
+    mh.atlas.label(
+        ax=ax,
+        llabel=llab,
+        data=True,
+        rlabel=rlab,
+    )
+
+    fig.tight_layout()
+
+    if plot_uncertainty_budget:
+        # Generate uncertainty budget plots (no method bias for data)
+        fig_nnid, fig_avgr = plot_nnid_uncert_budget(
+            combined_results=combined_results,
+            measured_key="nominal",
+            target_results=None,  # No target for data measurement
+            low_limit=low_limit,
+            high_limit=high_limit,
+            point_indices=point_indices,
+            figsize=figsize,
+            llab=llab,
+            rlab=rlab,
+            data=True,
+        )
+        return fig, fig_nnid, fig_avgr
+
+    return fig
 
 
 def plot_jets_eta_phi(
@@ -120,16 +847,21 @@ def plot_jets_eta_phi(
 
 
 def compare_to_target(
-    all_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    measurement_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     prior_key: str = "prior",
     measured_key: str = "nominal",
     target_key: str = "truthpd",
     prior_label: str = "Prior",
     measured_label: str = "Reweighted",
-    target_label: str = "Truth Pseudodata",
+    target_label: str = "Target",
+    llab: str = "Simulation Internal",
+    rlab: str = "Z+jets Omnifold",
+    normalize: bool = False,
     figsize=(6.4, 4.8),
     ylabel: str = "A.U.",
     xlabel: str = "Obs",
+    xlim=None,
     ylim=None,
     rlim=(0.8, 1.2),
     log_xscale: bool = True,
@@ -153,24 +885,33 @@ def compare_to_target(
         - dims: The correlation dimension values
         - dims_var: The variance of the correlation dimension values
         - midbins: The midpoints of the bins used in the calculation
+    target_hists : same as measurement_hists but for the target
     prior_key : str, optional
         Key in all_hists for the prior distribution (default: "prior").
     measured_key : str, optional
         Key in all_hists for the measured/reweighted distribution (default: "nominal").
     truth_key : str, optional
         Key in all_hists for the truth pseudodata distribution (default: "truthpd").
+    llab : str, optional
+        Left label for ATLAS label (default: "Simulation Internal").
+    rlab : str, optional
+        Right label for ATLAS label (default: "Z+jets Omnifold").
     prior_label : str, optional
         Label for the prior distribution in the legend (default: "Prior").
     measured_label : str, optional
         Label for the measured distribution in the legend (default: "Reweighted").
     truth_label : str, optional
         Label for the truth distribution in the legend (default: "Truth Pseudodata").
+    normalize : bool, optional
+        If True, normalize the histograms (default: False).
     figsize : tuple, optional
         Figure size in inches (width, height) (default: (10, 8)).
     ylabel : str, optional
         Label for the y-axis of the main plot (default: "Correlation Dimension").
     xlabel : str, optional
         Label for the x-axis of the ratio plot (default: "EMD (GeV)").
+    xlim : tuple or None, optional
+        Limits for the x-axis of the main plot (default: None).
     ylim : tuple or None, optional
         Limits for the y-axis of the main plot (default: None).
     rlim : tuple, optional
@@ -193,25 +934,31 @@ def compare_to_target(
     """
 
     # Extract the histograms
-    if prior_key not in all_hists:
-        available = list(all_hists.keys())
+    if prior_key not in measurement_hists:
+        available = list(measurement_hists.keys())
         raise KeyError(
             f"Key '{prior_key}' not found in all_hists. Available keys: {available}"
         )
-    if measured_key not in all_hists:
-        available = list(all_hists.keys())
+    if measured_key not in measurement_hists:
+        available = list(measurement_hists.keys())
         raise KeyError(
             f"Key '{measured_key}' not found in all_hists. Available keys: {available}"
         )
-    if target_key not in all_hists:
-        available = list(all_hists.keys())
+    if target_key not in target_hists:
+        available = list(target_hists.keys())
         raise KeyError(
             f"Key '{target_key}' not found in all_hists. Available keys: {available}"
         )
 
-    prior_hist, _, bin_edges = all_hists[prior_key]
-    measured_hist, _, _ = all_hists[measured_key]
-    target_hist, _, _ = all_hists[target_key]
+    prior_hist, _, bin_edges = measurement_hists[prior_key]
+    measured_hist, _, _ = measurement_hists[measured_key]
+    target_hist, _, _ = target_hists[target_key]
+
+    # Normalize the histograms if desired
+    if normalize:
+        prior_hist = prior_hist / np.sum(prior_hist)
+        measured_hist = measured_hist / np.sum(measured_hist)
+        target_hist = target_hist / np.sum(target_hist)
 
     # Create figure and axes if not provided
     if fig is None:
@@ -262,12 +1009,16 @@ def compare_to_target(
     if ylim is not None:
         ax.set_ylim(ylim)
     ax.set_ylabel(ylabel)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    else:
+        ax.set_xlim(bin_edges[0], bin_edges[-1])
     if not linear_yscale:
         ax.set_yscale("log")
     if log_xscale:
         ax.set_xscale("log")
     ax.set_xticks([])
-    ax.legend(loc="upper right", frameon=False)
+    ax.legend(loc="center right", frameon=False)
 
     # Calculate ratios
     # Avoid division by zero
@@ -276,7 +1027,18 @@ def compare_to_target(
     measured_ratio = measured_plot / target_plot_safe
 
     # Plot ratios
-    axr.hlines(1, bin_edges[0], bin_edges[-1], color="black", linestyle="--", alpha=0.8)
+    if xlim is not None:
+        axr.set_xlim(xlim)
+    else:
+        axr.set_xlim(bin_edges[0], bin_edges[-1])
+    axr.hlines(
+        1,
+        axr.get_xlim()[0],
+        axr.get_xlim()[1],
+        color="black",
+        linestyle="--",
+        alpha=0.8,
+    )
     axr.plot(
         bin_edges,
         prior_ratio,
@@ -292,31 +1054,146 @@ def compare_to_target(
     axr.set_xlabel(xlabel)
     if log_xscale:
         axr.set_xscale("log")
-    axr.set_ylabel("Ratio to truth")
+    axr.set_ylabel("Ratio")
     axr.set_ylim(rlim)
-    axr.grid(True, alpha=0.3)
 
-    fig.tight_layout()
+    mh.atlas.label(
+        ax=ax,
+        llabel=llab,
+        rlabel=rlab,
+    )
+
+    return fig
+
+
+def plot_correlation_matrix(
+    total_cov: np.ndarray,
+    bins: np.ndarray,
+    llab: str = "Simulation Internal",
+    figsize: tuple[float, float] = (8, 7),
+    simple_labels: bool = False,
+) -> plt.Figure:
+    """Create a correlation matrix plot from the covariance matrix.
+
+    Arguments:
+    ----------
+    total_cov : np.ndarray
+        Total covariance matrix (n_bins x n_bins).
+    bins : np.ndarray
+        Array of bin edges for labeling.
+    llab : str, optional
+        Left label for ATLAS label (default: "Simulation Internal").
+    figsize : tuple, optional
+        Figure size in inches (width, height). Default: (8, 7).
+    simple_labels : bool, optional
+        If True, use bin indices instead of bin edge labels and omit
+        correlation value annotations. Useful for observables with many
+        bins (e.g., EEC). Default: False.
+
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        Figure object for the correlation matrix plot.
+    """
+    # Calculate correlation matrix from covariance matrix
+    # correlation[i,j] = covariance[i,j] / sqrt(covariance[i,i] * covariance[j,j])
+    n_bins = total_cov.shape[0]
+    std_devs = np.sqrt(np.diag(total_cov))
+
+    # Handle zero standard deviations to avoid division by zero
+    std_devs = np.where(std_devs == 0, 1, std_devs)
+
+    # Calculate correlation matrix
+    corr_matrix = total_cov / np.outer(std_devs, std_devs)
+
+    # Clip values to [-1, 1] to handle numerical precision issues
+    corr_matrix = np.clip(corr_matrix, -1, 1)
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Create the heatmap with origin='lower' to match standard convention
+    # (smallest bins at bottom-left)
+    im = ax.imshow(
+        corr_matrix,
+        cmap="viridis",
+        vmin=-1,
+        vmax=1,
+        aspect="equal",
+        origin="lower",
+    )
+
+    # Add colorbar
+    fig.colorbar(im, ax=ax, shrink=0.8)
+
+    if simple_labels:
+        # Use bin indices for axes labels (useful for many bins)
+        ax.set_xlabel("Bin index")
+        ax.set_ylabel("Bin index")
+        # Let matplotlib auto-select tick positions for cleaner display
+        ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    else:
+        # Create bin labels from bin edges (round to hundredths for decimal edges)
+        bin_labels = [f"({bins[i]:.2f}, {bins[i+1]:.2f})" for i in range(len(bins) - 1)]
+
+        # Set ticks and labels
+        ax.set_xticks(np.arange(n_bins))
+        ax.set_yticks(np.arange(n_bins))
+        ax.set_xticklabels(bin_labels, rotation=45, ha="right")
+        ax.set_yticklabels(bin_labels)
+
+        # Add correlation values as text annotations
+        for i in range(n_bins):
+            for j in range(n_bins):
+                # Choose text color based on background for readability
+                corr_val = corr_matrix[i, j]
+                text_color = "white" if abs(corr_val) < 0.5 else "black"
+                ax.text(
+                    j,
+                    i,
+                    f"{corr_val:.2f}",
+                    ha="center",
+                    va="center",
+                    color=text_color,
+                    fontsize=10,
+                )
+
+    mh.atlas.label(
+        loc=0,
+        llabel=llab,
+        rlabel="",
+    )
 
     return fig
 
 
 def plot_measurement_with_uncertainties(
-    all_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    measurement_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    target2_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = None,
     measured_key: str = "nominal",
-    measured_label: str = "Reweighted",
+    measured_label: str = "Measurement",
     target_key: str = "truthpd",
     target_label: str = "Truth Pseudodata",
     target2_key: str = None,
     target2_label: str = "MadGraph",
     data_measurement_mode: bool = False,
+    normalize: bool = False,
+    llab: str = "Simulation Internal",
+    rlab: str = "Z+jets Omnifold",
     figsize=(6.4, 4.8),
-    ylabel: str = "Correlation Dimension",
+    ylabel: str = "Corr. Dim.",
     xlabel: str = "Q [GeV]",
+    xlim=None,
+    ylim=None,
+    rlim=(0.9, 1.1),
     log_xscale: bool = True,
     linear_yscale: bool = False,
     color: str = "blue",
-) -> tuple[plt.Figure, plt.Figure]:
+    do_chi2_test: bool = False,
+    simple_corr_labels: bool = False,
+) -> tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot cross-section measurement and uncertainty budget.
 
     This function produces two figures from correlation dimension histograms:
@@ -329,12 +1206,14 @@ def plot_measurement_with_uncertainties(
 
     Arguments:
     ----------
-    all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
+    measurement_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
         Dictionary mapping histogram names to tuples of (dims, dims_var, midbins)
         where:
         - dims: The correlation dimension values
         - dims_var: The variance of the correlation dimension values
         - midbins: The bin edges (despite the name, these are edges not midpoints)
+    target_hists : same as measurement_hists but for the target
+    target2_hists : same as measurement_hists but for the second target
     measured_key : str, optional
         Key in all_hists for the measured/unfolded distribution (default: "nominal").
     measured_label : str, optional
@@ -350,18 +1229,37 @@ def plot_measurement_with_uncertainties(
         Label for the second target distribution in the legend (default: "MadGraph").
     data_measurement_mode : bool, optional
         If True, compares data measurement to truth generators
+    normalize : bool, optional
+        If True, normalize the histograms (default: False).
+    llab : str, optional
+        Left label for ATLAS label (default: "Simulation Internal").
+    rlab : str, optional
+        Right label for ATLAS label (default: "Z+jets Omnifold").
     figsize : tuple, optional
         Figure size in inches (width, height) (default: (6.4, 4.8)).
     ylabel : str, optional
         Label for the y-axis (default: "Correlation Dimension").
     xlabel : str, optional
         Label for the x-axis (default: "Q [GeV]").
+    xlim : tuple or None, optional
+        Limits for the x-axis (default: None).
+    ylim : tuple or None, optional
+        Limits for the y-axis (default: None).
+    rlim : tuple, optional
+        Limits for the y-axis of the ratio plot (default: (0.9, 1.1)).
     log_xscale : bool, optional
         If True, use logarithmic scale for x-axis (default: True).
     linear_yscale : bool, optional
         If True, use linear scale for y-axis (default: False, i.e., log scale).
     color : str, optional
         Color to use for the measured distribution (default: "blue").
+    do_chi2_test : bool, optional
+        If True and not in data_measurement_mode, performs chi-squared test
+        comparing measurement to target and prints results (default: False).
+    simple_corr_labels : bool, optional
+        If True, use bin indices instead of bin edge labels in the correlation
+        matrix plot and omit correlation value annotations. Useful for
+        observables with many bins (e.g., EEC). Default: False.
 
     Returns:
     --------
@@ -369,33 +1267,64 @@ def plot_measurement_with_uncertainties(
         Figure with cross-section measurement plot (main plot + ratio).
     fig_uncertainty_budget : matplotlib.figure.Figure
         Figure with uncertainty budget plot showing individual contributions.
+    fig_correlation_matrix : matplotlib.figure.Figure
+        Figure with correlation matrix plot.
     """
 
-    # Extract measured and target histograms
-    if measured_key not in all_hists:
-        available = list(all_hists.keys())
-        raise KeyError(
-            f"Key '{measured_key}' not found in all_hists. Available keys: {available}"
+    # Normalize all histograms if desired
+    if normalize:
+        norm_factor_measurement = np.sum(measurement_hists[measured_key][0])
+        norm_factor_target = np.sum(target_hists[target_key][0])
+        norm_factor_target2 = (
+            np.sum(target2_hists[target2_key][0]) if target2_key is not None else None
         )
-    if target_key not in all_hists:
-        available = list(all_hists.keys())
+        for key in measurement_hists:
+            measurement_hists[key] = (
+                measurement_hists[key][0] / norm_factor_measurement,
+                measurement_hists[key][1] / norm_factor_measurement**2,
+                measurement_hists[key][2],
+            )
+        for key in target_hists:
+            target_hists[key] = (
+                target_hists[key][0] / norm_factor_target,
+                target_hists[key][1] / norm_factor_target**2,
+                target_hists[key][2],
+            )
+        if target2_key is not None:
+            for key in target2_hists:
+                target2_hists[key] = (
+                    target2_hists[key][0] / norm_factor_target2,
+                    target2_hists[key][1] / norm_factor_target2**2,
+                    target2_hists[key][2],
+                )
+
+    # Extract measured and target histograms
+    if measured_key not in measurement_hists:
+        available = list(measurement_hists.keys())
         raise KeyError(
-            f"Key '{target_key}' not found in all_hists. Available keys: {available}"
+            f"Key '{measured_key}' not found in measurement_hists. "
+            f"Available keys: {available}"
+        )
+    if target_key not in target_hists:
+        available = list(target_hists.keys())
+        raise KeyError(
+            f"Key '{target_key}' not found in target_hists. "
+            f"Available keys: {available}"
         )
 
-    measured_hist, _, bin_edges = all_hists[measured_key]
-    target_hist, _, _ = all_hists[target_key]
+    measured_hist, _, bin_edges = measurement_hists[measured_key]
+    target_hist, _, _ = target_hists[target_key]
 
     # Extract second target if provided
     target2_hist = None
     if target2_key is not None:
-        if target2_key not in all_hists:
-            available = list(all_hists.keys())
+        if target2_key not in target2_hists:
+            available = list(target2_hists.keys())
             raise KeyError(
-                f"Key '{target2_key}' not found in all_hists. "
+                f"Key '{target2_key}' not found in target2_hists. "
                 f"Available keys: {available}"
             )
-        target2_hist, _, _ = all_hists[target2_key]
+        target2_hist, _, _ = target2_hists[target2_key]
 
     # Calculate method bias (only in standard mode, not data comparison mode)
     if data_measurement_mode:
@@ -409,31 +1338,42 @@ def plot_measurement_with_uncertainties(
     bin_centers = (bin_edges[1:] + bin_edges[:-1]) / 2
     bin_errors = (bin_edges[1:] - bin_edges[:-1]) / 2
 
-    # Normalize targets to match measured
-    norm_factor = np.sum(measured_hist) / np.sum(target_hist)
-    norm_target_hist = norm_factor * target_hist
-    if target2_hist is not None:
-        norm_factor2 = np.sum(measured_hist) / np.sum(target2_hist)
-        norm_target2_hist = norm_factor2 * target2_hist
-
     # Create uncertainty calculator (using default definitions)
     uncertainty_calculator = uncertainties.UncertaintyCalculator()
 
     # Calculate systematic uncertainties using UncertaintyCalculator
-    syst_vars, syst_info = uncertainty_calculator.calculate_uncertainties(
-        all_hists, measured_key=measured_key
+    syst, syst_covs, syst_info = uncertainty_calculator.calculate_uncertainties(
+        measurement_hists, measured_key=measured_key
+    )
+    total_vars = np.sum(np.array(list(syst.values())) ** 2, axis=0)
+    total_uncert = np.sqrt(total_vars)
+
+    # Calculate total covariance matrix
+    total_cov = np.sum(list(syst_covs.values()), axis=0)
+
+    # Calculate chi2 covariance matrix (excludes certain systematics)
+    chi2_cov = np.sum(
+        [
+            syst_covs[key]
+            for key in syst_covs.keys()
+            if key not in ["Muon", "Tracking", "lumi", "pileup"]
+        ],
+        axis=0,
     )
 
-    # Calculate total variance and uncertainty
-    total_uncert = uncertainty_calculator.get_total_uncertainty(
-        all_hists, measured_key=measured_key
-    )
+    # If in data measurement mode, calculate theory uncertainties for targets
+    if data_measurement_mode:
+        target_uncert = uncertainty_calculator.get_total_theory_uncertainty(
+            target_hists, measured_key=target_key, is_madgraph=True
+        )
+        if target2_key is not None:
+            target2_uncert = uncertainty_calculator.get_total_theory_uncertainty(
+                target2_hists, measured_key=target2_key, is_madgraph=False
+            )
 
-    # Duplicate last values for step plots (only used in pseudo measurement mode)
-    target_plot = np.append(norm_target_hist, norm_target_hist[-1])
-    # Calculate relative total uncertainty for uncertainty budget plot
-    rel_total_uncert = total_uncert / np.where(measured_hist > 0, measured_hist, 1)
-    rel_total_uncert_plot = np.append(rel_total_uncert, rel_total_uncert[-1])
+    # Duplicate last values for step plots
+    target_plot = np.append(target_hist, target_hist[-1])  # For pseudo-measurement
+    total_uncert_plot = np.append(total_uncert, total_uncert[-1])
 
     # ===== Figure 1: Cross-section plot =====
     fig_cross_section, (ax, rax) = plt.subplots(
@@ -448,33 +1388,58 @@ def plot_measurement_with_uncertainties(
     # Main plot
     if data_measurement_mode:
         # In data measurement mode: targets as colored points, measured as black points
-        ax.errorbar(
+        ax.plot(
             bin_centers,
-            norm_target_hist,
-            fmt="o",
+            target_hist,
+            "o",
             label=target_label,
             color="purple",
         )
+        box_height = 2 * target_uncert * target_hist
+        for x, y, h, w in zip(bin_centers, target_hist, box_height, bin_errors):
+            box = Rectangle(
+                (x - w / 2, y - h / 2),
+                w,
+                h,
+                alpha=0.3,
+                facecolor="purple",
+                edgecolor=None,
+            )
+            ax.add_patch(box)
 
         # Add second target if provided
-        if norm_target2_hist is not None:
-            ax.errorbar(
+        if target2_hist is not None:
+            ax.plot(
                 bin_centers,
-                norm_target2_hist,
-                fmt="o",
+                target2_hist,
+                "o",
                 label=target2_label,
                 color="orange",
             )
+            box_height = 2 * target2_uncert * target2_hist
+            for x, y, h, w in zip(bin_centers, target2_hist, box_height, bin_errors):
+                box = Rectangle(
+                    (x - w / 2, y - h / 2),
+                    w,
+                    h,
+                    alpha=0.3,
+                    facecolor="orange",
+                    edgecolor=None,
+                )
+                ax.add_patch(box)
 
+        # Measurement
         ax.errorbar(
             bin_centers,
             measured_hist,
+            marker="+",
+            linestyle="none",
             xerr=bin_errors,
-            yerr=total_uncert,
-            fmt="+",
+            yerr=total_uncert * measured_hist,
             label=measured_label,
             color="black",
         )
+
     else:
         # Standard mode: target as dashed line, measured as colored points
         ax.plot(
@@ -488,8 +1453,9 @@ def plot_measurement_with_uncertainties(
         ax.errorbar(
             bin_centers,
             measured_hist,
-            yerr=total_uncert,
-            fmt="o",
+            yerr=total_uncert * measured_hist,
+            marker="o",
+            linestyle="none",
             label=measured_label,
             color=color,
         )
@@ -499,10 +1465,17 @@ def plot_measurement_with_uncertainties(
         ax.set_yscale("log")
     if log_xscale:
         ax.set_xscale("log")
-    ax.set_xlim(bin_edges[0], bin_edges[-1])
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    else:
+        ax.set_xlim(bin_edges[0], bin_edges[-1])
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    else:
+        ax.set_ylim(0, 12)
     ax.set_ylabel(ylabel)
     ax.set_xticks([])
-    ax.legend()
+    ax.legend(fontsize=12, loc="lower right")
     ax.tick_params(axis="x", direction="in", top=True)
 
     # Ratio plot
@@ -511,24 +1484,26 @@ def plot_measurement_with_uncertainties(
         # In data measurement mode: ratio is target/measured
         # Avoid division by zero
         measured_safe = np.where(measured_hist > 0, measured_hist, np.nan)
-        ratio = norm_target_hist / measured_safe
+        ratio = target_hist / measured_safe
+        ratio_uncert = np.sqrt(target_uncert**2 + total_uncert**2)
         rax.errorbar(
             bin_centers,
             ratio,
             xerr=bin_errors,
-            yerr=rel_total_uncert,
+            yerr=ratio_uncert,
             fmt="o",
             color="purple",
         )
 
         # Add second target ratio if provided
-        if norm_target2_hist is not None:
-            ratio2 = norm_target2_hist / measured_safe
+        if target2_hist is not None:
+            ratio2 = target2_hist / measured_safe
+            ratio2_uncert = np.sqrt(target2_uncert**2 + total_uncert**2)
             rax.errorbar(
                 bin_centers,
                 ratio2,
                 xerr=bin_errors,
-                yerr=rel_total_uncert,
+                yerr=ratio2_uncert,
                 fmt="o",
                 color="orange",
             )
@@ -540,23 +1515,39 @@ def plot_measurement_with_uncertainties(
             bin_centers,
             measured_hist / target_plot[:-1],  # Remove duplicated last bin
             xerr=bin_errors,
-            yerr=rel_total_uncert,
+            yerr=total_uncert,
             fmt="o",
             color=color,
         )
         rax.set_ylabel("Ratio to target")
 
-    rax.set_ylim(0.5, 1.5)
-    rax.set_yticks([0.5, 1.0, 1.5])
     rax.set_xlabel(xlabel)
     if log_xscale:
         rax.set_xscale("log")
-    rax.set_xlim(bin_edges[0], bin_edges[-1])
-    rax.tick_params(axis="x", direction="in", bottom=True, top=False)
-    rax.grid(True, alpha=0.3)
+    if xlim is not None:
+        rax.set_xlim(xlim)
+    else:
+        rax.set_xlim(bin_edges[0], bin_edges[-1])
+    if rlim is not None:
+        rax.set_ylim(rlim)
+    else:
+        rax.set_ylim(0.9, 1.1)
 
-    fig_cross_section.tight_layout()
-    fig_cross_section.subplots_adjust(hspace=0, top=0.95)
+    # Calculate chi-squared test if requested (only when not in data_measurement_mode)
+    chi2_label = ""
+    if do_chi2_test and not data_measurement_mode:
+        dof = len(bin_edges) - 1
+        D = measured_hist - target_hist
+        chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
+        p_value = 1 - stats.chi2.cdf(chi2, dof)
+        chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
+        print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
+
+    mh.atlas.label(
+        ax=ax,
+        llabel=llab,
+        rlabel=rlab + chi2_label,
+    )
 
     # ===== Figure 2: Uncertainty budget plot =====
     fig_uncertainty_budget, ax = plt.subplots(figsize=figsize)
@@ -564,7 +1555,7 @@ def plot_measurement_with_uncertainties(
     # Plot total uncertainty
     ax.plot(
         bin_edges,
-        rel_total_uncert_plot,
+        total_uncert_plot,
         "--",
         color="black",
         label="Total unc.",
@@ -573,15 +1564,15 @@ def plot_measurement_with_uncertainties(
     )
 
     # Plot individual uncertainties
-    for syst_key in syst_vars:
-        rel_var_uncert = syst_vars[syst_key] / measured_hist**2
-        plot_syst_uncert = np.sqrt(np.append(rel_var_uncert, rel_var_uncert[-1]))
+    for syst_name in syst_info.keys():
+        syst_uncert = syst[syst_name]
+        plot_syst_uncert = np.append(syst_uncert, syst_uncert[-1])
         ax.plot(
             bin_edges,
             plot_syst_uncert,
             "-",
-            color=syst_info[syst_key]["color"],
-            label=syst_info[syst_key]["name"],
+            color=syst_info[syst_name]["color"],
+            label=syst_info[syst_name]["name"],
             drawstyle="steps-post",
         )
 
@@ -607,18 +1598,37 @@ def plot_measurement_with_uncertainties(
 
     # Set y-axis limits
     if rel_mbias is not None:
-        top_uncert = np.max(np.concatenate([rel_total_uncert_plot, plot_mbias]))
+        top_uncert = np.max(np.concatenate([total_uncert_plot, plot_mbias]))
     else:
-        top_uncert = np.max(rel_total_uncert_plot)
+        top_uncert = np.max(total_uncert_plot)
     if top_uncert > 0.2 or np.isnan(top_uncert):
         ax.set_ylim(bottom=0.0, top=0.2)
     else:
-        ax.set_ylim(bottom=0.0, top=top_uncert * 1.1)
+        ax.set_ylim(bottom=0.0, top=top_uncert * 1.2)
 
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4, fontsize=8)
-    ax.tick_params(axis="x", direction="in", top=True)
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.4, -0.1),
+        ncol=4,
+        fontsize=8,
+        frameon=False,
+    )
+
+    mh.atlas.label(
+        ax=ax,
+        llabel=llab,
+        rlabel=rlab,
+    )
 
     fig_uncertainty_budget.tight_layout()
     fig_uncertainty_budget.subplots_adjust(bottom=0.2)
 
-    return fig_cross_section, fig_uncertainty_budget
+    # ===== Figure 3: Correlation matrix plot =====
+    fig_correlation_matrix = plot_correlation_matrix(
+        total_cov=total_cov,
+        bins=bin_edges,
+        llab=llab,
+        simple_labels=simple_corr_labels,
+    )
+
+    return fig_cross_section, fig_uncertainty_budget, fig_correlation_matrix

@@ -32,7 +32,21 @@ parser.add_argument(
     default="./plot_storage/multifold/pd",
     help="Path to store the plots (default: ./plot_storage/multifold/pd)",
 )
+parser.add_argument(
+    "--min-pt-trackj2",
+    type=float,
+    default=5.0,
+    help="Minimum pT_trackj2 required for plots (default: 5)",
+)
+parser.add_argument(
+    "--png",
+    action="store_true",
+    help="If true, will save plots as png",
+)
 args = parser.parse_args()
+
+# Set extension based on whether png is requested
+extension = ".png" if args.png else ".pdf"
 
 # Load omnifold data if provided (only used in data mode)
 omnifold_data = None
@@ -46,6 +60,15 @@ multifold = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold.h5")
 hv = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_sherpa.h5")
 if not args.data:
     target = pd.read_hdf("/pscratch/sd/k/kgreif/multifold/pseudodata/target.h5")
+
+# Require track-jet 2 pT > threshold for all plots/calculations
+trackj2_mask = multifold["pT_trackj2"] > args.min_pt_trackj2
+multifold = multifold.loc[trackj2_mask].reset_index(drop=True)
+hv = hv.loc[hv["pT_trackj2"] > args.min_pt_trackj2].reset_index(drop=True)
+if not args.data:
+    target = target.loc[target["pT_trackj2"] > args.min_pt_trackj2].reset_index(
+        drop=True
+    )
 
 # Load arrays of weights for building histograms
 dbs_weights = [
@@ -66,7 +89,7 @@ plots = [
 ]
 
 # Initialize the uncertainty calculator
-uncertainty_calculator = UncertaintyCalculator()
+uncertainty_calculator = UncertaintyCalculator(smooth_hv=True)
 
 # Create output directory for plots
 plot_dir = pathlib.Path(args.store)
@@ -100,8 +123,6 @@ for obs_dict in plots:
     mc_var, _ = np.histogram(
         multifold[obs_dict["key"]], bins=bins, weights=multifold["weights_nominal"] ** 2
     )
-    source_hist = source_hist / bin_widths
-    mc_var = mc_var / bin_widths**2
     all_hists["nominal"] = (source_hist, mc_var, bins)
     # Data bootstrap histograms (for data-stat uncertainty)
     if "data-stat" in uncertainty_calculator.uncertainty_definitions:
@@ -109,7 +130,6 @@ for obs_dict in plots:
             hist, _ = np.histogram(
                 multifold[obs_dict["key"]], bins=bins, weights=multifold[weight]
             )
-            hist = hist / bin_widths
             all_hists[weight.removeprefix("weights_")] = (hist, None, bins)
     # MC bootstrap histograms (for mc-stat uncertainty)
     if "mc-stat" in uncertainty_calculator.uncertainty_definitions:
@@ -117,7 +137,6 @@ for obs_dict in plots:
             hist, _ = np.histogram(
                 multifold[obs_dict["key"]], bins=bins, weights=multifold[weight]
             )
-            hist = hist / bin_widths
             all_hists[weight.removeprefix("weights_")] = (hist, None, bins)
     # Ensemble histograms (for nn-stability uncertainty)
     if "nn-stability" in uncertainty_calculator.uncertainty_definitions:
@@ -125,14 +144,12 @@ for obs_dict in plots:
             hist, _ = np.histogram(
                 multifold[obs_dict["key"]], bins=bins, weights=multifold[weight]
             )
-            hist = hist / bin_widths
             all_hists[weight.removeprefix("weights_")] = (hist, None, bins)
     # HV histogram
     if "hv" in uncertainty_calculator.uncertainty_definitions:
         hv_hist, _ = np.histogram(
             hv[obs_dict["key"]], bins=bins, weights=hv["weights_nominal"]
         )
-        hv_hist = hv_hist / bin_widths
         all_hists["hv"] = (hv_hist, None, bins)
     # DD histogram (if dd uncertainty is defined and weights_dd exists)
     if (
@@ -142,7 +159,6 @@ for obs_dict in plots:
         dd_hist, _ = np.histogram(
             multifold[obs_dict["key"]], bins=bins, weights=multifold["weights_dd"]
         )
-        dd_hist = dd_hist / bin_widths
         all_hists["dd"] = (dd_hist, None, bins)
     # DD target histogram (only needed if dd uncertainty is defined)
     if (
@@ -152,14 +168,12 @@ for obs_dict in plots:
         dd_target_hist, _ = np.histogram(
             multifold[obs_dict["key"]], bins=bins, weights=multifold["target_dd"]
         )
-        dd_target_hist = dd_target_hist / bin_widths
         all_hists["target_dd"] = (dd_target_hist, None, bins)
     # Target histogram
     if not args.data:
         target_hist, _ = np.histogram(
             target[obs_dict["key"]], bins=bins, weights=target["weight_mc"]
         )
-        target_hist = target_hist / bin_widths
         all_hists["target"] = (target_hist, None, bins)
     # All other histograms
     for (
@@ -172,7 +186,6 @@ for obs_dict in plots:
         uncert_hist, _ = np.histogram(
             multifold[obs_dict["key"]], bins=bins, weights=multifold[weight_key]
         )
-        uncert_hist = uncert_hist / bin_widths
         all_hists[uncert_name] = (uncert_hist, None, bins)
 
     # Calculate the uncertainties and total uncertainty
@@ -202,10 +215,16 @@ for obs_dict in plots:
     )
     plt.subplots_adjust(hspace=0, top=0.95)
 
+    # Divide histograms for which we care about density by bin width
+    x_source_hist = source_hist / bin_widths
+    x_target_hist = target_hist / bin_widths
+    x_total_uncert = total_uncert / bin_widths
+
     # Main plot: Standard mode (pseudodata vs target)
     if not args.data and target_hist is not None:
+
         # Duplicate last bin for step plot
-        plot_target_hist = np.append(target_hist, target_hist[-1])
+        plot_target_hist = np.append(x_target_hist, x_target_hist[-1])
 
         # Plot target as dashed line
         ax.plot(
@@ -220,29 +239,30 @@ for obs_dict in plots:
         # Plot unfolded data with uncertainties
         ax.errorbar(
             bin_centers,
-            source_hist,
-            yerr=total_uncert,
+            x_source_hist,
+            yerr=x_total_uncert,
             fmt="o",
             label="Multifold",
             color="green",
         )
 
         # Calculate ratio
-        ratio = source_hist / target_hist
+        ratio = x_source_hist / x_target_hist
         ratio_uncert = rel_total_uncert
     else:
         # Data mode: just plot the data
         ax.errorbar(
             bin_centers,
-            source_hist,
+            x_source_hist,
             xerr=bin_errors,
-            yerr=total_uncert,
+            yerr=x_total_uncert,
             fmt="+",
             label="Multifold",
             color="green",
         )
 
         # Overlay omnifold data if available
+        # Note we assume omnifold data is already divided by bin width!
         of_hist = None
         of_uncert = None
         if omnifold_data is not None:
@@ -266,10 +286,10 @@ for obs_dict in plots:
 
         # Calculate ratio of Omnifold to Multifold if both are available
         if of_hist is not None:
-            ratio = of_hist / source_hist
+            ratio = of_hist / x_source_hist
             # Propagate uncertainties: rel_err = sqrt((dA/A)^2 + (dB/B)^2)
             rel_of_uncert = of_uncert / of_hist
-            rel_mf_uncert = total_uncert / source_hist
+            rel_mf_uncert = x_total_uncert / x_source_hist
             ratio_uncert = ratio * np.sqrt(rel_of_uncert**2 + rel_mf_uncert**2)
         else:
             ratio = None
@@ -323,7 +343,7 @@ for obs_dict in plots:
     fig.subplots_adjust(hspace=0, top=0.95)
 
     # Save main plot
-    plot_name = plot_dir / (key + ".pdf")
+    plot_name = plot_dir / (key + extension)
     fig.savefig(plot_name, dpi=300)
     plt.close(fig)
 
@@ -331,7 +351,6 @@ for obs_dict in plots:
     budget_fig, budget_ax = plt.subplots(figsize=(6.4, 4.8))
 
     # Duplicate last bins for step plots
-    plot_source_hist = np.append(source_hist, source_hist[-1])
     plot_total_uncert = np.append(rel_total_uncert, rel_total_uncert[-1])
 
     # Plot total uncertainty
@@ -394,7 +413,7 @@ for obs_dict in plots:
     budget_fig.subplots_adjust(bottom=0.2)
 
     # Save uncertainty budget plot
-    budget_name = plot_dir / (key + "_uncert_budget.pdf")
+    budget_name = plot_dir / (key + "_uncert_budget" + extension)
     budget_fig.savefig(budget_name, dpi=300)
     plt.close(budget_fig)
 
@@ -462,7 +481,7 @@ for obs_dict in plots:
     corr_fig.tight_layout()
 
     # Save correlation matrix plot
-    corr_name = plot_dir / (key + "_corr_matrix.pdf")
+    corr_name = plot_dir / (key + "_corr_matrix" + extension)
     corr_fig.savefig(corr_name, dpi=300)
     plt.close(corr_fig)
 

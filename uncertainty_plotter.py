@@ -654,13 +654,6 @@ class UncertaintyPlotter(plotter.Plotter):
             else:
                 sherpa_hist_var = sherpa_hist.copy()
 
-            # Divide by the bin width to produce a cross section
-            # Note we don't do this for fastjet observables because the _get_histogram
-            # method of the base class already divides by the bin width.
-            bin_widths = bins[1:] - bins[:-1]
-            sherpa_hist = sherpa_hist / bin_widths
-            sherpa_hist_var = sherpa_hist_var / bin_widths**2
-
         return sherpa_hist, sherpa_hist_var, bins
 
     def _get_weights_target2(self, weights):
@@ -742,12 +735,6 @@ class UncertaintyPlotter(plotter.Plotter):
                 hist = hist / norm_factor
                 # Variance scales as the square of the normalization factor
                 variance = variance / (norm_factor**2)
-
-        # Else divide by the bin width to produce a cross section
-        else:
-            bin_widths = bins[1:] - bins[:-1]
-            hist = hist / bin_widths
-            variance = variance / bin_widths**2
 
         return hist, variance, bins
 
@@ -831,9 +818,6 @@ class UncertaintyPlotter(plotter.Plotter):
             mbias = (source_hist - target_hist) ** 2
             rel_mbias = np.sqrt(mbias) / target_hist
 
-        # Calculate total uncertainty
-        error_bars = source_total_uncert * source_hist
-
         # Calculate relative uncertainties for ratio plots in data_comparison_mode
         rel_ratio_uncert = None
         rel_ratio2_uncert = None
@@ -846,14 +830,28 @@ class UncertaintyPlotter(plotter.Plotter):
             else:
                 rel_ratio_uncert = source_total_uncert
 
+        # Scale histograms by bin width for plotting
+        plot_source_hist, _ = self._scale_histogram_by_bin_width(
+            source_hist, None, bins
+        )
+        plot_target_hist, _ = self._scale_histogram_by_bin_width(
+            target_hist, None, bins
+        )
+        plot_target2_hist = None
+        if target2_hist is not None:
+            plot_target2_hist, _ = self._scale_histogram_by_bin_width(
+                target2_hist, None, bins
+            )
+
         # Duplicate last bins for all step plots
-        plot_target_hist = np.append(target_hist, target_hist[-1])
+        plot_target_hist = np.append(plot_target_hist, plot_target_hist[-1])
         if rel_mbias is not None:
             rel_mbias = np.append(rel_mbias, rel_mbias[-1])
 
         # Plot
         bin_centers = (bins[1:] + bins[:-1]) / 2
         bin_errors = (bins[1:] - bins[:-1]) / 2
+        error_bars = source_total_uncert * plot_source_hist
         fig, (ax, rax) = plt.subplots(
             2,
             1,
@@ -887,7 +885,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             # Plot theory uncertainty boxes for target (behind the points)
             if target_uncert is not None:
-                box_height = 2 * target_uncert * target_hist
+                box_height = 2 * target_uncert * target_y_values
                 for x, y, h, w in zip(
                     bin_centers, target_y_values, box_height, bin_widths
                 ):
@@ -919,7 +917,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 # Plot target2 as orange points first to get y-values
                 ax.errorbar(
                     bin_centers,
-                    target2_hist,
+                    plot_target2_hist,
                     fmt="o",
                     label="Sherpa",
                     color="orange",
@@ -928,9 +926,9 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 # Plot theory uncertainty boxes for target2 (behind the points)
                 if target2_uncert is not None:
-                    box_height = 2 * target2_uncert * target2_hist
+                    box_height = 2 * target2_uncert * plot_target2_hist
                     for x, y, h, w in zip(
-                        bin_centers, target2_hist, box_height, bin_widths
+                        bin_centers, plot_target2_hist, box_height, bin_widths
                     ):
                         # Center the box on the point: bottom = y - h/2
                         box = Rectangle(
@@ -946,7 +944,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             ax.errorbar(
                 bin_centers,
-                source_hist,
+                plot_source_hist,
                 xerr=bin_errors,
                 yerr=error_bars,
                 fmt="+",
@@ -967,7 +965,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             ax.errorbar(
                 bin_centers,
-                source_hist,
+                plot_source_hist,
                 yerr=error_bars,
                 fmt="o",
                 label="Unfolded",

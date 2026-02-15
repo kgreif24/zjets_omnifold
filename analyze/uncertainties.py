@@ -71,18 +71,18 @@ class UncertaintyCalculator:
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
         self.madgraph_uncertainties = [
-            "w_QCD_dd",
-            "w_PDF_CT18nnlo",
-            "w_Alpha_s1",
-            "w_Var2Down",
-            "w_Var1Down",
-            "w_MPIDown",
-            "w_RenDown",
+            "weights_theoryQCD",
+            "weights_theoryPDF",
+            "weights_theoryAlphaS",
+            "weights_theoryPSjet",
+            "weights_theoryPSsoft",
+            "weights_theoryMPI",
+            "weights_theoryPSscale",
         ]
         self.sherpa_uncertainties = [
-            "PS_ME_QCD_dd",
-            "PS_ME_PDF_CT18nnlo",
-            "PS_ME_Alpha_s1",
+            "weights_theoryQCD",
+            "weights_theoryPDF",
+            "weights_theoryAlphaS",
         ]
 
     @staticmethod
@@ -421,7 +421,6 @@ class UncertaintyCalculator:
                 f" Available keys: {available}"
             )
         measured_hist, measured_hist_var, bins = all_hists[measured_key]
-        bin_centers = (bins[1:] + bins[:-1]) / 2
 
         # Calculate systematic uncertainties
         syst_uncerts = {}
@@ -433,7 +432,7 @@ class UncertaintyCalculator:
         if mc_stat_def is not None:
             mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
             syst_uncerts["mc-stat"] = mc_stat_uncert_unnorm / measured_hist
-            syst_covs["mc-stat"] = np.diag(mc_stat_uncert_unnorm**2)
+            syst_covs["mc-stat"] = np.diag(measured_hist_var)
             syst_info["mc-stat"] = mc_stat_def.copy()
 
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
@@ -512,6 +511,7 @@ class UncertaintyCalculator:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
                 if syst_key == "hv" and self.smooth_hv:
+                    bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
                 syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
@@ -613,29 +613,6 @@ class UncertaintyCalculator:
             syst_info[group_name] = merged_uncert["info"]
 
         return syst_uncerts, syst_covs, syst_info
-
-    def get_total_uncertainty(
-        self,
-        all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
-        measured_key: str = "nominal",
-    ) -> np.ndarray:
-        """Calculate total uncertainty (square root of sum of variances).
-
-        Arguments:
-        ----------
-        all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
-            Dictionary mapping histogram names to tuples of (hist, hist_var, bins).
-        measured_key : str, optional
-            Key in all_hists for the measured/unfolded distribution
-            (default: "nominal").
-
-        Returns:
-        --------
-        np.ndarray : Total uncertainty (standard deviation) array.
-        """
-        syst_uncerts, _, _ = self.calculate_uncertainties(all_hists, measured_key)
-        total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
-        return np.sqrt(total_var)
 
     def get_total_theory_uncertainty(
         self,

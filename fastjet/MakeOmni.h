@@ -14,6 +14,7 @@
 #include <TString.h>
 #include <TH1D.h>
 #include <TH2D.h>
+#include <TLeaf.h>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -112,6 +113,8 @@ public :
    Double_t        eta_tracks_array[309];
    Double_t        phi_tracks_array[309];
    Long64_t        trackJetIndex_tracks_array[309];
+   Double_t        trackJetIndex_tracks_array_double[309]; // Fallback buffer when branch is stored as Double_t
+   bool            trackJetIndexIsDouble; // Flag: true if trackJetIndex_tracks branch has type Double_t
    Long64_t        pdgId_tracks_array[309];
 
    // List of branches
@@ -283,6 +286,7 @@ void MakeOmni::Init(TTree *tree)
    // fChain->SetMakeClass(1);
    
    // Initialize track data storage based on format
+   trackJetIndexIsDouble = false; // Default; will be set to true in array format if branch is Double_t
    if (trackFormat == "vector") {
       // Initialize vectors to ensure they're in a valid state before ROOT reads into them
       pT_tracks.clear();
@@ -373,7 +377,26 @@ void MakeOmni::Init(TTree *tree)
          fChain->SetBranchAddress("truth_pT_tracks", pT_tracks_array, &b_pT_tracks);
          fChain->SetBranchAddress("truth_eta_tracks", eta_tracks_array, &b_eta_tracks);
          fChain->SetBranchAddress("truth_phi_tracks", phi_tracks_array, &b_phi_tracks);
-         fChain->SetBranchAddress("truth_trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+         
+         // Detect whether trackJetIndex_tracks is stored as Double_t or Long64_t
+         trackJetIndexIsDouble = false;
+         TBranch* br_tji = fChain->GetBranch("truth_trackJetIndex_tracks");
+         if (br_tji) {
+            TLeaf* leaf = br_tji->GetLeaf("truth_trackJetIndex_tracks");
+            if (leaf) {
+               string typeName = leaf->GetTypeName();
+               if (typeName == "Double_t" || typeName == "double") {
+                  trackJetIndexIsDouble = true;
+                  cout << "INFO: Branch truth_trackJetIndex_tracks has type Double_t, using double buffer" << endl;
+               }
+            }
+         }
+         if (trackJetIndexIsDouble) {
+            fChain->SetBranchAddress("truth_trackJetIndex_tracks", trackJetIndex_tracks_array_double, &b_trackJetIndex_tracks);
+         } else {
+            fChain->SetBranchAddress("truth_trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+         }
+         
          fChain->SetBranchAddress("truth_pdgId_tracks", pdgId_tracks_array, &b_pdgId_tracks);
       }
    } else {
@@ -423,7 +446,25 @@ void MakeOmni::Init(TTree *tree)
          fChain->SetBranchAddress("pT_tracks", pT_tracks_array, &b_pT_tracks);
          fChain->SetBranchAddress("eta_tracks", eta_tracks_array, &b_eta_tracks);
          fChain->SetBranchAddress("phi_tracks", phi_tracks_array, &b_phi_tracks);
-         fChain->SetBranchAddress("trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+         
+         // Detect whether trackJetIndex_tracks is stored as Double_t or Long64_t
+         trackJetIndexIsDouble = false;
+         TBranch* br_tji = fChain->GetBranch("trackJetIndex_tracks");
+         if (br_tji) {
+            TLeaf* leaf = br_tji->GetLeaf("trackJetIndex_tracks");
+            if (leaf) {
+               string typeName = leaf->GetTypeName();
+               if (typeName == "Double_t" || typeName == "double") {
+                  trackJetIndexIsDouble = true;
+                  cout << "INFO: Branch trackJetIndex_tracks has type Double_t, using double buffer" << endl;
+               }
+            }
+         }
+         if (trackJetIndexIsDouble) {
+            fChain->SetBranchAddress("trackJetIndex_tracks", trackJetIndex_tracks_array_double, &b_trackJetIndex_tracks);
+         } else {
+            fChain->SetBranchAddress("trackJetIndex_tracks", trackJetIndex_tracks_array, &b_trackJetIndex_tracks);
+         }
       }
    }
    

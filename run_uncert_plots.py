@@ -66,7 +66,7 @@ parser.add_argument(
     "--cut_region",
     type=int,
     default=0,
-    choices=[-1, 0, 1, 2, 3],
+    choices=[-1, 0, 1, 2, 3, 4],
     help="Select a kinematic region to restrict to",
 )
 parser.add_argument(
