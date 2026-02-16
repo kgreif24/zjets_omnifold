@@ -4,6 +4,7 @@
 defaults: &default_plot
   histtype: "bar"
   density: true
+  cross_section: true
   linear_yscale: false
   log_xscale: false
   symlog_xscale: false
@@ -13,8 +14,8 @@ defaults: &default_plot
   ylim: null
   ylabel: '$d\sigma$ [fb]'
   rlim:
-    - 0.5
-    - 1.5
+    - 0.8
+    - 1.2
   w1_eval: true
   truth_mc: false
   truth_data: false
@@ -739,6 +740,7 @@ plots:
 
   hEEC_R04:
     <<: *default_plot
+    cross_section: false
     key: "hEEC_R04"
     ylabel: "EEC_{j1}"
     xlabel: "$z$, Anti-kt R=0.4 [GeV]"
@@ -773,6 +775,7 @@ plots:
 
   hEEC_R06:
     <<: *default_plot
+    cross_section: false
     key: "hEEC_R06"
     ylabel: "EEC_{j1}"
     xlabel: "$z$, Anti-kt R=0.6 [GeV]"
@@ -807,6 +810,7 @@ plots:
 
   hEEC_R10:
     <<: *default_plot
+    cross_section: false
     key: "hEEC_R10"
     ylabel: "EEC_{j1}"
     xlabel: "$z$, Anti-kt R=1.0 [GeV]"
@@ -885,6 +889,7 @@ plots:
 
   hEEC_CA04:
     <<: *default_plot
+    cross_section: false
     key: "hEEC_CA04"
     ylabel: "EEC_{j1}"
     xlabel: "$z$, Cambridge/Aachen R=0.4 [GeV]"
@@ -941,6 +946,7 @@ plots:
 
   hTEEC_collinear:
     <<: *default_plot
+    cross_section: false
     key: "hTEEC_collinear"
     xlabel: '$z$'
     ylabel: '$EEC$'
@@ -954,6 +960,7 @@ plots:
 
   hTEEC_full_nolog:
     <<: *default_plot
+    cross_section: false
     key: "hTEEC_full_nolog"
     xlabel: '$z$'
     ylabel: '$EEC$'
@@ -967,6 +974,7 @@ plots:
 
   hTEEC_b2b:
     <<: *default_plot
+    cross_section: false
     key: "hTEEC_b2b"
     xlabel: '$1-z$'
     ylabel: '$EEC$'
@@ -980,6 +988,7 @@ plots:
 
   hTEEC_full:
     <<: *default_plot
+    cross_section: false
     key: "hTEEC_full"
     xlabel: '$z$'
     ylabel: '$EEC$'
@@ -993,6 +1002,7 @@ plots:
 
   pT_tracks:
     <<: *default_plot
+    cross_section: false
     key: "pT_tracks"
     ylabel: "A.U."
     xlabel: "$p_{T,tracks}$ [GeV]"
@@ -1017,6 +1027,7 @@ plots:
 
   eta_tracks:
     <<: *default_plot
+    cross_section: false
     key: "eta_tracks"
     xlabel: '$\eta_{tracks}$'
     ylabel: "A.U."
@@ -1050,6 +1061,7 @@ plots:
 
   phi_tracks:
     <<: *default_plot
+    cross_section: false
     key: "phi_tracks"
     ylabel: "A.U."
     xlabel: '$\phi_{tracks}$'

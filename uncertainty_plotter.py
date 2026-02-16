@@ -846,17 +846,22 @@ class UncertaintyPlotter(plotter.Plotter):
                 rel_ratio_uncert = source_total_uncert
 
         # Scale histograms by bin width for plotting
-        plot_source_hist, _ = self._scale_histogram_by_bin_width(
-            source_hist, None, bins
-        )
-        plot_target_hist, _ = self._scale_histogram_by_bin_width(
-            target_hist, None, bins
-        )
-        plot_target2_hist = None
-        if target2_hist is not None:
-            plot_target2_hist, _ = self._scale_histogram_by_bin_width(
-                target2_hist, None, bins
+        if plot["cross_section"]:
+            plot_source_hist, _ = self._scale_histogram_by_bin_width(
+                source_hist, None, bins
             )
+            plot_target_hist, _ = self._scale_histogram_by_bin_width(
+                target_hist, None, bins
+            )
+            plot_target2_hist = None
+            if target2_hist is not None:
+                plot_target2_hist, _ = self._scale_histogram_by_bin_width(
+                    target2_hist, None, bins
+                )
+        else:
+            plot_source_hist = source_hist
+            plot_target_hist = target_hist
+            plot_target2_hist = target2_hist
 
         # Duplicate last bins for all step plots
         plot_target_hist = np.append(plot_target_hist, plot_target_hist[-1])

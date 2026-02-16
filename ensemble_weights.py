@@ -273,28 +273,6 @@ def get_bs_n_data(campaign_path, run_name, truth_pass):
     return np.sum(sample[truth_pass == 1])
 
 
-def apply_mc_bootstrap(weights):
-    """apply_mc_bootstrap - This function will run a bootstrap of the
-    MC test sample used to construct the unfolded result.
-    Note that this is independent of the MC bootstrap used in training,
-    since that was performed on the MC training sample.
-
-    Args:
-        weights (np.ndarray): The weights to apply the MC bootstrap to.
-
-    Returns:
-        np.ndarray: The weights with the MC bootstrap applied.
-    """
-
-    # Sample Poisson to get the bootstrap
-    bs_seed = 1000 + np.random.randint(0, 1000)
-    rng = np.random.default_rng(bs_seed)
-    bs_weights = rng.poisson(lam=1.0, size=len(weights))
-
-    # Apply the bootstrap to the weights
-    return weights * bs_weights
-
-
 def get_prior_weights(gn, prior_weights, use_truth=True):
     """get_prior_weights - Pull the correct prior weights from the
     weights file.
@@ -512,11 +490,6 @@ for gn in args.group_names:
             if gn == "dbootstrap":
                 # Get the run name for this bootstrap
                 n_data = get_bs_n_data(args.campaign_path, run_names[i], data_pass200)
-            # If this is the MC bootstrap we need to apply the bootstrap weights
-            # but the number of data events is the same as the nominal sample
-            elif gn == "mcbootstrap":
-                weight = apply_mc_bootstrap(weight)
-                n_data = n_data_nominal
             else:
                 n_data = n_data_nominal
             weight = norm_weights(
