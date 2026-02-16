@@ -44,6 +44,7 @@ class UncertaintyPlotter(plotter.Plotter):
         do_chi2_test=False,
         uncertainty_definitions=None,
         uncertainty_groups=None,
+        plot_signed_uncerts=False,
         **kwargs,
     ):
         """
@@ -77,6 +78,9 @@ class UncertaintyPlotter(plotter.Plotter):
                 definitions (name, color, etc.). If None, uses default definitions.
             uncertainty_groups (dict): Dictionary mapping group names to lists of
                 uncertainty keys. If None, uses default groups.
+            plot_signed_uncerts (bool): If True, generates an additional plot showing
+                signed uncertainties for non-stochastic systematics grouped into five
+                panels. Default is False.
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         # Ensure target_path is a single string (not a list)
@@ -103,6 +107,7 @@ class UncertaintyPlotter(plotter.Plotter):
         self.dual_target_mode = target2_path is not None
         self.normalize_targets = normalize_targets
         self.do_chi2_test = do_chi2_test
+        self.plot_signed_uncerts = plot_signed_uncerts
 
         # Create UncertaintyCalculator instance
         self.uncertainty_calculator = uncert_module.UncertaintyCalculator(
@@ -575,6 +580,16 @@ class UncertaintyPlotter(plotter.Plotter):
             corr_fig.savefig(corr_store_name, dpi=300)
             plt.close(corr_fig)
             histogram_data[plot["key"] + "_corr_matrix"] = corr_store_name
+
+            # Create and save signed uncertainties plot
+            if self.plot_signed_uncerts:
+                signed_fig = self._plot_signed_uncertainties(
+                    plot, bins, all_hists
+                )
+                signed_name = plot["key"] + "_signed_uncerts" + extension
+                signed_store_name = self.store / signed_name
+                signed_fig.savefig(signed_store_name, dpi=300)
+                plt.close(signed_fig)
 
             # If not in data comparison mode, calculate chi^2 test and p-value
             if not self.data_comparison_mode and self.do_chi2_test:
@@ -1243,6 +1258,144 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Finalize layout
         fig.tight_layout()
+
+        return fig
+
+    def _plot_signed_uncertainties(
+        self,
+        plot,
+        bins,
+        all_hists,
+        measured_key="nominal",
+    ):
+        """Create a plot showing signed (non-absolute-value) ratios of systematic
+        variations to the nominal histogram, grouped into five panels.
+
+        Each panel corresponds to one uncertainty group:
+        1. Unfolding (dd, hv, hvhad)
+        2. Muon calibration and efficiency
+        3. Tracking uncertainties
+        4. Theory uncertainties
+        5. Remaining non-stochastic uncertainties
+
+        Arguments:
+            plot (dict): Dictionary containing the plotting style information.
+            bins (np.array): Array of bin edges for the histogram.
+            all_hists (dict): Dictionary mapping histogram names to tuples of
+                (hist, hist_var, bins).
+            measured_key (str): Key in all_hists for the nominal distribution.
+
+        Returns:
+            fig (matplotlib.figure.Figure): Figure object for the plot.
+        """
+
+        nominal_hist = all_hists[measured_key][0]
+
+        # Hardcode the five signed-uncertainty groups
+        unfolding_keys = ["dd", "hv", "hvhad"]
+        muon_keys = [
+            "muCalID", "muCalMS", "muCalResBias", "muCalScale",
+            "muEffReco", "muEffIso", "muEffTrack", "muEffTrig",
+        ]
+        tracking_keys = ["trackEffMain", "trackEffJet", "trackFake", "trackPtScale"]
+        theory_keys = [
+            "theoryQCD", "theoryPDF", "theoryAlphaS", "theoryPSsoft",
+            "theoryPSjet", "theoryMPI", "theoryPSscale",
+        ]
+        predefined_keys = set(
+            unfolding_keys + muon_keys + tracking_keys + theory_keys
+        )
+
+        # Calculate signed ratios for every non-stochastic uncertainty present
+        signed_ratios = {}
+        for syst_key, syst_def in (
+            self.uncertainty_calculator.uncertainty_definitions.items()
+        ):
+            if syst_def.get("stochastic", False):
+                continue
+            if syst_key not in all_hists:
+                continue
+
+            syst_hist = all_hists[syst_key][0]
+            if syst_key == "dd":
+                target_dd_hist = all_hists["target_dd"][0]
+                signed_ratios[syst_key] = syst_hist / target_dd_hist
+            else:
+                signed_ratios[syst_key] = syst_hist / nominal_hist
+
+        # Build ordered list of groups, filtering to keys actually present
+        remaining_keys = [
+            k for k in signed_ratios if k not in predefined_keys
+        ]
+        groups = [
+            ("Unfolding", [k for k in unfolding_keys if k in signed_ratios]),
+            ("Muon", [k for k in muon_keys if k in signed_ratios]),
+            ("Tracking", [k for k in tracking_keys if k in signed_ratios]),
+            ("Theory", [k for k in theory_keys if k in signed_ratios]),
+            ("Remaining", remaining_keys),
+        ]
+
+        # Create figure with 5 stacked panels
+        fig, axes = plt.subplots(
+            5, 1, figsize=(8, 12), sharex=True,
+            gridspec_kw={"height_ratios": [1, 1, 1, 1, 1]},
+        )
+        plt.subplots_adjust(hspace=0)
+
+        bin_centers = (bins[1:] + bins[:-1]) / 2
+        bin_errors = (bins[1:] - bins[:-1]) / 2
+
+        # Handle symlog x-axis transformation
+        if plot["symlog_xscale"]:
+            bins_plot = self._transform_to_symlog(bins)
+            bin_centers = self._transform_to_symlog(bin_centers)
+            bin_errors = (bins_plot[1:] - bins_plot[:-1]) / 2
+
+        for i, (group_name, group_keys) in enumerate(groups):
+            ax = axes[i]
+
+            for syst_key in group_keys:
+                ratio = signed_ratios[syst_key]
+                syst_def = (
+                    self.uncertainty_calculator.uncertainty_definitions[syst_key]
+                )
+                label = syst_def.get("name", syst_key)
+                color = syst_def.get("color", "black")
+                ax.errorbar(
+                    bin_centers,
+                    ratio,
+                    xerr=bin_errors,
+                    yerr=0,
+                    fmt="o",
+                    color=color,
+                    label=label,
+                    markersize=3,
+                )
+
+            ax.axhline(1, color="black", linestyle="--", linewidth=0.5)
+            ax.set_ylabel(group_name, fontsize=10)
+            if group_keys:
+                ax.legend(fontsize=6, loc="best", ncol=2)
+
+            ax.tick_params(axis="both", direction="in")
+
+            if plot["log_xscale"]:
+                ax.set_xscale("log")
+
+            # Hide x tick labels for all panels except the bottom one
+            if i < 4:
+                ax.tick_params(labelbottom=False)
+
+        # Label the x-axis only on the bottom panel
+        axes[-1].set_xlabel(plot["xlabel"])
+
+        if plot["symlog_xscale"]:
+            xticks = self._transform_to_symlog(self.symlog_raw_xticks)
+            axes[-1].set_xticks(xticks)
+            axes[-1].set_xticklabels(self.symlog_xticklabels, rotation=45)
+
+        fig.tight_layout()
+        fig.subplots_adjust(hspace=0, top=0.95)
 
         return fig
 

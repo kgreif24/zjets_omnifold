@@ -95,6 +95,12 @@ parser.add_argument(
     action="store_true",
     help="Perform a chi^2 test and print the results",
 )
+parser.add_argument(
+    "--signed_uncerts",
+    action="store_true",
+    default=False,
+    help="Generate signed uncertainty plots for non-stochastic systematics",
+)
 args = parser.parse_args()
 
 # Validate arguments
@@ -115,6 +121,7 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     data_comparison_mode=args.data_comparison_mode,
     normalize_targets=args.normalize_targets,
     do_chi2_test=args.do_chi2_test,
+    plot_signed_uncerts=args.signed_uncerts,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,

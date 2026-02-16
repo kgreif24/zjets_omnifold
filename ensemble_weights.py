@@ -422,13 +422,13 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 # Load weights for uncertainties involving prior shifts and data driven
 # target
 prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/madgraph_test_prior_weights.npz"
+    "/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz"
 )
 hv_prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/sherpa_test_prior_weights.npz"
+    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights.npz"
 )
 dd_target_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/target_dd_weights.npz"
+    "/pscratch/sd/k/kgreif/data/target_dd_weights.npz"
 )["target_dd"]
 
 # Calculate the pass200 filters for the nominal and HV samples at
