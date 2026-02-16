@@ -53,7 +53,6 @@ parser.add_argument(
     default=-1,
     help=(
         "The maximum number of events to use for plotting. "
-        "If set, recommended to run with --normalize_targets."
     ),
 )
 parser.add_argument(
@@ -86,11 +85,6 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "--normalize_targets",
-    action="store_true",
-    help="Normalize the target histograms to match the source histograms",
-)
-parser.add_argument(
     "--do_chi2_test",
     action="store_true",
     help="Perform a chi^2 test and print the results",
@@ -119,7 +113,6 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     root_files=args.root_files,
     target2_path=args.target2,
     data_comparison_mode=args.data_comparison_mode,
-    normalize_targets=args.normalize_targets,
     do_chi2_test=args.do_chi2_test,
     plot_signed_uncerts=args.signed_uncerts,
     verbosity=args.verbosity,

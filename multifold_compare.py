@@ -90,6 +90,8 @@ plots = [
 
 # Initialize the uncertainty calculator
 uncertainty_calculator = UncertaintyCalculator(smooth_hv=True)
+uncertainty_calculator.remove_uncertainty("hvhad")
+uncertainty_calculator.remove_uncertainty("pileup")
 
 # Create output directory for plots
 plot_dir = pathlib.Path(args.store)

@@ -40,7 +40,6 @@ class UncertaintyPlotter(plotter.Plotter):
         root_files=None,
         target2_path=None,
         data_comparison_mode=False,
-        normalize_targets=False,
         do_chi2_test=False,
         uncertainty_definitions=None,
         uncertainty_groups=None,
@@ -70,8 +69,6 @@ class UncertaintyPlotter(plotter.Plotter):
             data_comparison_mode (bool): If True, compares data measurement to truth
                 generators instead of pseudodata to target. Removes method bias and
                 flips ratio calculations. Default is False.
-            normalize_targets (bool): If True, normalizes the target histograms to match
-                the source histograms. Default is False.
             do_chi2_test (bool): If True, performs a chi^2 test and prints the results.
                 Default is False.
             uncertainty_definitions (dict): Dictionary mapping uncertainty keys to their
@@ -105,7 +102,6 @@ class UncertaintyPlotter(plotter.Plotter):
         self.target2_path = target2_path
         self.data_comparison_mode = data_comparison_mode
         self.dual_target_mode = target2_path is not None
-        self.normalize_targets = normalize_targets
         self.do_chi2_test = do_chi2_test
         self.plot_signed_uncerts = plot_signed_uncerts
 
@@ -320,7 +316,7 @@ class UncertaintyPlotter(plotter.Plotter):
                     root_index=1,  # Only effects histogram for fastjet observables
                 )
                 if wgt_name == "target":
-                    if self.normalize_targets:
+                    if not plot["cross_section"]:
                         norm_factor = np.sum(source_hist) / np.sum(target_hist_tuple[0])
                         target_hist_tuple = (
                             target_hist_tuple[0] * norm_factor,
@@ -356,7 +352,7 @@ class UncertaintyPlotter(plotter.Plotter):
                         root_index=3,  # Only effects histogram for fastjet observables
                     )
                     if wgt_name == "target2":
-                        if self.normalize_targets:
+                        if not plot["cross_section"]:
                             norm_factor = np.sum(source_hist) / np.sum(
                                 target2_hist_tuple[0]
                             )
@@ -819,6 +815,23 @@ class UncertaintyPlotter(plotter.Plotter):
             fig (matplotlib.figure.Figure): Figure object for the plot.
         """
 
+        # Scale histograms by bin width for plotting
+        if plot["cross_section"]:
+            source_hist, _ = self._scale_histogram_by_bin_width(
+                source_hist, None, bins
+            )
+            target_hist, _ = self._scale_histogram_by_bin_width(
+                target_hist, None, bins
+            )
+            if target2_hist is not None:
+                target2_hist, _ = self._scale_histogram_by_bin_width(
+                    target2_hist, None, bins
+                )
+
+            print(f"Divided by bin width for key {plot['key']}")
+            print(f"Source hist: {source_hist}")
+            print(f"Target hist: {target_hist}")
+
         # Handle different comparison modes
         if self.data_comparison_mode:
             # In data comparison mode, we compare data to truth generators
@@ -828,7 +841,6 @@ class UncertaintyPlotter(plotter.Plotter):
             rel_mbias = None
         else:
             # Standard pseudodata vs target comparison
-            # Need to normalize target histogram to match source histogram
             ratio = source_hist / target_hist
             mbias = (source_hist - target_hist) ** 2
             rel_mbias = np.sqrt(mbias) / target_hist
@@ -845,33 +857,15 @@ class UncertaintyPlotter(plotter.Plotter):
             else:
                 rel_ratio_uncert = source_total_uncert
 
-        # Scale histograms by bin width for plotting
-        if plot["cross_section"]:
-            plot_source_hist, _ = self._scale_histogram_by_bin_width(
-                source_hist, None, bins
-            )
-            plot_target_hist, _ = self._scale_histogram_by_bin_width(
-                target_hist, None, bins
-            )
-            plot_target2_hist = None
-            if target2_hist is not None:
-                plot_target2_hist, _ = self._scale_histogram_by_bin_width(
-                    target2_hist, None, bins
-                )
-        else:
-            plot_source_hist = source_hist
-            plot_target_hist = target_hist
-            plot_target2_hist = target2_hist
-
         # Duplicate last bins for all step plots
-        plot_target_hist = np.append(plot_target_hist, plot_target_hist[-1])
+        plot_target_hist = np.append(target_hist, target_hist[-1])
         if rel_mbias is not None:
             rel_mbias = np.append(rel_mbias, rel_mbias[-1])
 
         # Plot
         bin_centers = (bins[1:] + bins[:-1]) / 2
         bin_errors = (bins[1:] - bins[:-1]) / 2
-        error_bars = source_total_uncert * plot_source_hist
+        error_bars = source_total_uncert * source_hist
         fig, (ax, rax) = plt.subplots(
             2,
             1,
@@ -937,7 +931,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 # Plot target2 as orange points first to get y-values
                 ax.errorbar(
                     bin_centers,
-                    plot_target2_hist,
+                    target2_hist,
                     fmt="o",
                     label="Sherpa",
                     color="orange",
@@ -946,9 +940,9 @@ class UncertaintyPlotter(plotter.Plotter):
 
                 # Plot theory uncertainty boxes for target2 (behind the points)
                 if target2_uncert is not None:
-                    box_height = 2 * target2_uncert * plot_target2_hist
+                    box_height = 2 * target2_uncert * target2_hist
                     for x, y, h, w in zip(
-                        bin_centers, plot_target2_hist, box_height, bin_widths
+                        bin_centers, target2_hist, box_height, bin_widths
                     ):
                         # Center the box on the point: bottom = y - h/2
                         box = Rectangle(
@@ -964,7 +958,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             ax.errorbar(
                 bin_centers,
-                plot_source_hist,
+                source_hist,
                 xerr=bin_errors,
                 yerr=error_bars,
                 fmt="+",
@@ -985,7 +979,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
             ax.errorbar(
                 bin_centers,
-                plot_source_hist,
+                source_hist,
                 yerr=error_bars,
                 fmt="o",
                 label="Unfolded",
@@ -1091,7 +1085,7 @@ class UncertaintyPlotter(plotter.Plotter):
             rel_mbias = None
         else:
             # Find method bias
-            if self.normalize_targets:
+            if not plot["cross_section"]:
                 norm_factor = np.sum(source_hist) / np.sum(target_hist)
                 norm_target_hist = norm_factor * target_hist
             else:
@@ -1164,7 +1158,9 @@ class UncertaintyPlotter(plotter.Plotter):
             top_uncert = np.max(np.concatenate([total_uncert, rel_mbias]))
         else:
             top_uncert = np.max(total_uncert)
-        if top_uncert > 0.2 or np.isnan(top_uncert):
+        if plot["ulim"] is not None:
+            ax.set_ylim(top=plot["ulim"])
+        elif top_uncert > 0.2 or np.isnan(top_uncert):
             ax.set_ylim(bottom=0.0, top=0.2)
         else:
             ax.set_ylim(bottom=0.0, top=top_uncert * 1.1)

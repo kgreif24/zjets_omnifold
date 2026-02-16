@@ -142,7 +142,7 @@ class Plotter:
             self.plots = [
                 config["plots"][plot]
                 for plot in config["plots"]
-                if config["plots"][plot]["verbosity_level"] == verbosity
+                if config["plots"][plot]["verbosity_level"] <= verbosity
             ]
 
         # Detect whether we have any track level or fastjet observables
@@ -441,8 +441,6 @@ class Plotter:
         if plot_dict["type"] == "fastjet":
             tobject = self._get_cached_root_object(root_index, plot_dict["key"])
             hist, bins = tobject.to_numpy()
-            print(f"Got {hist} for key {plot_dict['key']}")
-
             # Get variance from ROOT object
             variance = tobject.variances()
 
