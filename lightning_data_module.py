@@ -810,7 +810,7 @@ class LOfData(L.LightningDataModule):
             int -- The index within the space of all events
         """
 
-        acquired_good_evts = np.sum(pass190[start : start + idx])
+        acquired_good_evts = np.sum(pass190[start:start+idx])
         if acquired_good_evts < idx:
             start += idx
             idx -= acquired_good_evts

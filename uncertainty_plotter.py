@@ -1153,13 +1153,12 @@ class UncertaintyPlotter(plotter.Plotter):
             top_uncert = np.max(np.concatenate([total_uncert, rel_mbias]))
         else:
             top_uncert = np.max(total_uncert)
-        # if plot["ulim"] is not None and self._kinematic_region == 0:
-        #     ax.set_ylim(bottom=0.0, top=plot["ulim"])
-        # elif top_uncert > 0.2 or np.isnan(top_uncert):
-        #     ax.set_ylim(bottom=0.0, top=0.2)
-        # else:
-        #     ax.set_ylim(bottom=0.0, top=top_uncert * 1.1)
-        ax.set_ylim(bottom=0.0, top=0.3)
+        if plot["ulim"] is not None and self._kinematic_region == 0:
+            ax.set_ylim(bottom=0.0, top=plot["ulim"])
+        elif top_uncert > 0.2 or np.isnan(top_uncert):
+            ax.set_ylim(bottom=0.0, top=0.2)
+        else:
+            ax.set_ylim(bottom=0.0, top=top_uncert * 1.1)
         if plot["log_xscale"]:
             ax.set_xscale("log")
         ax.set_xlabel(plot["xlabel"])
