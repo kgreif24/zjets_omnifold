@@ -45,6 +45,7 @@ parser.add_argument(
 parser.add_argument(
     "--target_weights",
     type=str,
+    required=True,
     help=(
         "Path to a .npz file containing target weights. Must contain "
         "'weights_nominal'. In data_comparison_mode, must also contain "

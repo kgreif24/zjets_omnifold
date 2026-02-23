@@ -109,6 +109,7 @@ class UncertaintyPlotter(plotter.Plotter):
         self.uncertainty_calculator = uncert_module.UncertaintyCalculator(
             uncertainty_definitions=uncertainty_definitions,
             uncertainty_groups=uncertainty_groups,
+            smooth_hv=False,
         )
 
         # Hardcode luminosity
@@ -497,9 +498,14 @@ class UncertaintyPlotter(plotter.Plotter):
                     )
 
             # Calculate uncertainties using UncertaintyCalculator
-            syst_uncerts, syst_covs, syst_info = (
+            signed_uncerts, syst_covs_individual, syst_info_individual = (
                 self.uncertainty_calculator.calculate_uncertainties(
                     all_hists, measured_key="nominal"
+                )
+            )
+            syst_uncerts, syst_covs, syst_info = (
+                self.uncertainty_calculator.process_signed_uncertainties(
+                    signed_uncerts, syst_covs_individual, syst_info_individual
                 )
             )
             total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
@@ -584,7 +590,13 @@ class UncertaintyPlotter(plotter.Plotter):
 
             # Create and save signed uncertainties plot
             if self.plot_signed_uncerts:
-                signed_fig = self._plot_signed_uncertainties(plot, bins, all_hists)
+                signed_fig = self._plot_signed_uncertainties(
+                    plot,
+                    bins,
+                    signed_uncerts,
+                    source_hist=source_hist,
+                    target_hist=target_hists["nominal"][0],
+                )
                 signed_name = plot["key"] + "_signed_uncerts" + extension
                 signed_store_name = self.store / signed_name
                 signed_fig.savefig(signed_store_name, dpi=300)
@@ -1261,11 +1273,12 @@ class UncertaintyPlotter(plotter.Plotter):
         self,
         plot,
         bins,
-        all_hists,
-        measured_key="nominal",
+        signed_uncerts,
+        source_hist=None,
+        target_hist=None,
     ):
-        """Create a plot showing signed (non-absolute-value) ratios of systematic
-        variations to the nominal histogram, grouped into five panels.
+        """Create a plot showing signed fractional uncertainties of systematic
+        variations, grouped into five panels.
 
         Each panel corresponds to one uncertainty group:
         1. Unfolding (dd, hv, hvhad)
@@ -1277,15 +1290,31 @@ class UncertaintyPlotter(plotter.Plotter):
         Arguments:
             plot (dict): Dictionary containing the plotting style information.
             bins (np.array): Array of bin edges for the histogram.
-            all_hists (dict): Dictionary mapping histogram names to tuples of
-                (hist, hist_var, bins).
-            measured_key (str): Key in all_hists for the nominal distribution.
+            signed_uncerts (dict): Dictionary mapping uncertainty keys to signed
+                fractional uncertainty arrays, as returned by
+                UncertaintyCalculator.calculate_uncertainties.
+            source_hist (np.array, optional): Array of source histogram values.
+                Used to calculate signed method bias when not in data_comparison_mode.
+            target_hist (np.array, optional): Array of target histogram values.
+                Used to calculate signed method bias when not in data_comparison_mode.
 
         Returns:
             fig (matplotlib.figure.Figure): Figure object for the plot.
         """
 
-        nominal_hist = all_hists[measured_key][0]
+        # Calculate signed method bias if not in data comparison mode
+        signed_mbias = None
+        if (
+            not self.data_comparison_mode
+            and source_hist is not None
+            and target_hist is not None
+        ):
+            if not plot["cross_section"]:
+                norm_factor = np.sum(source_hist) / np.sum(target_hist)
+                norm_target_hist = norm_factor * target_hist
+            else:
+                norm_target_hist = target_hist
+            signed_mbias = (source_hist - norm_target_hist) / norm_target_hist
 
         # Hardcode the five signed-uncertainty groups
         unfolding_keys = ["dd", "hv", "hvhad"]
@@ -1311,7 +1340,7 @@ class UncertaintyPlotter(plotter.Plotter):
         ]
         predefined_keys = set(unfolding_keys + muon_keys + tracking_keys + theory_keys)
 
-        # Calculate signed ratios for every non-stochastic uncertainty present
+        # Collect signed fractional uncertainties for every non-stochastic systematic
         signed_ratios = {}
         for (
             syst_key,
@@ -1319,15 +1348,10 @@ class UncertaintyPlotter(plotter.Plotter):
         ) in self.uncertainty_calculator.uncertainty_definitions.items():
             if syst_def.get("stochastic", False):
                 continue
-            if syst_key not in all_hists:
+            if syst_key not in signed_uncerts:
                 continue
 
-            syst_hist = all_hists[syst_key][0]
-            if syst_key == "dd":
-                target_dd_hist = all_hists["target_dd"][0]
-                signed_ratios[syst_key] = syst_hist / target_dd_hist
-            else:
-                signed_ratios[syst_key] = syst_hist / nominal_hist
+            signed_ratios[syst_key] = signed_uncerts[syst_key]
 
         # Build ordered list of groups, filtering to keys actually present
         remaining_keys = [k for k in signed_ratios if k not in predefined_keys]
@@ -1357,6 +1381,8 @@ class UncertaintyPlotter(plotter.Plotter):
             bins_plot = self._transform_to_symlog(bins)
             bin_centers = self._transform_to_symlog(bin_centers)
             bin_errors = (bins_plot[1:] - bins_plot[:-1]) / 2
+        else:
+            bins_plot = bins
 
         for i, (group_name, group_keys) in enumerate(groups):
             ax = axes[i]
@@ -1366,20 +1392,31 @@ class UncertaintyPlotter(plotter.Plotter):
                 syst_def = self.uncertainty_calculator.uncertainty_definitions[syst_key]
                 label = syst_def.get("name", syst_key)
                 color = syst_def.get("color", "black")
-                ax.errorbar(
+                ax.plot(
                     bin_centers,
                     ratio,
-                    xerr=bin_errors,
-                    yerr=0,
-                    fmt="o",
+                    "-o",
                     color=color,
                     label=label,
                     markersize=3,
                 )
 
-            ax.axhline(1, color="black", linestyle="--", linewidth=0.5)
+            ax.axhline(0, color="black", linestyle="--", linewidth=0.5)
+
+            # Overlay signed method bias on every panel
+            if signed_mbias is not None:
+                ax.plot(
+                    bins_plot,
+                    np.append(signed_mbias, signed_mbias[-1]),
+                    color="black",
+                    linestyle="--",
+                    linewidth=1.5,
+                    drawstyle="steps-post",
+                    label="Method bias",
+                )
+
             ax.set_ylabel(group_name, fontsize=10)
-            if group_keys:
+            if group_keys or signed_mbias is not None:
                 ax.legend(fontsize=6, loc="best", ncol=2)
 
             ax.tick_params(axis="both", direction="in")

@@ -91,7 +91,6 @@ plots = [
 # Initialize the uncertainty calculator
 uncertainty_calculator = UncertaintyCalculator(smooth_hv=True)
 uncertainty_calculator.remove_uncertainty("hvhad")
-uncertainty_calculator.remove_uncertainty("pileup")
 
 # Create output directory for plots
 plot_dir = pathlib.Path(args.store)
@@ -191,8 +190,17 @@ for obs_dict in plots:
         all_hists[uncert_name] = (uncert_hist, None, bins)
 
     # Calculate the uncertainties and total uncertainty
-    output = uncertainty_calculator.calculate_uncertainties(all_hists)
-    syst_uncerts, syst_covs, syst_info = output
+    signed_uncerts, syst_covs_individual, syst_info_individual = (
+        uncertainty_calculator.calculate_uncertainties(
+            all_hists,
+            measured_key="nominal",
+        )
+    )
+    syst_uncerts, syst_covs, syst_info = (
+        uncertainty_calculator.process_signed_uncertainties(
+            signed_uncerts, syst_covs_individual, syst_info_individual
+        )
+    )
 
     # If not in data mode, calculate bias between unfolded data and truth
     if not args.data:
@@ -219,11 +227,14 @@ for obs_dict in plots:
 
     # Divide histograms for which we care about density by bin width
     x_source_hist = source_hist / bin_widths
-    x_target_hist = target_hist / bin_widths
+    if not args.data:
+        x_target_hist = target_hist / bin_widths
+    else:
+        x_target_hist = None
     x_total_uncert = total_uncert / bin_widths
 
     # Main plot: Standard mode (pseudodata vs target)
-    if not args.data and target_hist is not None:
+    if not args.data:
 
         # Duplicate last bin for step plot
         plot_target_hist = np.append(x_target_hist, x_target_hist[-1])
@@ -271,8 +282,8 @@ for obs_dict in plots:
             of_hist_key = key + "_hist"
             of_uncert_key = key + "_uncert"
             if of_hist_key in omnifold_data and of_uncert_key in omnifold_data:
-                of_hist = omnifold_data[of_hist_key]
-                of_uncert = omnifold_data[of_uncert_key]
+                of_hist = omnifold_data[of_hist_key] / bin_widths
+                of_uncert = omnifold_data[of_uncert_key] / bin_widths
                 # Plot omnifold as blue points with slight x offset for visibility
                 ax.errorbar(
                     bin_centers + bin_errors * 0.1,  # Slight offset to avoid overlap
