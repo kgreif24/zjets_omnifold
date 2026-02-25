@@ -399,15 +399,13 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 
 # Load weights for uncertainties involving prior shifts and data driven
 # target
-prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz"
-)
+prior_weights = np.load("/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz")
 hv_prior_weights = np.load(
     "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights.npz"
 )
-dd_target_weights = np.load(
-    "/pscratch/sd/k/kgreif/data/target_dd_weights.npz"
-)["target_dd"]
+dd_target_weights = np.load("/pscratch/sd/k/kgreif/data/target_dd_weights.npz")[
+    "target_dd"
+]
 
 # Calculate the pass200 filters for the nominal and HV samples at
 # both reco and truth level, and the data sample at reco level
@@ -527,6 +525,18 @@ if "hv" in args.group_names:
         central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
     )
     hv_weights["weights_hv"] = central_weights
+
+# If OG order is set, re-order the weights to match the original order
+# Note the non-DY events are appended to the end in both cases
+if args.og_order:
+    og_indices = np.load(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+    )
+    hv_og_indices = np.load(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_hv.npy"
+    )
+    all_weights = {key: all_weights[key][og_indices] for key in all_weights}
+    hv_weights = {key: hv_weights[key][hv_og_indices] for key in hv_weights}
 
 # Create output directory if it doesn't exist
 output_dir = os.path.dirname(args.output)
