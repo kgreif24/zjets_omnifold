@@ -190,7 +190,7 @@ def plot_nnid_uncert_budget(
     )
 
     # Get nominal values
-    y_mc, x_mc = combined_results[measured_key]
+    y_mc, x_mc, _ = combined_results[measured_key]
 
     # Apply slicing
     slice_indices = slice(low_limit, high_limit)
@@ -218,7 +218,7 @@ def plot_nnid_uncert_budget(
     rel_mbias_nnid = None
     rel_mbias_avgr = None
     if target_results is not None and target_key in target_results:
-        y_target, x_target = target_results[target_key]
+        y_target, x_target, _ = target_results[target_key]
         # Method bias as absolute difference divided by target (fractional)
         # Avoid division by zero
         y_target_safe = np.where(np.abs(y_target) > 0, y_target, 1)
@@ -385,6 +385,7 @@ def plot_nnid_pseudodata(
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
     color: str = "blue",
     plot_uncertainty_budget: bool = False,
+    show_connector_lines: bool = False,
 ) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot NNID results with uncertainties.
 
@@ -418,6 +419,10 @@ def plot_nnid_pseudodata(
         Color for the measurement crosses.
     plot_uncertainty_budget : bool
         If True, also generate uncertainty budget plots for NNID and avg_r.
+    show_connector_lines : bool
+        If True, draw faint lines connecting points at the same location:
+        prior to truth pseudodata (light gray), measured to truth pseudodata
+        (light blue).
 
     Returns:
     --------
@@ -436,10 +441,10 @@ def plot_nnid_pseudodata(
     dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
 
     # Extract nominal measurement and pseudodata
-    # Results are stored as (nnids, avg_r)
-    y_prior, x_prior = mc_results["prior"]
-    y_mc, x_mc = mc_results["nominal"]
-    y_pd, x_pd = pd_results["truthpd"]
+    # Results are stored as (nnids, avg_ri, avg_rj)
+    y_prior, x_prior, _ = mc_results["prior"]
+    y_mc, x_mc, _ = mc_results["nominal"]
+    y_pd, x_pd, _ = pd_results["truthpd"]
 
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -475,6 +480,32 @@ def plot_nnid_pseudodata(
         capsize=2,
         linewidth=1,
     )
+
+    if show_connector_lines:
+        x_prior_s = x_prior[low_limit:high_limit]
+        y_prior_s = y_prior[low_limit:high_limit]
+        x_mc_s = x_mc[low_limit:high_limit]
+        y_mc_s = y_mc[low_limit:high_limit]
+        x_pd_s = x_pd[low_limit:high_limit]
+        y_pd_s = y_pd[low_limit:high_limit]
+        n_pts = len(x_pd_s)
+        for i in range(n_pts):
+            ax.plot(
+                [x_prior_s[i], x_pd_s[i]],
+                [y_prior_s[i], y_pd_s[i]],
+                color="lightgray",
+                alpha=1.0,
+                zorder=0,
+                linewidth=0.8,
+            )
+            ax.plot(
+                [x_mc_s[i], x_pd_s[i]],
+                [y_mc_s[i], y_pd_s[i]],
+                color="lightblue",
+                alpha=1.0,
+                zorder=0,
+                linewidth=0.8,
+            )
 
     ax.set_ylim(ylim)
     ax.set_xlim(xlim)

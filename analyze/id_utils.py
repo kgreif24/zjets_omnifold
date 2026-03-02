@@ -147,7 +147,6 @@ def calculate_emds(
 
 def calculate_emds_from_file(
     tree,
-    pass190_flags,
     algorithm,
     R,
     ptmin=None,
@@ -159,6 +158,7 @@ def calculate_emds_from_file(
     random_seed: int | None = None,
     save_jet_info: bool = False,
     save_path=None,
+    **kwargs,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Calculate Earth Mover's Distances (EMDs) from a ROOT file TTree.
 
@@ -173,9 +173,6 @@ def calculate_emds_from_file(
     ----------
     tree : uproot.TTree
         The TTree object from uproot containing event data.
-    pass190_flags : np.ndarray
-        Boolean array of pass190 flags for event filtering.
-        If all True (data case), truth data will not be used.
     algorithm : fastjet.JetAlgorithm
         Jet clustering algorithm (e.g., fj.antikt_algorithm).
     R : float
@@ -207,6 +204,9 @@ def calculate_emds_from_file(
         If provided, the EMDs and event indices will be saved with keys 'emds'
         and 'event_indices'. If save_jet_pts is True, 'jet_pts' will also be
         saved. If None, the data will not be saved (default: None).
+    **kwargs
+        Additional keyword arguments forwarded to :func:`extract_kinematics`
+        (e.g. ``min_track_pt`` to apply a minimum pT cut on tracks).
 
     Returns:
     --------
@@ -224,8 +224,8 @@ def calculate_emds_from_file(
     # Get kinematics from the tree
     pt, eta, phi, masses = extract_kinematics(
         tree,
-        pass190_flags,
         get_truth=get_truth,
+        **kwargs,
     )
 
     # Cluster jets
@@ -240,9 +240,13 @@ def calculate_emds_from_file(
     flat_jets = []
     flat_event_indices = []
     for event_idx, event_jets in enumerate(event_jet_constituents):
-        for jet in event_jets:
-            flat_jets.append(jet)
-            flat_event_indices.append(event_idx)
+        if len(event_jets) == 0:
+            continue
+        # Also require jets have at least 3 constituents so EMD is well defined
+        if len(event_jets[0]) < 3:
+            continue
+        flat_jets.append(event_jets[0])
+        flat_event_indices.append(event_idx)
 
     print(f"Clustered {len(flat_jets)} jets from {len(event_jet_constituents)} events")
 
@@ -292,6 +296,7 @@ def calculate_emds_from_file(
 
     jet_pts = np.array([jet_vec.pt for jet_vec in filtered_jet_4vectors])
     jet_ms = np.array([jet_vec.mass for jet_vec in filtered_jet_4vectors])
+    jet_nconstits = np.array([len(jet) for jet in filtered_jets])
 
     # Preprocess the filtered jets
     # (drop_mass=False to keep mass for EMD calculation)
@@ -321,6 +326,7 @@ def calculate_emds_from_file(
                 event_indices=filtered_event_indices,
                 jet_pts=jet_pts,
                 jet_ms=jet_ms,
+                jet_nconstits=jet_nconstits,
             )
         else:
             np.savez(save_path, emds=emds, event_indices=filtered_event_indices)
