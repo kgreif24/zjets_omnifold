@@ -333,7 +333,7 @@ def plot_nnid_uncert_budget(
 
     # Set plot properties
     ax_avgr.set_xlabel("$i$")
-    ax_avgr.set_ylabel(r"$\langle r \rangle$ uncertainty")
+    ax_avgr.set_ylabel(r"Mean EMD uncertainty")
     ax_avgr.set_xlim(plot_indices[0], plot_indices[-1])
 
     # Set y-axis limits
@@ -379,7 +379,7 @@ def plot_nnid_pseudodata(
     figsize=(6.4, 4.8),
     xlim: tuple[float, float] = (6, 70),
     ylim: tuple[float, float] = (0, 10),
-    xlabel: str = r"$\langle r \rangle$ [GeV]",
+    xlabel: str = r"Mean EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Simulation Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
@@ -553,7 +553,7 @@ def plot_nnid_data(
     figsize: tuple[float, float] = (6.4, 4.8),
     xlim: tuple[float, float] = (6, 70),
     ylim: tuple[float, float] = (0, 10),
-    xlabel: str = r"$\langle r \rangle$ [GeV]",
+    xlabel: str = r"Mean EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
