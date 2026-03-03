@@ -110,7 +110,6 @@ class UncertaintyPlotter(plotter.Plotter):
         self.uncertainty_calculator = uncert_module.UncertaintyCalculator(
             uncertainty_definitions=uncertainty_definitions,
             uncertainty_groups=uncertainty_groups,
-            smooth_hv=True,
         )
 
         # Hardcode luminosity
@@ -169,6 +168,23 @@ class UncertaintyPlotter(plotter.Plotter):
                 r"$1-10^{-2}$",
             ]
         )
+
+        # Hardcode mass observables (do not smooth hidden variable uncertainties)
+        self.mass_observables = [
+            "m_trackj1",
+            "m_trackj2",
+            "hm1_R04",
+            "hm2_R04",
+            "hm3_R04",
+            "hm4_R04",
+            "hmjj_R04",
+            "hm1_R06",
+            "hm1_R10",
+            "hm1_CA04",
+            "hmjj_CA04",
+            "hm1_CA06",
+            "hm1_kt04",
+        ]
 
     def plot(
         self, of_weights, target_wt_file, target2_wt_file=None, color="blue", **kwargs
@@ -534,9 +550,12 @@ class UncertaintyPlotter(plotter.Plotter):
                         )
 
                 # Calculate uncertainties using UncertaintyCalculator
+                ismass = plot["key"] in self.mass_observables
                 signed_uncerts, syst_covs_individual, syst_info_individual = (
                     self.uncertainty_calculator.calculate_uncertainties(
-                        all_hists, measured_key="nominal"
+                        all_hists,
+                        measured_key="nominal",
+                        smooth_hv=not ismass,
                     )
                 )
                 syst_uncerts, syst_covs, syst_info = (

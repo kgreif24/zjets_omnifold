@@ -82,7 +82,7 @@ plots:
     key: "eta_l1"
     ylabel: $d\sigma/d\eta_{\mu1}$ [fb]
     xlabel: '$\eta_{\mu1}$'
-    ulim: 0.048
+    ulim: 0.068
     binlow: -2.5
     binhigh: 2.5
     ibubins: 
@@ -108,7 +108,7 @@ plots:
     key: "eta_l2"
     ylabel: $d\sigma/d\eta_{\mu2}$ [fb]
     xlabel: '$\eta_{\mu2}$'
-    ulim: 0.048
+    ulim: 0.068
     binlow: -2.5
     binhigh: 2.5
     ibubins: 
@@ -134,7 +134,7 @@ plots:
     key: "phi_l1"
     ylabel: $d\sigma/d\phi_{\mu1}$ [fb]
     xlabel: '$\phi_{\mu1}$'
-    ulim: 0.048
+    ulim: 0.068
     ylim:
       - 0.0
       - 0.2
@@ -169,7 +169,7 @@ plots:
     key: "phi_l2"
     ylabel: $d\sigma/d\phi_{\mu2}$ [fb]
     xlabel: '$\phi_{\mu2}$'
-    ulim: 0.048
+    ulim: 0.06
     ylim:
       - 0.0
       - 0.2
@@ -229,7 +229,7 @@ plots:
     key: "y_ll"
     ylabel: $d\sigma/dy_{\mu\mu}$ [fb]
     xlabel: '$y_{\mu\mu}$'
-    ulim: 0.048
+    ulim: 0.06
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -313,7 +313,7 @@ plots:
     key: "y_trackj1"
     ylabel: $d\sigma/dy_{j1}$ [fb]
     xlabel: "$y_{j1}$"
-    ulim: 0.051
+    ulim: 0.06
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -344,7 +344,7 @@ plots:
     key: "y_trackj2"
     ylabel: $d\sigma/dy_{j2}$ [fb]
     xlabel: "$y_{j2}$"
-    ulim: 0.051
+    ulim: 0.061
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -480,7 +480,7 @@ plots:
     key: "m_trackj2"
     ylabel: $d\sigma/dm_{j2}$ [fb/GeV]
     xlabel: "$m_{j2}$ [GeV]"
-    ulim: 0.196
+    ulim: 0.22
     binlow: 0
     binhigh: 150
     ibubins: 
@@ -563,7 +563,7 @@ plots:
     key: "tau2_trackj2"
     ylabel: $d\sigma/d\tau_{2,j2}$ [fb]
     xlabel: '$\tau_{2,j2}$'
-    ulim: 0.117
+    ulim: 0.13
     binlow: 0
     binhigh: 0.6
     ibubins: 
@@ -615,7 +615,7 @@ plots:
     key: "Ntracks_trackj1"
     ylabel: $d\sigma/dN_{ch,j1}$ [fb]
     xlabel: "$N_{ch,j1}$"
-    ulim: 0.161
+    ulim: 0.16
     nbins: 81
     binlow: 0
     binhigh: 80
@@ -643,7 +643,7 @@ plots:
     key: "Ntracks_trackj2"
     ylabel: $d\sigma/dN_{ch,j2}$ [fb]
     xlabel: "$N_{ch,j2}$"
-    ulim: 0.132
+    ulim: 0.16
     nbins: 81
     binlow: 0
     binhigh: 80
@@ -683,7 +683,7 @@ plots:
     key: "HT_tracks"
     ylabel: $d\sigma/dH_{T,tracks}$ [fb/GeV]
     xlabel: "$H_{T,tracks}$ [GeV]"
-    ulim: 0.135
+    ulim: 0.15
     binlow: 0
     binhigh: 2000
     ibubins: 
@@ -1132,4 +1132,4 @@ plots:
     type: "track"
     w1_eval: false
     multifold: false
-    ibu: false  
+    ibu: false

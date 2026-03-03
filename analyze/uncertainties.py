@@ -30,7 +30,6 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
-        smooth_hv: bool = True,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -53,8 +52,6 @@ class UncertaintyCalculator:
         multifold_nn_init : bool, optional
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
-        smooth_hv : bool, optional
-            If True, smooth the hidden variable uncertainties only (default: True)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -66,7 +63,6 @@ class UncertaintyCalculator:
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
         self.multifold_nn_init = multifold_nn_init
-        self.smooth_hv = smooth_hv
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -382,6 +378,7 @@ class UncertaintyCalculator:
         self,
         all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
         measured_key: str = "nominal",
+        smooth_hv: bool = True,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
         """Calculate all uncertainties from histogram dictionary.
         Will only calculate uncertainties that are defined in the
@@ -401,6 +398,8 @@ class UncertaintyCalculator:
             - bins: The bin edges
         measured_key : str, optional
             Key in all_hists for the measured/unfolded distribution (default: "nominal")
+        smooth_hv : bool, optional
+            If True, smooth the hidden variable uncertainties only (default: True)
 
         Returns:
         --------
@@ -516,7 +515,7 @@ class UncertaintyCalculator:
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
-                if syst_key in ["hv", "hvhad"] and self.smooth_hv:
+                if syst_key in ["hv", "hvhad"] and smooth_hv:
                     bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
                 syst_uncerts[syst_key] = uncert_unnorm / measured_hist
