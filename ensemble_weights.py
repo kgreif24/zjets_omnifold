@@ -373,7 +373,7 @@ nominal_path = base_path + (
 )
 hv_path = base_path + (
     "ZjetOmnifold_Mar10_Sherpa2211PlusNonStrong"
-    "_LookLike_MgFxFx_HadCompLikeSh_Test_shuffled.root"
+    "_LookLike_MgFxFx_HadCompLikeMG_Test_shuffled.root"
 )
 
 # Load trees, n_data, and raw MC weights
@@ -401,7 +401,7 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 # target
 prior_weights = np.load("/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz")
 hv_prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights.npz"
+    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights_alpha07.npz"
 )
 dd_target_weights = np.load("/pscratch/sd/k/kgreif/data/target_dd_weights.npz")[
     "target_dd"
