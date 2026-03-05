@@ -273,28 +273,6 @@ def get_bs_n_data(campaign_path, run_name, truth_pass):
     return np.sum(sample[truth_pass == 1])
 
 
-def apply_mc_bootstrap(weights):
-    """apply_mc_bootstrap - This function will run a bootstrap of the
-    MC test sample used to construct the unfolded result.
-    Note that this is independent of the MC bootstrap used in training,
-    since that was performed on the MC training sample.
-
-    Args:
-        weights (np.ndarray): The weights to apply the MC bootstrap to.
-
-    Returns:
-        np.ndarray: The weights with the MC bootstrap applied.
-    """
-
-    # Sample Poisson to get the bootstrap
-    bs_seed = 1000 + np.random.randint(0, 1000)
-    rng = np.random.default_rng(bs_seed)
-    bs_weights = rng.poisson(lam=1.0, size=len(weights))
-
-    # Apply the bootstrap to the weights
-    return weights * bs_weights
-
-
 def get_prior_weights(gn, prior_weights, use_truth=True):
     """get_prior_weights - Pull the correct prior weights from the
     weights file.
@@ -395,7 +373,7 @@ nominal_path = base_path + (
 )
 hv_path = base_path + (
     "ZjetOmnifold_Mar10_Sherpa2211PlusNonStrong"
-    "_LookLike_MgFxFx_HadCompLikeSh_Test_shuffled.root"
+    "_LookLike_MgFxFx_HadCompLikeMG_Test_shuffled.root"
 )
 
 # Load trees, n_data, and raw MC weights
@@ -421,15 +399,13 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 
 # Load weights for uncertainties involving prior shifts and data driven
 # target
-prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/madgraph_test_prior_weights.npz"
-)
+prior_weights = np.load("/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz")
 hv_prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/sherpa_test_prior_weights.npz"
+    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights.npz"
 )
-dd_target_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/target_dd_weights.npz"
-)["target_dd"]
+dd_target_weights = np.load("/pscratch/sd/k/kgreif/data/target_dd_weights.npz")[
+    "target_dd"
+]
 
 # Calculate the pass200 filters for the nominal and HV samples at
 # both reco and truth level, and the data sample at reco level
@@ -512,11 +488,6 @@ for gn in args.group_names:
             if gn == "dbootstrap":
                 # Get the run name for this bootstrap
                 n_data = get_bs_n_data(args.campaign_path, run_names[i], data_pass200)
-            # If this is the MC bootstrap we need to apply the bootstrap weights
-            # but the number of data events is the same as the nominal sample
-            elif gn == "mcbootstrap":
-                weight = apply_mc_bootstrap(weight)
-                n_data = n_data_nominal
             else:
                 n_data = n_data_nominal
             weight = norm_weights(
@@ -554,6 +525,18 @@ if "hv" in args.group_names:
         central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
     )
     hv_weights["weights_hv"] = central_weights
+
+# If OG order is set, re-order the weights to match the original order
+# Note the non-DY events are appended to the end in both cases
+if args.og_order:
+    og_indices = np.load(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+    )
+    hv_og_indices = np.load(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_hv.npy"
+    )
+    all_weights = {key: all_weights[key][og_indices] for key in all_weights}
+    hv_weights = {key: hv_weights[key][hv_og_indices] for key in hv_weights}
 
 # Create output directory if it doesn't exist
 output_dir = os.path.dirname(args.output)
