@@ -5,6 +5,7 @@ Utility functions for intrinsic dimension calculations.
 import scipy.optimize as opt
 import numpy as np
 import vector
+import awkward as ak
 import energyflow as ef
 import jet_clusterer
 import multiprocessing
@@ -163,7 +164,7 @@ def calculate_emds_from_file(
     """Calculate Earth Mover's Distances (EMDs) from a ROOT file TTree.
 
     This function performs the complete analysis pipeline:
-    1. Extracts kinematics from the TTree
+    1. Extracts kinematics from the TTree (or list of TTrees)
     2. Clusters jets using the specified algorithm
     3. Filters jets based on pT and eta cuts
     4. Preprocesses jets (centers and rotates)
@@ -171,8 +172,11 @@ def calculate_emds_from_file(
 
     Arguments:
     ----------
-    tree : uproot.TTree
-        The TTree object from uproot containing event data.
+    tree : uproot.TTree or list of uproot.TTree
+        The TTree object(s) from uproot containing event data. If a list is
+        provided, kinematics are loaded from each tree and concatenated along
+        the event dimension. Returned event indices address the concatenated
+        events (i.e. tree 0 events first, then tree 1, etc.).
     algorithm : fastjet.JetAlgorithm
         Jet clustering algorithm (e.g., fj.antikt_algorithm).
     R : float
@@ -221,12 +225,25 @@ def calculate_emds_from_file(
     if ptmin is None:
         ptmin = 500.0
 
-    # Get kinematics from the tree
-    pt, eta, phi, masses = extract_kinematics(
-        tree,
-        get_truth=get_truth,
-        **kwargs,
-    )
+    # Get kinematics from the tree(s)
+    if isinstance(tree, list):
+        all_kinematics = [
+            extract_kinematics(t, get_truth=get_truth, **kwargs) for t in tree
+        ]
+        pt = ak.concatenate([k[0] for k in all_kinematics], axis=0)
+        eta = ak.concatenate([k[1] for k in all_kinematics], axis=0)
+        phi = ak.concatenate([k[2] for k in all_kinematics], axis=0)
+        masses = ak.concatenate([k[3] for k in all_kinematics], axis=0)
+        print(
+            f"Concatenated kinematics from {len(tree)} trees "
+            f"({len(pt)} total events)"
+        )
+    else:
+        pt, eta, phi, masses = extract_kinematics(
+            tree,
+            get_truth=get_truth,
+            **kwargs,
+        )
 
     # Cluster jets
     # Convert n_jobs=-1 to None for clusterer (which uses all CPUs)

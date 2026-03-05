@@ -640,9 +640,9 @@ def plot_nnid_data(
 
     # Extract nominal measurement and generator predictions
     # Results are stored as (nnids, avg_r)
-    y_mc, x_mc = mc_results["nominal"]
-    y_madgraph, x_madgraph = madgraph_results["madgraph"]
-    y_sherpa, x_sherpa = sherpa_results["sherpa"]
+    y_mc, x_mc, _ = mc_results["nominal"]
+    y_madgraph, x_madgraph, _ = madgraph_results["madgraph"]
+    y_sherpa, x_sherpa, _ = sherpa_results["sherpa"]
 
     fig, ax = plt.subplots(figsize=figsize)
 
