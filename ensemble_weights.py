@@ -401,7 +401,7 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 # target
 prior_weights = np.load("/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz")
 hv_prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights_alpha07.npz"
+    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights.npz"
 )
 dd_target_weights = np.load("/pscratch/sd/k/kgreif/data/target_dd_weights.npz")[
     "target_dd"
