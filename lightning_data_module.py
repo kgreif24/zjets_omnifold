@@ -613,7 +613,7 @@ class LOfData(L.LightningDataModule):
             # Pileup re-weighting scale factor systematic
             if self.syst_kw == "prw":
                 nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
-                var_sf = ak.to_numpy(tree["syst_prwDown"].array(entry_stop=max_read))
+                var_sf = ak.to_numpy(tree["syst_prwUp"].array(entry_stop=max_read))
                 root_weights *= np.divide(
                     var_sf, nom_sf, out=np.zeros_like(var_sf), where=nom_sf != 0
                 )
@@ -681,6 +681,31 @@ class LOfData(L.LightningDataModule):
                 root_weights = weight_file[key]
                 if len(root_weights) > max_read:
                     root_weights = root_weights[:max_read]
+
+            # Non-strong (Diboson / EW) composition uncertainty
+            # Scale weights of specific DSIDs up by 1.3 (Diboson) or 1.2 (EW)
+            elif self.syst_kw in ["nonstrong_diboson", "nonstrong_ew"]:
+
+                dsids_diboson = [
+                    363356, 363358, 364250, 364253, 364254, 364255,
+                    363494, 363355, 363357, 363359, 363360, 363489,
+                ]
+                dsids_ew = [830007]
+
+                if self.syst_kw == "nonstrong_diboson":
+                    dsids = dsids_diboson
+                    factor = 1.3
+                else:
+                    dsids = dsids_ew
+                    factor = 1.2
+
+                mc_channel = ak.to_numpy(
+                    tree["mcChannelNumber"].array(entry_stop=max_read)
+                )
+                scale = np.where(
+                    np.isin(mc_channel, dsids), factor, 1.0
+                ).astype(np.float32)
+                root_weights *= scale
 
         # Load weights from the path
         if path is not None:
