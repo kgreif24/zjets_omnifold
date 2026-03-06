@@ -613,7 +613,7 @@ class LOfData(L.LightningDataModule):
             # Pileup re-weighting scale factor systematic
             if self.syst_kw == "prw":
                 nom_sf = ak.to_numpy(tree["prw"].array(entry_stop=max_read))
-                var_sf = ak.to_numpy(tree["syst_prwDown"].array(entry_stop=max_read))
+                var_sf = ak.to_numpy(tree["syst_prwUp"].array(entry_stop=max_read))
                 root_weights *= np.divide(
                     var_sf, nom_sf, out=np.zeros_like(var_sf), where=nom_sf != 0
                 )
