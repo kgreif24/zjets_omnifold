@@ -280,7 +280,12 @@ class OfEval:
         if self.config.syst_kw is not None:
             if "theory" in self.config.syst_kw:
                 is_prior_syst = True
-            elif self.config.syst_kw in ["hv2", "hvhad"]:
+            elif self.config.syst_kw in [
+                "hv2",
+                "hvhad",
+                "nonstrong_diboson",
+                "nonstrong_ew",
+            ]:
                 is_prior_syst = True
         use_syst = self.config.syst_kw if (self.step == 1 or is_prior_syst) else None
         d_module_test = LOfData(
@@ -319,7 +324,12 @@ class OfEval:
         if self.config.syst_kw is not None:
             if "theory" in self.config.syst_kw:
                 is_prior_syst = True
-            elif self.config.syst_kw in ["hv2", "hvhad"]:
+            elif self.config.syst_kw in [
+                "hv2",
+                "hvhad",
+                "nonstrong_diboson",
+                "nonstrong_ew",
+            ]:
                 is_prior_syst = True
         use_syst = self.config.syst_kw if (self.step == 1 or is_prior_syst) else None
         d_module_train = LOfData(
