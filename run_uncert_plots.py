@@ -42,6 +42,26 @@ parser.add_argument(
         "of a campaign."
     ),
 )
+parser.add_argument(
+    "--target_weights",
+    type=str,
+    required=True,
+    help=(
+        "Path to a .npz file containing target weights. Must contain "
+        "'weights_nominal'. In data_comparison_mode, must also contain "
+        "MadGraph theory weight arrays (e.g. weights_theoryQCD)."
+    ),
+)
+parser.add_argument(
+    "--target2_weights",
+    type=str,
+    default=None,
+    help=(
+        "Path to a .npz file containing target2 weights. Required when using "
+        "--target2. Must contain 'weights_nominal'. In data_comparison_mode, "
+        "must also contain Sherpa theory weight arrays."
+    ),
+)
 parser.add_argument("--store", type=str, help="The path to store the plots")
 parser.add_argument("--verbosity", type=int, default=0, help="Verbosity level")
 parser.add_argument(
@@ -53,7 +73,6 @@ parser.add_argument(
     default=-1,
     help=(
         "The maximum number of events to use for plotting. "
-        "If set, recommended to run with --normalize_targets."
     ),
 )
 parser.add_argument(
@@ -86,14 +105,15 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "--normalize_targets",
-    action="store_true",
-    help="Normalize the target histograms to match the source histograms",
-)
-parser.add_argument(
     "--do_chi2_test",
     action="store_true",
     help="Perform a chi^2 test and print the results",
+)
+parser.add_argument(
+    "--signed_uncerts",
+    action="store_true",
+    default=False,
+    help="Generate signed uncertainty plots for non-stochastic systematics",
 )
 args = parser.parse_args()
 
@@ -113,8 +133,8 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
     root_files=args.root_files,
     target2_path=args.target2,
     data_comparison_mode=args.data_comparison_mode,
-    normalize_targets=args.normalize_targets,
     do_chi2_test=args.do_chi2_test,
+    plot_signed_uncerts=args.signed_uncerts,
     verbosity=args.verbosity,
     use_pdf=args.pdf,
     max_events=args.max_events,
@@ -123,6 +143,8 @@ plotter = uncertainty_plotter.UncertaintyPlotter(
 )
 plotter.plot(
     args.weights,
+    args.target_weights,
+    target2_wt_file=args.target2_weights,
     color=args.color,
 )
 print("Plotting complete")

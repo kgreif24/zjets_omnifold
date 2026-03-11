@@ -62,9 +62,12 @@ def get_nnid_uncertainties(
         nominal_val, _, _ = hists[measured_key]
         hists[measured_key] = (nominal_val, mc_stat_var, None)
 
-    # Get individual uncertainty components
-    syst_uncerts, _, syst_info = calc.calculate_uncertainties(
-        hists, measured_key=measured_key
+    # Get signed individual uncertainty components, then process to absolute grouped
+    signed_uncerts, syst_covs_individual, syst_info_individual = (
+        calc.calculate_uncertainties(hists, measured_key=measured_key)
+    )
+    syst_uncerts, _, syst_info = calc.process_signed_uncertainties(
+        signed_uncerts, syst_covs_individual, syst_info_individual
     )
 
     # Compute total fractional uncertainty as sqrt(sum of squares)
@@ -1373,8 +1376,13 @@ def plot_measurement_with_uncertainties(
     uncertainty_calculator = uncertainties.UncertaintyCalculator()
 
     # Calculate systematic uncertainties using UncertaintyCalculator
-    syst, syst_covs, syst_info = uncertainty_calculator.calculate_uncertainties(
-        measurement_hists, measured_key=measured_key
+    signed_syst, syst_covs_individual, syst_info_individual = (
+        uncertainty_calculator.calculate_uncertainties(
+            measurement_hists, measured_key=measured_key
+        )
+    )
+    syst, syst_covs, syst_info = uncertainty_calculator.process_signed_uncertainties(
+        signed_syst, syst_covs_individual, syst_info_individual
     )
     total_vars = np.sum(np.array(list(syst.values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)

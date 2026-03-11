@@ -144,6 +144,10 @@ def group_name_to_write_name(gn, idx=None):
         return "weights_theoryPSscale"
     elif gn == "top":
         return "weights_topBackground"
+    elif gn == "nonstrong-diboson":
+        return "weights_nonstrongDiboson"
+    elif gn == "nonstrong-ew":
+        return "weights_nonstrongEW"
     else:
         raise ValueError(f"Group name {gn} not recognized!")
 
@@ -175,6 +179,18 @@ def get_truth_to_reco_ratio(gn, t_mc, prior_weights, reco_pass, truth_pass):
         reco_prior_weights = get_prior_weights(gn, prior_weights, use_truth=False)
         numerator = np.sum(truth_prior_weights[truth_pass == 1])
         denominator = np.sum(reco_prior_weights[reco_pass == 1])
+        factor = numerator / denominator
+        print(f"Factor for {gn} is {factor}")
+        return factor
+
+    # Non-strong composition uncertainty: scale specific DSIDs on the fly
+    elif "nonstrong" in gn:
+        mc_channel = ak.to_numpy(t_mc["mcChannelNumber"].array())
+        scale = get_nonstrong_scale(gn, mc_channel)
+        weight_mc = ak.to_numpy(t_mc["weight_mc"].array())
+        weight = ak.to_numpy(t_mc["weight"].array())
+        numerator = np.sum((weight_mc * scale)[truth_pass == 1])
+        denominator = np.sum((weight * scale)[reco_pass == 1])
         factor = numerator / denominator
         print(f"Factor for {gn} is {factor}")
         return factor
@@ -273,26 +289,30 @@ def get_bs_n_data(campaign_path, run_name, truth_pass):
     return np.sum(sample[truth_pass == 1])
 
 
-def apply_mc_bootstrap(weights):
-    """apply_mc_bootstrap - This function will run a bootstrap of the
-    MC test sample used to construct the unfolded result.
-    Note that this is independent of the MC bootstrap used in training,
-    since that was performed on the MC training sample.
+def get_nonstrong_scale(gn, mc_channel):
+    """get_nonstrong_scale - Compute the per-event weight scale factor for the
+    non-strong (Diboson / EW) composition uncertainty. Returns a float array
+    with factor > 1 for events belonging to the relevant DSIDs, 1 otherwise.
 
     Args:
-        weights (np.ndarray): The weights to apply the MC bootstrap to.
+        gn (str): Group name, either "nonstrong-diboson" or "nonstrong-ew".
+        mc_channel (np.ndarray): The mcChannelNumber branch values.
 
     Returns:
-        np.ndarray: The weights with the MC bootstrap applied.
+        np.ndarray: Per-event scale factors.
     """
-
-    # Sample Poisson to get the bootstrap
-    bs_seed = 1000 + np.random.randint(0, 1000)
-    rng = np.random.default_rng(bs_seed)
-    bs_weights = rng.poisson(lam=1.0, size=len(weights))
-
-    # Apply the bootstrap to the weights
-    return weights * bs_weights
+    dsids_diboson = [
+        363356, 363358, 364250, 364253, 364254, 364255,
+        363494, 363355, 363357, 363359, 363360, 363489,
+    ]
+    dsids_ew = [830007]
+    if gn == "nonstrong-diboson":
+        dsids, factor = dsids_diboson, 1.3
+    elif gn == "nonstrong-ew":
+        dsids, factor = dsids_ew, 1.2
+    else:
+        raise ValueError(f"Unknown nonstrong group name: {gn}")
+    return np.where(np.isin(mc_channel, dsids), factor, 1.0).astype(np.float32)
 
 
 def get_prior_weights(gn, prior_weights, use_truth=True):
@@ -353,6 +373,11 @@ parser.add_argument(
     help="Path to the directory containing all of the data from a campaign",
 )
 parser.add_argument(
+    "--hv_campaign_path",
+    type=str,
+    help="Path to the directory containing all of the data from the HV campaign",
+)
+parser.add_argument(
     "--iteration",
     type=int,
     required=True,
@@ -393,9 +418,9 @@ base_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/"
 nominal_path = base_path + (
     "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
 )
-hv_path = base_path + (
-    "ZjetOmnifold_Mar10_Sherpa2211PlusNonStrong"
-    "_LookLike_MgFxFx_HadCompLikeSh_Test_shuffled.root"
+hv_path = (
+    "/pscratch/sd/k/kgreif/data/"
+    "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
 )
 
 # Load trees, n_data, and raw MC weights
@@ -421,15 +446,10 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 
 # Load weights for uncertainties involving prior shifts and data driven
 # target
-prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/madgraph_test_prior_weights.npz"
-)
-hv_prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/sherpa_test_prior_weights.npz"
-)
-dd_target_weights = np.load(
-    "/pscratch/sd/k/kgreif/zjets_plot_staging/target_dd_weights.npz"
-)["target_dd"]
+prior_weights = np.load("/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz")
+dd_target_weights = np.load("/pscratch/sd/k/kgreif/data/target_dd_weights.npz")[
+    "target_dd"
+]
 
 # Calculate the pass200 filters for the nominal and HV samples at
 # both reco and truth level, and the data sample at reco level
@@ -452,7 +472,7 @@ all_weights = {}
 for gn in args.group_names:
 
     # Skip the HV group, it is handled separately
-    if gn in ["hv", "hv2"]:
+    if gn == "hv":
         continue
 
     # Pull the weights for a given group
@@ -473,6 +493,14 @@ for gn in args.group_names:
         central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
         if gn == "hvhad" or "theory" in gn:
             alt_root_weights = get_prior_weights(gn, prior_weights)
+            central_weights *= alt_root_weights
+            use_factor = get_truth_to_reco_ratio(
+                gn, t, prior_weights, pass200, truth_pass200
+            )
+        elif "nonstrong" in gn:
+            mc_channel = ak.to_numpy(t["mcChannelNumber"].array())
+            scale = get_nonstrong_scale(gn, mc_channel)
+            alt_root_weights = nominal_root_weights * scale
             central_weights *= alt_root_weights
             use_factor = get_truth_to_reco_ratio(
                 gn, t, prior_weights, pass200, truth_pass200
@@ -512,11 +540,6 @@ for gn in args.group_names:
             if gn == "dbootstrap":
                 # Get the run name for this bootstrap
                 n_data = get_bs_n_data(args.campaign_path, run_names[i], data_pass200)
-            # If this is the MC bootstrap we need to apply the bootstrap weights
-            # but the number of data events is the same as the nominal sample
-            elif gn == "mcbootstrap":
-                weight = apply_mc_bootstrap(weight)
-                n_data = n_data_nominal
             else:
                 n_data = n_data_nominal
             weight = norm_weights(
@@ -537,23 +560,35 @@ all_weights["target_dd"] = dd_target_weights
 hv_weights = {}
 if "hv" in args.group_names:
     pulled_weights, _ = pull_weights(
-        args.campaign_path,
+        args.hv_campaign_path,
         "hv-data" if args.use_data else "hv",
         args.iteration,
     )
     print(f"Got {len(pulled_weights)} weights for group hv")
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
-    alt_root_weights = get_prior_weights("hv", hv_prior_weights)
-    central_weights *= alt_root_weights
+    central_weights *= hv_root_weights
     # Normalize the HV weights
-    ratio_hv = get_truth_to_reco_ratio(
-        "hv", t_hv, hv_prior_weights, hv_pass200, hv_truth_pass200
+    ratio_hv = (
+        np.sum(hv_root_weights[hv_truth_pass200 == 1]) /
+        np.sum(hv_reco_weights[hv_pass200 == 1])
     )
     central_weights = norm_weights(
         central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
     )
     hv_weights["weights_hv"] = central_weights
+
+# If OG order is set, re-order the weights to match the original order
+# Note the non-DY events are appended to the end in both cases
+if args.og_order:
+    og_indices = np.load(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices.npy"
+    )
+    hv_og_indices = np.load(
+        "/pscratch/sd/k/kgreif/zjets_plot_staging/unshuffle_indices_hv.npy"
+    )
+    all_weights = {key: all_weights[key][og_indices] for key in all_weights}
+    hv_weights = {key: hv_weights[key][hv_og_indices] for key in hv_weights}
 
 # Create output directory if it doesn't exist
 output_dir = os.path.dirname(args.output)

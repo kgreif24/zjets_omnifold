@@ -30,7 +30,6 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
-        smooth_hv: bool = False,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -53,8 +52,6 @@ class UncertaintyCalculator:
         multifold_nn_init : bool, optional
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
-        smooth_hv : bool, optional
-            If True, smooth the hidden variable uncertainty only (default: False)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -66,7 +63,6 @@ class UncertaintyCalculator:
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
         self.multifold_nn_init = multifold_nn_init
-        self.smooth_hv = smooth_hv
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -222,49 +218,49 @@ class UncertaintyCalculator:
             },
             "theoryQCD": {
                 "name": "Theory QCD",
-                "color": "chartreuse",
+                "color": "gold",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPDF": {
                 "name": "Theory PDF",
-                "color": "lawngreen",
+                "color": "goldenrod",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryAlphaS": {
                 "name": "Theory AlphaS",
-                "color": "olive",
+                "color": "mediumslateblue",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSsoft": {
                 "name": "Theory PS soft",
-                "color": "palegreen",
+                "color": "indigo",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSjet": {
                 "name": "Theory PS jet",
-                "color": "lightgreen",
+                "color": "crimson",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryMPI": {
                 "name": "Theory MPI",
-                "color": "aquamarine",
+                "color": "dimgray",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSscale": {
                 "name": "Theory PS scale",
-                "color": "lime",
+                "color": "saddlebrown",
                 "stochastic": False,
                 "prefix": None,
             },
             "topBackground": {
                 "name": "Top background",
-                "color": "tomato",
+                "color": "navajowhite",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -382,6 +378,7 @@ class UncertaintyCalculator:
         self,
         all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
         measured_key: str = "nominal",
+        smooth_hv: bool = True,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
         """Calculate all uncertainties from histogram dictionary.
         Will only calculate uncertainties that are defined in the
@@ -401,13 +398,21 @@ class UncertaintyCalculator:
             - bins: The bin edges
         measured_key : str, optional
             Key in all_hists for the measured/unfolded distribution (default: "nominal")
+        smooth_hv : bool, optional
+            If True, smooth the hidden variable uncertainties only (default: True)
 
         Returns:
         --------
         syst_uncerts : dict[str, np.ndarray]
-            Dictionary mapping uncertainty names to fractional uncertainty arrays.
+            Dictionary mapping uncertainty names to signed fractional uncertainty
+            arrays. Non-stochastic uncertainties retain their sign; stochastic
+            uncertainties (mc-stat, nn-stability, etc.) are inherently non-negative
+            since they are derived from std/sqrt(var). Uncertainties are not grouped.
+            Call process_signed_uncertainties to obtain absolute-valued, grouped
+            uncertainties suitable for budget plots and total uncertainty computation.
         syst_covs : dict[str, np.ndarray]
             Dictionary mapping uncertainty names to covariance matrices.
+            Covariance matrices are computed using signed uncertainties.
         syst_info : dict[str, dict]
             Dictionary mapping uncertainty names to metadata (name, color, etc.).
             Useful for plotting only uncertainties that are active (in the dictionary)
@@ -518,7 +523,7 @@ class UncertaintyCalculator:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
             dd_uncert_unnorm = dd_hist - dd_target_hist
-            syst_uncerts["dd"] = np.abs(dd_uncert_unnorm) / measured_hist
+            syst_uncerts["dd"] = dd_uncert_unnorm / measured_hist
             # Note we re-normalize the dd uncertainty to match the measured histogram!
             syst_covs["dd"] = self._fill_covariance_matrix(
                 [dd_uncert_unnorm * (measured_hist / dd_target_hist)],
@@ -534,20 +539,72 @@ class UncertaintyCalculator:
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
-                if syst_key == "hv" and self.smooth_hv:
+                if syst_key in ["hv", "hvhad"] and smooth_hv:
                     bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
-                syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
+                syst_uncerts[syst_key] = uncert_unnorm / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
                 syst_info[syst_key] = syst_def.copy()
 
-        # Apply uncertainty grouping
+        return syst_uncerts, syst_covs, syst_info
+
+    def process_signed_uncertainties(
+        self,
+        signed_uncerts: Dict[str, np.ndarray],
+        syst_covs: Dict[str, np.ndarray],
+        syst_info: Dict[str, Dict],
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Dict]]:
+        """Process signed fractional uncertainties into unsigned grouped uncertainties.
+
+        Takes the output of calculate_uncertainties (signed, ungrouped) and returns
+        absolute-valued, grouped uncertainties suitable for uncertainty budget plots
+        and total uncertainty computation.
+
+        Covariance matrices are filled with signed uncertainties and passed through
+        unchanged (only grouped by summing) to preserve correct statistical properties.
+
+        Arguments:
+        ----------
+        signed_uncerts : dict[str, np.ndarray]
+            Signed fractional uncertainties from calculate_uncertainties.
+        syst_covs : dict[str, np.ndarray]
+            Covariance matrices from calculate_uncertainties.
+        syst_info : dict[str, dict]
+            Metadata from calculate_uncertainties.
+
+        Returns:
+        --------
+        syst_uncerts : dict[str, np.ndarray]
+            Unsigned (absolute value applied) fractional uncertainties, grouped
+            in quadrature according to uncertainty_groups.
+        syst_covs : dict[str, np.ndarray]
+            Covariance matrices grouped by summing.
+        syst_info : dict[str, dict]
+            Metadata for each uncertainty (grouped entries reflect group names).
+        """
+        # Apply absolute value to non-stochastic uncertainties.
+        # Stochastic uncertainties (nn-stability, mc-stat, data-stat) are already
+        # non-negative since they are computed via std / sqrt(var).
+        abs_uncerts = {}
+        for key, uncert in signed_uncerts.items():
+            syst_def = self.uncertainty_definitions.get(key, {})
+            if syst_def.get("stochastic", False):
+                abs_uncerts[key] = uncert
+            else:
+                abs_uncerts[key] = np.abs(uncert)
+
+        # Shallow-copy covs and info so _apply_grouping does not mutate the
+        # caller's dictionaries when it deletes individual keys.
+        covs_copy = dict(syst_covs)
+        info_copy = dict(syst_info)
+
+        # Apply grouping (adds in quadrature for uncerts, sums for covs).
         if self.uncertainty_groups:
-            syst_uncerts, syst_covs, syst_info = self._apply_grouping(
-                syst_uncerts, syst_covs, syst_info
+            abs_uncerts, covs_copy, info_copy = self._apply_grouping(
+                abs_uncerts, covs_copy, info_copy
             )
 
-        return syst_uncerts, syst_covs, syst_info
+        return abs_uncerts, covs_copy, info_copy
 
     def _apply_grouping(
         self,
