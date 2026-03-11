@@ -196,14 +196,14 @@ class UncertaintyCalculator:
                 "stochastic": False,
                 "prefix": None,
             },
-            "mc-stat": {
-                "name": "MC stat",
+            "mc-stat-test": {
+                "name": "MC stat (test)",
                 "color": "green",
                 "stochastic": True,
-                "prefix": None,
+                "prefix": "bootstrap_mc_test_",
             },
-            "mc-stat-bs": {
-                "name": "MC stat (bootstrap)",
+            "mc-stat-train": {
+                "name": "MC stat (train)",
                 "color": "teal",
                 "stochastic": True,
                 "prefix": "bootstrap_mc_",
@@ -291,7 +291,7 @@ class UncertaintyCalculator:
                 "muEffTrack",
                 "muEffTrig",
             ],
-            "MC Stat": ["mc-stat", "mc-stat-bs"],
+            "MC Stat": ["mc-stat-test", "mc-stat-train"],
             "Theory": [
                 "theoryQCD",
                 "theoryPDF",
@@ -427,16 +427,40 @@ class UncertaintyCalculator:
         syst_covs = {}
         syst_info = {}
 
-        # MC statistical uncertainty (from raw MC stat uncertainty)
-        mc_stat_def = self.uncertainty_definitions.get("mc-stat")
+        # MC test statistical uncertainty
+        mc_stat_def = self.uncertainty_definitions.get("mc-stat-test")
         if mc_stat_def is not None:
-            mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
-            syst_uncerts["mc-stat"] = mc_stat_uncert_unnorm / measured_hist
-            syst_covs["mc-stat"] = np.diag(measured_hist_var)
-            syst_info["mc-stat"] = mc_stat_def.copy()
+
+            # There are two possible ways to compute MC test uncertainty:
+            # 1. Bootstrap the MC test sample
+            # 2. Use the weighted Poisson counting error in the measured histogram
+            # Default to 2 unless the bootstrap hists are provided, in which case use 1
+            prefix = mc_stat_def.get("prefix", "bootstrap_mc_test_")
+            mc_stat_test_bs_keys = [
+                key for key in all_hists.keys() if key.startswith(prefix)
+            ]
+            # Note with bootstraps fill off diagonal elements of the covariance matrix
+            if len(mc_stat_test_bs_keys) > 0:
+                mc_stat_test_bs_hists = np.array(
+                    [all_hists[key][0] for key in mc_stat_test_bs_keys]
+                )
+                mc_stat_test_bs_uncert_unnorm = np.std(mc_stat_test_bs_hists, axis=0)
+                syst_uncerts["mc-stat-test"] = (
+                    mc_stat_test_bs_uncert_unnorm / measured_hist
+                )
+                syst_covs["mc-stat-test"] = self._fill_covariance_matrix(
+                    mc_stat_test_bs_hists,
+                    means=np.mean(mc_stat_test_bs_hists, axis=0),
+                )
+            # With only Poisson bin counts the covariance matrix is diagonal
+            else:
+                mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
+                syst_uncerts["mc-stat-test"] = mc_stat_uncert_unnorm / measured_hist
+                syst_covs["mc-stat-test"] = np.diag(measured_hist_var)
+            syst_info["mc-stat-test"] = mc_stat_def.copy()
 
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
-        mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-bs")
+        mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-train")
         if mc_stat_bs_def is not None:
             prefix = mc_stat_bs_def.get("prefix", "bootstrap_mc_")
             mc_stat_bs_keys = [
@@ -444,12 +468,12 @@ class UncertaintyCalculator:
             ]
             mc_stat_bs_hists = np.array([all_hists[key][0] for key in mc_stat_bs_keys])
             mc_stat_bs_uncert_unnorm = np.std(mc_stat_bs_hists, axis=0)
-            syst_uncerts["mc-stat-bs"] = mc_stat_bs_uncert_unnorm / measured_hist
-            syst_covs["mc-stat-bs"] = self._fill_covariance_matrix(
+            syst_uncerts["mc-stat-train"] = mc_stat_bs_uncert_unnorm / measured_hist
+            syst_covs["mc-stat-train"] = self._fill_covariance_matrix(
                 mc_stat_bs_hists,
                 means=np.mean(mc_stat_bs_hists, axis=0),
             )
-            syst_info["mc-stat-bs"] = mc_stat_bs_def.copy()
+            syst_info["mc-stat-train"] = mc_stat_bs_def.copy()
 
         # Data statistical uncertainty
         data_stat_def = self.uncertainty_definitions.get("data-stat")

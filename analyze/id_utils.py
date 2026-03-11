@@ -11,6 +11,7 @@ import jet_clusterer
 import multiprocessing
 import dask
 import dask.array as da
+import uproot
 from tqdm import tqdm
 from numba import njit, prange
 
@@ -147,36 +148,39 @@ def calculate_emds(
 
 
 def calculate_emds_from_file(
-    tree,
+    file_path,
+    tree_name,
     algorithm,
     R,
     ptmin=None,
     ptmax=None,
     etamax=None,
     max_jets=None,
-    get_truth=True,
     n_jobs=-1,
     random_seed: int | None = None,
     save_jet_info: bool = False,
     save_path=None,
     **kwargs,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Calculate Earth Mover's Distances (EMDs) from a ROOT file TTree.
+    """Calculate Earth Mover's Distances (EMDs) from a ROOT file.
 
     This function performs the complete analysis pipeline:
-    1. Extracts kinematics from the TTree (or list of TTrees)
-    2. Clusters jets using the specified algorithm
-    3. Filters jets based on pT and eta cuts
-    4. Preprocesses jets (centers and rotates)
-    5. Calculates EMDs between all jet pairs
+    1. Opens the ROOT file(s) and reads the TTree
+    2. Extracts kinematics from the TTree (or list of TTrees)
+    3. Clusters jets using the specified algorithm
+    4. Filters jets based on pT and eta cuts
+    5. Preprocesses jets (centers and rotates)
+    6. Calculates EMDs between all jet pairs
 
     Arguments:
     ----------
-    tree : uproot.TTree or list of uproot.TTree
-        The TTree object(s) from uproot containing event data. If a list is
-        provided, kinematics are loaded from each tree and concatenated along
-        the event dimension. Returned event indices address the concatenated
-        events (i.e. tree 0 events first, then tree 1, etc.).
+    file_path : str or list of str
+        Path(s) to the ROOT file(s). If a list is provided, kinematics are
+        loaded from each file and concatenated along the event dimension.
+        Returned event indices address the concatenated events
+        (i.e. file 0 events first, then file 1, etc.).
+    tree_name : str
+        Name of the TTree within the ROOT file(s).
     algorithm : fastjet.JetAlgorithm
         Jet clustering algorithm (e.g., fj.antikt_algorithm).
     R : float
@@ -193,8 +197,6 @@ def calculate_emds_from_file(
     max_jets : int, optional
         Maximum number of jets to keep after filtering. If specified,
         jets beyond this limit will be dropped (default: None, no limit).
-    get_truth : bool, optional
-        If True, get truth level data. If False, get reco level data.
     n_jobs : int, optional
         Number of parallel jobs for jet clustering and EMD calculation.
         If -1, uses all available CPUs (default: -1).
@@ -225,25 +227,30 @@ def calculate_emds_from_file(
     if ptmin is None:
         ptmin = 500.0
 
-    # Get kinematics from the tree(s)
-    if isinstance(tree, list):
-        all_kinematics = [
-            extract_kinematics(t, get_truth=get_truth, **kwargs) for t in tree
-        ]
+    # Get kinematics from the file(s)
+    if isinstance(file_path, list):
+        all_kinematics = []
+        for path in file_path:
+            with uproot.open(path) as f:
+                tree = f[tree_name]
+                all_kinematics.append(
+                    extract_kinematics(tree, **kwargs)
+                )
         pt = ak.concatenate([k[0] for k in all_kinematics], axis=0)
         eta = ak.concatenate([k[1] for k in all_kinematics], axis=0)
         phi = ak.concatenate([k[2] for k in all_kinematics], axis=0)
         masses = ak.concatenate([k[3] for k in all_kinematics], axis=0)
         print(
-            f"Concatenated kinematics from {len(tree)} trees "
+            f"Concatenated kinematics from {len(file_path)} files "
             f"({len(pt)} total events)"
         )
     else:
-        pt, eta, phi, masses = extract_kinematics(
-            tree,
-            get_truth=get_truth,
-            **kwargs,
-        )
+        with uproot.open(file_path) as f:
+            tree = f[tree_name]
+            pt, eta, phi, masses = extract_kinematics(
+                tree,
+                **kwargs,
+            )
 
     # Cluster jets
     # Convert n_jobs=-1 to None for clusterer (which uses all CPUs)
@@ -716,3 +723,29 @@ def nnid_nll(
     t3 = -(j - i - 1) * np.sum(jet_weights * np.log(log_arg))
 
     return t1 + t2 + t3
+
+
+def poisson_bootstrap_weights(
+    weights: np.ndarray,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Fluctuate jet weights within their Poisson uncertainty.
+
+    Samples Poisson(1) multipliers independently for each jet and multiplies
+    them by the original weights. This is the standard Poisson bootstrap
+    used to estimate statistical uncertainties on weighted distributions.
+
+    Arguments:
+    weights - 1D array of jet weights.
+    rng     - Optional numpy random Generator. If None, uses
+              np.random.default_rng().
+
+    Returns:
+    bootstrapped - weights multiplied by Poisson(1) samples.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    weights = np.asarray(weights).flatten()
+    poisson_multipliers = rng.poisson(lam=1.0, size=len(weights)).astype(float)
+    return poisson_multipliers * weights

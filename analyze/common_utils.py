@@ -10,7 +10,6 @@ import awkward as ak
 
 def extract_kinematics(
     tree,
-    get_truth: bool = True,
     start: int = None,
     stop: int = None,
     min_track_pt: float | None = None,
@@ -21,8 +20,6 @@ def extract_kinematics(
     ----------
     tree : uproot.TTree
         The TTree object from uproot containing event data.
-    get_truth : bool, optional
-        If True, get truth-level data. If False, get reco-level data.
     start : int, optional
         Starting event index. If None, start at the beginning of the array.
     stop : int, optional
@@ -46,8 +43,6 @@ def extract_kinematics(
 
     kinematics, pdgids = get_kinematics(
         tree,
-        get_truth=get_truth,
-        get_truth_pdgids=get_truth,
         start=start,
         stop=stop,
     )
@@ -77,8 +72,6 @@ def extract_kinematics(
 
 def get_kinematics(
     tree,
-    get_truth=False,
-    get_truth_pdgids=False,
     start=None,
     stop=None,
 ):
@@ -87,15 +80,11 @@ def get_kinematics(
 
     The function will also return a set of indeces which describe which AK4 track jet
     in the event a given track corresponds to, and pdgids for the particles.
-    For reco level data, the pdgids will be either 13 (muon) or 211 (charged pion).
-    For truth level data, the they can have the pdgid for common charged hadrons.
+    Truth-level pdgids are used, which can include common charged hadrons.
     Note the absolute value of the pdgids is used.
 
     Arguments:
     tree - uproot TTree object
-    get_truth - If true, get the truth level data instead of reco, optional
-    get_truth_pdgids - If true, get the truth level pdgids instead of fixing all tracks
-        to 211 (charged pion), optional
     start - starting event index, optional
     stop - stopping event index, optional
 
@@ -104,39 +93,34 @@ def get_kinematics(
     (ak.Array) - awkward array of the pdgids
     """
 
-    # Set prekey based on get_truth
-    prekey = ""
-    if get_truth:
-        prekey = "truth_"
-
     # Get kinematics
     m1_pt = ak.unflatten(
-        tree[prekey + "pT_l1"].array(entry_start=start, entry_stop=stop),
+        tree["truth_pT_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m1_eta = ak.unflatten(
-        tree[prekey + "eta_l1"].array(entry_start=start, entry_stop=stop),
+        tree["truth_eta_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m1_phi = ak.unflatten(
-        tree[prekey + "phi_l1"].array(entry_start=start, entry_stop=stop),
+        tree["truth_phi_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_pt = ak.unflatten(
-        tree[prekey + "pT_l2"].array(entry_start=start, entry_stop=stop),
+        tree["truth_pT_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_eta = ak.unflatten(
-        tree[prekey + "eta_l2"].array(entry_start=start, entry_stop=stop),
+        tree["truth_eta_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_phi = ak.unflatten(
-        tree[prekey + "phi_l2"].array(entry_start=start, entry_stop=stop),
+        tree["truth_phi_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
@@ -155,31 +139,28 @@ def get_kinematics(
 
     # Track information
     track_pt = ak.unflatten(
-        tree[prekey + "pT_tracks"].array(entry_start=start, entry_stop=stop),
+        tree["truth_pT_tracks"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     track_eta = ak.unflatten(
-        tree[prekey + "eta_tracks"].array(entry_start=start, entry_stop=stop),
+        tree["truth_eta_tracks"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     track_phi = ak.unflatten(
-        tree[prekey + "phi_tracks"].array(entry_start=start, entry_stop=stop),
+        tree["truth_phi_tracks"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     track_kinematics = ak.concatenate([track_pt, track_eta, track_phi], axis=1)
 
     # Track pdgids
-    track_pdgids = 211 * ak.ones_like(track_pt)
-    if get_truth_pdgids:
-        assert get_truth, "Cannot get truth level pdgids without truth level data"
-        track_pdgids = ak.unflatten(
-            tree[prekey + "pdgId_tracks"].array(entry_start=start, entry_stop=stop),
-            1,
-            axis=0,
-        )
+    track_pdgids = ak.unflatten(
+        tree["truth_pdgId_tracks"].array(entry_start=start, entry_stop=stop),
+        1,
+        axis=0,
+    )
 
     # Concatenate muon and track information
     kinematics = ak.concatenate([kinematics, track_kinematics], axis=2)
