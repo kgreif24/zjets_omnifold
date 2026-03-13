@@ -468,6 +468,15 @@ print(f"Nominal fiducial factor is {nominal_factor}")
 # Define the names of the various run groups in a campaign
 all_weights = {}
 
+# Add prior weights (just the normalized nominal root weights)
+all_weights["weights_prior"] = norm_weights(
+    nominal_root_weights,
+    truth_pass200,
+    nominal_factor,
+    n_data_nominal,
+    args.luminosity,
+)
+
 # Loop through the run groups
 for gn in args.group_names:
 

@@ -200,7 +200,7 @@ class UncertaintyCalculator:
             },
             "mc-stat-train": {
                 "name": "MC stat (train)",
-                "color": "teal",
+                "color": "magenta",
                 "stochastic": True,
                 "prefix": "bootstrap_mc_",
             },
@@ -212,7 +212,7 @@ class UncertaintyCalculator:
             },
             "data-stat": {
                 "name": "Data stat",
-                "color": "blue",
+                "color": "pink",
                 "stochastic": True,
                 "prefix": "bootstrap_data_",
             },
