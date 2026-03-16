@@ -194,6 +194,7 @@ class JetClusterer:
             pj = fj.PseudoJet(
                 float(px[i]), float(py[i]), float(pz[i]), float(energy[i])
             )
+            pj.set_user_index(i)  # Store original index for track-to-jet assignment
             pseudojets.append(pj)
 
         return pseudojets
@@ -234,6 +235,100 @@ class JetClusterer:
             ]
 
         return constituents_array
+
+    @staticmethod
+    def _process_single_event_with_track_assignment(args):
+        """
+        Cluster jets for a single event and return a track-to-jet assignment map.
+
+        Each track is assigned the index of the jet it belongs to, where jets are
+        ordered by descending transverse momentum (pT).
+
+        Parameters
+        ----------
+        args : tuple
+            Tuple containing: (event_idx, algorithm, R, ptmin)
+                event_idx : int
+                    Index of the event to process.
+                algorithm : fastjet.JetAlgorithm
+                    FastJet clustering algorithm to use.
+                R : float
+                    Jet radius parameter.
+                ptmin : float
+                    Minimum jet transverse momentum threshold.
+
+        Returns
+        -------
+        jets_list : list[list[float]]
+            Each jet is a list: [pt, eta, phi, mass], ordered by descending pT.
+            Empty events return an empty list: [].
+
+        track_to_jet_list : list[int]
+            Track assignment indices:
+                0  -> highest-pT jet
+                1  -> second highest-pT jet
+                ...
+              -1 -> track does not belong to any jet passing ptmin
+            Empty events return an empty list: [].
+        """
+        event_idx, algorithm, R, ptmin = args
+
+        try:
+            # Convert event tracks to NumPy arrays for FastJet input
+            event_pt = ak.to_numpy(_worker_instance.pt[event_idx])
+            event_eta = ak.to_numpy(_worker_instance.eta[event_idx])
+            event_phi = ak.to_numpy(_worker_instance.phi[event_idx])
+            event_masses = (
+                ak.to_numpy(_worker_instance.masses[event_idx])
+                if _worker_instance.masses is not None
+                else None
+            )
+
+            n_tracks = len(event_pt)
+
+            # Initialize track assignment as pure Python list
+            track_to_jet_list = [-1] * n_tracks
+
+            # Suppress FastJet stdout/stderr
+            with open(os.devnull, "w") as devnull:
+                with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(
+                    devnull
+                ):
+
+                    particles = _worker_instance._particles_to_pseudojets(
+                        event_pt, event_eta, event_phi, event_masses
+                    )
+
+                    # Handle events with no tracks
+                    if len(particles) == 0:
+                        return [], track_to_jet_list
+
+                    jet_def = fj.JetDefinition(algorithm, R)
+                    cluster_seq = fj.ClusterSequence(particles, jet_def)
+
+            # Jets passing pt threshold
+            jets = cluster_seq.inclusive_jets(ptmin)
+
+            if len(jets) == 0:
+                return [], track_to_jet_list
+
+            # Sort jets by descending pT
+            jets = sorted(jets, key=lambda j: j.pt(), reverse=True)
+
+            # Convert jets to simple Python lists
+            jets_list = [[j.pt(), j.rap(), j.phi(), j.m()] for j in jets]
+
+            # Assign tracks to jets
+            for jet_rank, jet in enumerate(jets):
+                for c in jet.constituents():
+                    idx = c.user_index()
+                    if idx >= 0:
+                        track_to_jet_list[idx] = jet_rank
+
+            return jets_list, track_to_jet_list
+
+        except Exception:
+            raise Exception(f"Error processing event {event_idx}")
 
     def cluster_events(
         self,
@@ -325,3 +420,102 @@ class JetClusterer:
                 )
 
         return event_jet_constituents
+
+    def cluster_tracks_to_jets(
+        self,
+        algorithm=fj.antikt_algorithm,
+        R=1.0,
+        ptmin: float = 500.0,
+        n_jobs: int | None = None,
+    ) -> list[np.ndarray]:
+        """
+        Cluster jets for multiple events and return track-to-jet assignment arrays.
+
+        For each event, tracks are assigned the index of the jet they belong to,
+        where jets are ordered by descending transverse momentum (pT). Tracks that
+        do not belong to any jet above the ptmin threshold receive a value of -1.
+
+        Parameters:
+        -----------
+        algorithm : fastjet.JetAlgorithm, optional
+            Jet clustering algorithm (default: fj.antikt_algorithm).
+            Options include: fj.antikt_algorithm, fj.kt_algorithm, fj.cambridge_algorithm.
+        R : float, optional
+            Jet clustering radius parameter (default: 1.0).
+        ptmin : float, optional
+            Minimum jet pT threshold in GeV (default: 500.0).
+            Only jets with pT >= ptmin are considered.
+        n_jobs : int, optional
+            Number of parallel jobs. If None, uses all available CPUs.
+            If 1, runs sequentially. (default: None)
+
+        Returns:
+        --------
+        jets : list[np.ndarray[4]]
+            List of arrays, one per event. Each array has shape (n_jets, 4) where columns are (pT, rapidity, phi, mass) for each jet that passes the ptmin threshold.
+        event_track_assignment : list[np.ndarray]
+            List of arrays, one per event. Each array has shape (n_tracks)
+            and contains integer jet labels for each track:
+
+            0  -> track belongs to the highest-pT jet
+            1  -> track belongs to the second highest-pT jet
+            2  -> track belongs to the third highest-pT jet
+            -1 -> track does not belong to any jet passing the ptmin threshold
+
+        Notes:
+        ------
+        - All returned objects are pickleable numpy arrays, enabling parallel processing.
+        - Each event returns a single array mapping tracks to jet indices.
+        """
+
+        n_events = len(self.pt)
+
+        # Determine number of jobs
+        if n_jobs is None:
+            n_jobs = cpu_count()
+        elif n_jobs < 1:
+            n_jobs = 1
+
+        print(f"Preparing {n_events} events for clustering")
+
+        event_indices = list(range(n_events))
+        event_args = [(i, algorithm, R, ptmin) for i in event_indices]
+
+        print(f"Processing {n_events} events with {n_jobs} jobs")
+
+        if n_jobs == 1:
+            event_track_assignment = []
+            jets = []
+            track_assignment_i = []
+
+            for args in tqdm(event_args, desc="Clustering events", unit="event"):
+                global _worker_instance
+                _worker_instance = self
+
+                jets_i, track_assignment_i = (
+                    self._process_single_event_with_track_assignment(args)
+                )
+
+                jets.append(jets_i)
+                event_track_assignment.append(track_assignment_i)
+
+        else:
+            with Pool(
+                processes=n_jobs, initializer=_init_worker, initargs=(self,)
+            ) as pool:
+                imap_result = pool.imap(
+                    self._process_single_event_with_track_assignment, event_args
+                )
+
+                results = list(
+                    tqdm(
+                        imap_result,
+                        total=n_events,
+                        desc="Clustering events",
+                        unit="event",
+                    )
+                )
+
+            jets, event_track_assignment = map(list, zip(*results))
+
+        return jets, event_track_assignment

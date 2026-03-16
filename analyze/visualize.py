@@ -1663,3 +1663,101 @@ def plot_measurement_with_uncertainties(
     )
 
     return fig_cross_section, fig_uncertainty_budget, fig_correlation_matrix
+
+
+def draw_variable_on_subfig(subfig, var, bins, i):
+
+    axs = subfig.subplots(
+        2, 1, sharex=True, sharey=False, gridspec_kw={"height_ratios": [3, 1]}
+    )
+
+    bins = np.array(bins)
+    bin_centers = 0.5 * (bins[1:] + bins[:-1])
+    bin_widths = bins[1:] - bins[:-1]
+
+    # choose dataframe
+    if "trackj1" in var:
+        df = multifold[mask_trackj1]
+    elif "trackj2" in var:
+        df = multifold[mask_trackj2]
+    else:
+        df = multifold
+
+    # ----------------
+    # Sherpa
+    counts = mc_preds[i]["sherpa_counts"]
+    sherpa_density = counts / lumi / bin_widths
+    sherpa_error = mc_preds[i]["sherpa_err"] / mc_preds[i]["sherpa_counts"]
+
+    make_error_boxes(
+        axs[0],
+        bin_centers,
+        sherpa_density,
+        np.vstack([bin_widths / 2, bin_widths / 2]),
+        np.vstack([sherpa_density * sherpa_error, sherpa_density * sherpa_error]),
+        facecolor="deeppink",
+        alpha=0.25,
+        marker="s",
+        label="Sherpa",
+    )
+
+    # ----------------
+    # MadGraph
+    counts = mc_preds[i]["mgfxfx_counts"]
+    mgfxfx_density = counts / lumi / bin_widths
+    mgfxfx_error = mc_preds[i]["mgfxfx_err"] / mc_preds[i]["mgfxfx_counts"]
+
+    make_error_boxes(
+        axs[0],
+        bin_centers,
+        mgfxfx_density,
+        np.vstack([bin_widths / 2, bin_widths / 2]),
+        np.vstack([mgfxfx_density * mgfxfx_error, mgfxfx_density * mgfxfx_error]),
+        facecolor="dodgerblue",
+        alpha=0.25,
+        marker="^",
+        label="MadGraph",
+    )
+
+    # ----------------
+    # MultiFold
+    multifold_density, _, _ = axs[0].hist(
+        df[var],
+        weights=df.weights_nominal,
+        bins=bins,
+        color="black",
+        linewidth=2,
+        density=True,
+        alpha=0,
+    )
+
+    multifold_density *= np.sum(df.weights_nominal)
+
+    axs[0].errorbar(
+        bin_centers,
+        multifold_density,
+        xerr=bin_widths / 2,
+        yerr=multifold_density * uncertainties[var + "_total"] / 100,
+        marker=".",
+        linestyle="None",
+        color="k",
+        markersize=4,
+    )
+
+    axs[1].errorbar(
+        bin_centers,
+        np.ones(len(bin_centers)),
+        xerr=bin_widths / 2,
+        yerr=uncertainties[var + "_total"] / 100,
+        marker=".",
+        linestyle="None",
+        color="k",
+        markersize=4,
+    )
+
+    axs[1].set_xlim(bins[0], bins[-1])
+    axs[1].set_ylim([0.2, 1.8])
+
+    axs[0].set_ylabel(labels[var], fontsize=12)
+    axs[1].set_xlabel(plot_labels[var], fontsize=16)
+
