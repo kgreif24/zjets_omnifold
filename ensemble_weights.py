@@ -413,9 +413,9 @@ base_path = "/pscratch/sd/k/kgreif/zjets_plot_staging/"
 nominal_path = base_path + (
     "ZjetOmnifold_5Jul2025_MGPy8FxFxPlusNonStrong_syst_Test_shuffled.root"
 )
-hv_path = base_path + (
-    "ZjetOmnifold_Mar10_Sherpa2211PlusNonStrong"
-    "_LookLike_MgFxFx_HadCompLikeMG_Test_shuffled.root"
+hv_path = (
+    "/pscratch/sd/k/kgreif/data/"
+    "ZjetOmnifold_Mar10_Sherpa2211_LookLike_MgFxFx_Test_V5_shuffled.root"
 )
 
 # Load trees, n_data, and raw MC weights
@@ -442,9 +442,6 @@ hv_reco_weights = ak.to_numpy(t_hv["weight"].array())
 # Load weights for uncertainties involving prior shifts and data driven
 # target
 prior_weights = np.load("/pscratch/sd/k/kgreif/data/madgraph_test_prior_weights.npz")
-hv_prior_weights = np.load(
-    "/pscratch/sd/k/kgreif/data/sherpa_test_prior_weights.npz"
-)
 dd_target_weights = np.load("/pscratch/sd/k/kgreif/data/target_dd_weights.npz")[
     "target_dd"
 ]
@@ -470,7 +467,7 @@ all_weights = {}
 for gn in args.group_names:
 
     # Skip the HV group, it is handled separately
-    if gn in ["hv", "hv2"]:
+    if gn == "hv":
         continue
 
     # Pull the weights for a given group
@@ -565,11 +562,11 @@ if "hv" in args.group_names:
     print(f"Got {len(pulled_weights)} weights for group hv")
     # Calculate the central value weights
     central_weights = np.mean(pulled_weights.clip(min=0, max=100), axis=0)
-    alt_root_weights = get_prior_weights("hv", hv_prior_weights)
-    central_weights *= alt_root_weights
+    central_weights *= hv_root_weights
     # Normalize the HV weights
-    ratio_hv = get_truth_to_reco_ratio(
-        "hv", t_hv, hv_prior_weights, hv_pass200, hv_truth_pass200
+    ratio_hv = (
+        np.sum(hv_root_weights[hv_truth_pass200 == 1]) /
+        np.sum(hv_reco_weights[hv_pass200 == 1])
     )
     central_weights = norm_weights(
         central_weights, hv_truth_pass200, ratio_hv, n_data_nominal, args.luminosity
