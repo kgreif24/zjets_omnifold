@@ -187,7 +187,7 @@ class UncertaintyCalculator:
                 "prefix": None,
             },
             "hvhad": {
-                "name": "Hidden variable (HC)",
+                "name": "Hadron composition",
                 "color": "orange",
                 "stochastic": False,
                 "prefix": None,

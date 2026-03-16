@@ -373,11 +373,6 @@ parser.add_argument(
     help="Path to the directory containing all of the data from a campaign",
 )
 parser.add_argument(
-    "--hv_campaign_path",
-    type=str,
-    help="Path to the directory containing all of the data from the HV campaign",
-)
-parser.add_argument(
     "--iteration",
     type=int,
     required=True,
@@ -560,7 +555,7 @@ all_weights["target_dd"] = dd_target_weights
 hv_weights = {}
 if "hv" in args.group_names:
     pulled_weights, _ = pull_weights(
-        args.hv_campaign_path,
+        args.campaign_path,
         "hv-data" if args.use_data else "hv",
         args.iteration,
     )
