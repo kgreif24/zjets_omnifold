@@ -11,7 +11,9 @@ import vector
 import uncertainties
 import scipy.stats as stats
 from typing import Optional
-
+import awkward as ak
+from matplotlib.collections import PatchCollection
+from tqdm import tqdm
 
 # Set ATLAS plotting style
 mh.style.use("ATLAS")
@@ -1761,3 +1763,75 @@ def draw_variable_on_subfig(subfig, var, bins, i):
     axs[0].set_ylabel(labels[var], fontsize=12)
     axs[1].set_xlabel(plot_labels[var], fontsize=16)
 
+
+def tprofile(x, y, w, bins):
+
+    nbins = len(bins) - 1
+
+    # compute bin indices
+    inds = np.digitize(x, bins) - 1
+
+    # keep only valid bins
+    mask = (inds >= 0) & (inds < nbins)
+    inds = inds[mask]
+    y = y[mask]
+    w = w[mask]
+
+    # accumulate sums
+    sum_w = np.bincount(inds, weights=w, minlength=nbins)
+    sum_wy = np.bincount(inds, weights=w * y, minlength=nbins)
+    sum_wy2 = np.bincount(inds, weights=w * y * y, minlength=nbins)
+
+    # compute profile
+    mean = sum_wy / sum_w
+    variance = (sum_wy2 / sum_w) - mean**2
+    error = np.sqrt(variance / sum_w)
+
+    return mean, error, sum_w
+
+
+def make_error_boxes(
+    ax,
+    xdata,
+    ydata,
+    xerror,
+    yerror,
+    facecolor="r",
+    edgecolor="none",
+    alpha=0.4,
+    label=None,
+    marker=".",
+    fillstyle="full",
+    markersize=3,
+):
+
+    # Loop over data points; create box from errors at each point
+    errorboxes = [
+        Rectangle((x - xe[0], y - ye[0]), xe.sum(), ye.sum())
+        for x, y, xe, ye in zip(xdata, ydata, xerror.T, yerror.T)
+    ]
+
+    # Create patch collection with specified colour/alpha
+    pc = PatchCollection(
+        errorboxes, facecolor=facecolor, alpha=alpha, edgecolor=edgecolor
+    )
+
+    # Add collection to axes
+    ax.add_collection(pc)
+
+    # Plot errorbars
+    artists = ax.errorbar(
+        xdata,
+        ydata,
+        xerr=xerror,
+        yerr=yerror,
+        linestyle="None",
+        linewidth=0,
+        label=label,
+        marker=marker,
+        color=facecolor,
+        fillstyle="none",
+        markersize=markersize,
+    )
+
+    return artists
