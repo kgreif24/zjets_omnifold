@@ -212,7 +212,7 @@ class UncertaintyCalculator:
             },
             "data-stat": {
                 "name": "Data stat",
-                "color": "pink",
+                "color": "mediumslateblue",
                 "stochastic": True,
                 "prefix": "bootstrap_data_",
             },

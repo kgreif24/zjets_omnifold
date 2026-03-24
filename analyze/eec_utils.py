@@ -22,6 +22,7 @@ def _calculate_eec_chunk(
     tree_name: str,
     start: int,
     stop: int,
+    invert_z: bool = False,
 ) -> tuple[ak.Array, ak.Array, np.ndarray]:
     """Calculate EEC for a chunk of events.
 
@@ -39,6 +40,9 @@ def _calculate_eec_chunk(
         Starting event index (for tree reading).
     stop : int
         Stopping event index (for tree reading).
+    invert_z : bool, optional
+        If True, invert the z values to look at the back-to-back region.
+        Default is False.
 
     Returns:
     --------
@@ -89,6 +93,10 @@ def _calculate_eec_chunk(
     energy_products = energy_weight_pairs.a * energy_weight_pairs.b
     cos_thetas = p3_unit_pairs.a.dot(p3_unit_pairs.b)
     zs = (1 - cos_thetas) / 2
+
+    # Invert z values if we want to look at the back-to-back region
+    if invert_z:
+        zs = 1 - zs
 
     return energy_sums, energy_products, zs, counts
 
@@ -153,6 +161,7 @@ def calculate_eec_parallel(
     tree_name: str,
     chunk_size: int = 100_000,
     max_events: int | None = None,
+    invert_z: bool = False,
 ) -> list:
     """Calculate EEC in parallel using Dask delayed tasks.
 
@@ -195,7 +204,7 @@ def calculate_eec_parallel(
         # Create delayed task for this chunk with pre-sliced flags
         # Pass file_path and tree_name instead of tree object
         chunk_result = dask.delayed(_calculate_eec_chunk)(
-            file_path, tree_name, start, stop
+            file_path, tree_name, start, stop, invert_z=invert_z
         )
         chunk_results.append(chunk_result)
         chunk_ranges.append((start, stop))
@@ -265,6 +274,7 @@ def run_eec_workflow_parallel(
     bins: np.ndarray,
     chunk_size: int = 100_000,
     max_events: int | None = None,
+    invert_z: bool = False,
 ) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Run the full EEC workflow in parallel: compute EECs and build histograms.
 
@@ -289,6 +299,9 @@ def run_eec_workflow_parallel(
         of events in the tree, all events are processed. If specified, only the
         first max_events events are used. The weights_dict arrays are also
         truncated to match the number of passing events in the limited range.
+    invert_z : bool, optional
+        If True, invert the z values (z → 1 - z) to look at the back-to-back
+        region. Default is False.
 
     Returns:
     --------
@@ -307,6 +320,7 @@ def run_eec_workflow_parallel(
     # Create delayed EEC tasks
     chunk_results, chunk_ranges = calculate_eec_parallel(
         file_path, tree_name, chunk_size=chunk_size, max_events=max_events,
+        invert_z=invert_z,
     )
 
     # Build histograms in parallel

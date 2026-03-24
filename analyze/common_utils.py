@@ -16,6 +16,10 @@ def extract_kinematics(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Extract kinematics and masses from a ROOT file TTree.
 
+    Returns arrays for all particles in each event: the two Z-decay muons (indices 0
+    and 1) followed by tracks (indices 2+). The muon kinematics are always included
+    and are unaffected by any pT cuts.
+
     Arguments:
     ----------
     tree : uproot.TTree
@@ -32,13 +36,17 @@ def extract_kinematics(
     Returns:
     --------
     pt : np.ndarray
-        Per-event pT arrays, shape (n_events, n_particles).
+        Per-event pT arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     eta : np.ndarray
-        Per-event eta arrays, shape (n_events, n_particles).
+        Per-event eta arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     phi : np.ndarray
-        Per-event phi arrays, shape (n_events, n_particles).
+        Per-event phi arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     masses : np.ndarray
-        Per-event mass arrays, shape (n_events, n_particles).
+        Per-event mass arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     """
 
     kinematics, pdgids = get_kinematics(
@@ -78,10 +86,10 @@ def get_kinematics(
     """get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenated as a single awkward array.
 
-    The function will also return a set of indeces which describe which AK4 track jet
-    in the event a given track corresponds to, and pdgids for the particles.
-    Truth-level pdgids are used, which can include common charged hadrons.
-    Note the absolute value of the pdgids is used.
+    The returned kinematics array contains muons first (indices 0 and 1 correspond to
+    the two Z-decay muons), followed by tracks (indices 2+). pdgids for the muons are
+    set to 13. Truth-level pdgids are used for tracks, which can include common charged
+    hadrons. Note the absolute value of the pdgids is used.
 
     Arguments:
     tree - uproot TTree object
@@ -89,8 +97,10 @@ def get_kinematics(
     stop - stopping event index, optional
 
     Returns:
-    (ak.Array) - awkward array of the concatenated kinematics
-    (ak.Array) - awkward array of the pdgids
+    (ak.Array) - awkward array of shape (n_events, 3, n_particles) containing the
+        concatenated muon and track kinematics, where axis 1 is [pT, eta, phi].
+        Particles 0 and 1 are the two Z-decay muons; particles 2+ are tracks.
+    (ak.Array) - awkward array of the pdgids for all particles (muons and tracks)
     """
 
     # Get kinematics
