@@ -15,6 +15,7 @@ import ast
 import operator
 import time
 import numba as nb
+import json
 
 
 def check_memory(limit_gb=20):
@@ -206,6 +207,59 @@ def get_kinematics(
     return kinematics, pdgids
 
 
+def extract_hadron_kinematics(
+    tree,
+    selection=None,
+    get_truth: bool = True,
+    start: int = None,
+    stop: int = None,
+    min_track_pt: float | None = None,
+):
+    """Extract hadron (track-only) kinematics and masses from a ROOT TTree.
+
+    Arguments:
+    ----------
+    tree : uproot.TTree
+        The TTree object from uproot containing event data.
+    selection : array-like, optional
+        Event-level selection mask.
+    get_truth : bool, optional
+        If True, get truth-level data. If False, get reco-level data.
+    start : int, optional
+        Starting event index.
+    stop : int, optional
+        Stopping event index.
+    min_track_pt : float, optional
+        Minimum pT threshold (in GeV). Tracks below this are zeroed.
+
+    Returns:
+    --------
+    pt : ak.Array
+    eta : ak.Array
+    phi : ak.Array
+    masses : ak.Array
+    """
+
+    pt, eta, phi, masses = get_hadron_kinematics(
+        tree,
+        selection=selection,
+        get_truth=get_truth,
+        start=start,
+        stop=stop,
+    )
+
+    # Apply pT cut if requested
+    if min_track_pt is not None:
+        keep_mask = pt >= min_track_pt
+
+        pt = ak.where(keep_mask, pt, 0.0)
+        eta = ak.where(keep_mask, eta, 0.0)
+        phi = ak.where(keep_mask, phi, 0.0)
+        masses = ak.where(keep_mask, masses, 0.0)
+
+    return pt, eta, phi, masses
+
+
 def get_hadron_kinematics(
     tree,
     selection=None,
@@ -375,8 +429,6 @@ def get_masses(pdgids: ak.Array | np.ndarray) -> ak.Array | np.ndarray:
 
 
 def build_jets(
-    tree,
-    pass190_flags,
     algorithm,
     R,
     pt,
@@ -402,8 +454,6 @@ def build_jets(
     ----------
     tree : uproot.TTree or list[uproot.TTree]
         The TTree object(s) containing event data.
-    pass190_flags : np.ndarray
-        Boolean array for event filtering (currently unused).
     algorithm : fastjet.JetAlgorithm
         Jet clustering algorithm (e.g., fj.antikt_algorithm).
     R : float
@@ -449,14 +499,6 @@ def build_jets(
     if ptmin is None:
         ptmin = 0.5
 
-    print(
-        "Sample kinematics for first event: "
-        f"pt {[f'{x:.6f}' for x in pt[0][:5]]}, "
-        f"eta {[f'{x:.6f}' for x in eta[0][:5]]}, "
-        f"phi {[f'{x:.6f}' for x in phi[0][:5]]}, "
-        f"masses {[f'{x:.6f}' for x in masses[0][:5]]}"
-    )
-
     # Cluster jets
     cluster_n_jobs = None if n_jobs == -1 else n_jobs
 
@@ -475,7 +517,6 @@ def build_jets(
 def build_jets_from_indices(
     event_jet_indices,
     tree,
-    pass190_flags,
     algorithm,
     R,
     ptmin=None,
@@ -519,7 +560,6 @@ def build_jets_from_indices(
     # # -----------------------------------------
     # event_jet_indices = get_jet_indices(
     #     tree=tree,
-    #     pass190_flags=pass190_flags,
     #     algorithm=algorithm,
     #     R=R,
     #     pt=pt,
@@ -613,11 +653,22 @@ def build_jets_from_indices(
 
 
 def eval_jet_expressions(jets, expressions, nevents=-1):
-    """
-    Evaluate multiple arithmetic expressions involving jet info fields (INFO_trackj#) in one pass,
+    """eval_jet_expressions - Evaluates multiple arithmetic expressions involving jet info fields,
     propagating -99 for missing jets, with progress output every 10%.
-    Fully vectorized for speed.
+
+    Arguments:
+    jets - list/array of per-event jet info arrays, shape (n_events, n_jets, 4)
+    expressions - list of str, arithmetic expressions using tokens like INFO_trackj#
+    nevents - int, maximum number of events to process (-1 for all)
+
+    Returns:
+    (dict) - mapping {expression: array of evaluated values per event}, shape (nevents,)
     """
+    import re
+    import ast
+    import operator
+    import numpy as np
+
     print(
         "Processing expressions:"
         + ", ".join(expressions)
@@ -691,12 +742,12 @@ def eval_jet_expressions(jets, expressions, nevents=-1):
             raise ValueError(f"Unsupported element: {node}")
 
     # Evaluate all expressions **vectorized**
-    results = np.full((nevents, len(expressions)), -99.0, dtype=float)
+    results = {}
     print(f"Evaluating {len(expressions)} expressions for {nevents} events...")
     for j, expr in enumerate(expressions):
         node = ast.parse(expr, mode="eval")
         val, _ = _eval_vectorized(node)
-        results[:, j] = val
+        results[expr] = val
         if (j + 1) % max(1, len(expressions) // 10) == 0 or j == len(expressions) - 1:
             print(
                 f"Processed {j+1}/{len(expressions)} expressions ({100*(j+1)/len(expressions):.0f}%)"
@@ -725,6 +776,41 @@ def _profile_event(
     jet_y_max,
     use_rho_old,
 ):
+    """Compute per-event jet radial profile.
+
+    Accumulates either rho (radial momentum density) or psi (cumulative profile)
+    for jets in a single event, using track information and annular binning.
+
+    Arguments:
+    ----------
+    tracks_pt, tracks_eta, tracks_phi, tracks_mass : array-like
+        Track kinematics for the event.
+    event_jet_indices : array-like
+        Mapping of tracks to associated jet indices.
+    jets : array-like
+        Jet kinematics as (pt, y, phi, mass).
+    annulus_edges : array-like
+        Radial bin edges (ΔR).
+    compute_psi : bool
+        If True, compute cumulative psi profile; otherwise rho.
+    only_leading_jet : bool
+        If True, use only the leading jet.
+    only_associated : bool
+        If True, use only tracks associated to each jet.
+    jet_pt_range : tuple or None
+        Optional (min, max) jet pT selection.
+    jet_y_max : float or None
+        Maximum jet rapidity.
+    use_rho_old : bool
+        If True, use legacy rho normalization.
+
+    Returns:
+    --------
+    profile : np.ndarray
+        Accumulated rho or psi profile for the event.
+    n_selected_jets : int
+        Number of jets passing selection.
+    """
 
     pi = np.pi
     n_bins = len(annulus_edges) - 1
@@ -789,13 +875,7 @@ def _profile_event(
         dR = np.sqrt(dy**2 + dphi**2)
 
         # bin indices
-        bin_idx = np.empty(pt.shape[0], dtype=np.int64)
-        for i in range(pt.shape[0]):
-            # np.digitize behavior
-            b = 0
-            while b < n_bins and dR[i] >= annulus_edges[b + 1]:
-                b += 1
-            bin_idx[i] = b
+        bin_idx = np.digitize(dR, annulus_edges, right=False) - 1
         # select valid bins
         valid_mask = (bin_idx >= 0) & (bin_idx < n_bins)
         if np.sum(valid_mask) == 0:
@@ -808,11 +888,14 @@ def _profile_event(
         # vector sum per bin
         px_sum = np.zeros(n_bins)
         py_sum = np.zeros(n_bins)
+        # pt_sum = np.zeros(n_bins)
         for i in range(bin_idx.shape[0]):
             px_sum[bin_idx[i]] += px_sel[i]
             py_sum[bin_idx[i]] += py_sel[i]
+            # pt_sum[bin_idx[i]] += pt[valid_mask][i] # linear pt sum
 
         pt_vec = np.sqrt(px_sum**2 + py_sum**2)
+        # pt_vec = pt_sum
 
         # compute either rho or psi
         if compute_psi:
@@ -838,95 +921,7 @@ def _profile_event(
     return (psi_sum if compute_psi else rho_sum), n_selected_jets
 
 
-# ------------------------------
-# Outer loop over events (awkward arrays)
-# ------------------------------
 def jet_radial_profile(
-    jets,
-    event_jet_indices,
-    track_pt,
-    track_eta,
-    track_phi,
-    track_mass,
-    annulus_edges,
-    event_weights,
-    only_associated=True,
-    jet_pt_range=None,
-    jet_y_max=None,
-    use_rho_old=False,
-    compute_psi=False,
-    only_leading_jet=False,
-    max_events=-1,
-):
-
-    event_weights = np.asarray(event_weights)
-
-    # allow single weight vector
-    if event_weights.ndim == 1:
-        event_weights = event_weights[None, :]
-
-    n_weight_sets = event_weights.shape[0]
-
-    n_events = len(event_jet_indices)
-    if max_events > 0:
-        n_events = min(n_events, max_events)
-
-    annulus_edges = np.asarray(annulus_edges)
-    n_bins = len(annulus_edges) - 1
-
-    total_profile = np.zeros((n_weight_sets, n_bins))
-    n_jets_counter = np.zeros(n_weight_sets)
-
-    next_progress = 0.1
-
-    for ievt in range(n_events):
-
-        frac = (ievt + 1) / n_events
-        if frac >= next_progress:
-            print(
-                f"{int(next_progress*100)}% complete ({ievt+1}/{n_events} events)",
-                flush=True,
-            )
-            next_progress += 0.1
-
-        # convert jagged arrays
-        t_pt = np.asarray(ak.to_numpy(track_pt[ievt]))
-        t_eta = np.asarray(ak.to_numpy(track_eta[ievt]))
-        t_phi = np.asarray(ak.to_numpy(track_phi[ievt]))
-        t_mass = np.asarray(ak.to_numpy(track_mass[ievt]))
-        evt_jets = np.asarray(ak.to_numpy(jets[ievt]))
-        indices = np.asarray(ak.to_numpy(event_jet_indices[ievt]), dtype=np.int64)
-
-        if len(evt_jets) == 0:
-            continue
-
-        profile_evt, n_jets = _profile_event(
-            t_pt,
-            t_eta,
-            t_phi,
-            t_mass,
-            indices,
-            evt_jets,
-            annulus_edges,
-            compute_psi,
-            only_leading_jet,
-            only_associated,
-            jet_pt_range,
-            jet_y_max,
-            use_rho_old,
-        )
-
-        for iw in range(n_weight_sets):
-            w = event_weights[iw, ievt]
-            n_jets_counter[iw] += n_jets * w
-            total_profile[iw] += profile_evt * w
-
-    total_profile /= n_jets_counter[:, None]
-
-    return total_profile
-
-
-def jet_radial_profile_mod(
     jets,
     event_jet_indices,
     track_pt,
@@ -943,11 +938,43 @@ def jet_radial_profile_mod(
     only_leading_jet=False,
     max_events=-1,
 ):
-    """Compute radial jet profile with uncertainties, including replica groups.
+    """Compute jet radial profiles with weights and systematics.
+
+    Loops over events to compute weighted radial jet profiles (rho or psi),
+    including nominal, systematic variations, and replica weights.
+
+    Arguments:
+    ----------
+    jets : array-like
+        Per-event jet collections.
+    event_jet_indices : array-like
+        Track-to-jet association indices per event.
+    track_pt, track_eta, track_phi, track_mass : array-like
+        Per-event track kinematics.
+    annulus_edges : array-like
+        Radial bin edges (ΔR).
+    weights_dict : dict
+        Dictionary of event weights (nominal, systematics, replicas).
+    only_associated : bool, optional
+        Use only tracks associated to jets (default: True).
+    jet_pt_range : tuple or None, optional
+        Jet pT selection.
+    jet_y_max : float or None, optional
+        Maximum jet rapidity.
+    use_rho_old : bool, optional
+        Use legacy rho normalization (default: False).
+    compute_psi : bool, optional
+        Compute psi instead of rho (default: False).
+    only_leading_jet : bool, optional
+        Use only leading jet (default: False).
+    max_events : int, optional
+        Maximum number of events to process (default: -1 = all).
 
     Returns:
-    - total_profile_nom : nominal radial profile
-    - unc : total uncertainty per bin (systematics + replicas)
+    --------
+    profile_dict : dict
+        Mapping {weight_name: (profile, variance, bin_edges)}.
+        Variances are currently zero for all entries.
     """
 
     # --- Setup ---
@@ -969,20 +996,27 @@ def jet_radial_profile_mod(
 
     # --- Accumulators ---
     total_profile_nom = np.zeros(n_bins)
-    total_profile_var = np.zeros((len(syst_weights), n_bins))
-    n_jets_var = np.zeros(len(syst_weights))
+    total_profile_nom_var = np.zeros(n_bins)  # variance accumulator for nominal
     n_jets_counter = 0.0
-    unc2 = np.zeros(n_bins)
 
-    # Replica accumulators
+    total_profile_var = {name: np.zeros(n_bins) for name in syst_weights}
+    total_profile_var_var = {
+        name: np.zeros(n_bins) for name in syst_weights
+    }  # variance accumulators for systematics
+    n_jets_var = {name: 0.0 for name in syst_weights}
+
     replica_profiles = {
         k: np.zeros(n_bins) for k in ensemble + bootstrap_mc + bootstrap_data
     }
+    replica_profile_var = {
+        k: np.zeros(n_bins) for k in ensemble + bootstrap_mc + bootstrap_data
+    }  # variance accumulators for replicas
     n_jets_replica = {k: 0.0 for k in ensemble + bootstrap_mc + bootstrap_data}
 
     # --- Event loop ---
     next_progress = 0.1
     for ievt in range(n_events):
+
         frac = (ievt + 1) / n_events
         if frac >= next_progress:
             print(
@@ -1021,63 +1055,101 @@ def jet_radial_profile_mod(
 
         # --- Nominal ---
         w_nom = nominal_w[ievt]
-        n_jets_counter += n_jets * w_nom
         total_profile_nom += profile_evt * w_nom
+        total_profile_nom_var += profile_evt * w_nom**2
+        n_jets_counter += n_jets * w_nom
 
         # --- Systematic variations ---
-        for itter, name in enumerate(syst_weights):
+        for name in syst_weights:
             w = np.asarray(weights_dict[name])
+
             if name.startswith("*"):
                 w_eff = w_nom * w[ievt]
             else:
                 w_eff = w[ievt]
-            total_profile_var[itter] += profile_evt * w_eff
-            n_jets_var[itter] += n_jets * w_eff
+
+            total_profile_var[name] += profile_evt * w_eff
+            total_profile_var_var[name] += (
+                profile_evt * w_eff**2
+            )  # accumulate variance for systematics
+            n_jets_var[name] += n_jets * w_eff
 
         # --- Replica profiles ---
         for key in replica_profiles:
             w = np.asarray(weights_dict[key])
             replica_profiles[key] += profile_evt * w[ievt]
+            replica_profile_var[key] += (
+                profile_evt * w[ievt] ** 2
+            )  # accumulate variance for replicas
             n_jets_replica[key] += n_jets * w[ievt]
 
-    # --- Normalize nominal ---
-    total_profile_nom /= n_jets_counter
+    # --- Build output dictionary ---
+    profile_dict = {}
 
-    # --- Normalize systematics ---
-    for itter, name in enumerate(syst_weights):
-        if n_jets_var[itter] > 0:
-            total_profile_var[itter] /= n_jets_var[itter]
-        unc2 += (total_profile_var[itter] - total_profile_nom) ** 2
+    # Nominal
+    if n_jets_counter > 0:
+        total_profile_nom /= n_jets_counter
+        total_profile_nom_var /= (
+            n_jets_counter**2
+        )  # variance of mean = variance of sum / (n^2)
+    profile_dict["nominal"] = (
+        total_profile_nom.copy(),
+        total_profile_nom_var.copy(),
+        annulus_edges,
+    )
 
-    # --- Normalize replicas ---
+    # Systematics
+    for name in syst_weights:
+        if n_jets_var[name] > 0:
+            total_profile_var[name] /= n_jets_var[name]
+            total_profile_var_var[name] /= n_jets_var[name] ** 2  # variance of mean
+        key = name
+        if name.startswith("*"):
+            key = name[1:]  # remove * from name for output
+        profile_dict[key] = (
+            total_profile_var[name].copy(),
+            total_profile_var_var[name].copy(),
+            annulus_edges,
+        )
+
+    # Replicas
     for key in replica_profiles:
         if n_jets_replica[key] > 0:
             replica_profiles[key] /= n_jets_replica[key]
+            replica_profile_var[key] /= n_jets_replica[key] ** 2  # variance of mean
+        profile_dict[key] = (
+            replica_profiles[key].copy(),
+            replica_profile_var[key].copy(),
+            annulus_edges,
+        )
 
-    # --- Compute replica uncertainties per group ---
-    replica_groups = {
-        "ensemble": [k for k in replica_profiles if k.startswith("ensemble_")],
-        "bootstrap_mc": [k for k in replica_profiles if k.startswith("bootstrap_mc_")],
-        "bootstrap_data": [
-            k for k in replica_profiles if k.startswith("bootstrap_data_")
-        ],
-    }
-
-    for group_keys in replica_groups.values():
-        if len(group_keys) == 0:
-            continue
-        group_array = np.array([replica_profiles[k] for k in group_keys])
-        group_std = np.std(group_array, axis=0, ddof=1)  # std across replicas
-        unc2 += (group_std) ** 2  # add in quadrature
-
-    # --- Final uncertainty ---
-    unc = np.sqrt(unc2)
-
-    return total_profile_nom, unc
+    return profile_dict
 
 
 def count_jets(jets, weights, individual_jet_selection, leading_jet_only=False):
+    """Count jets passing a selection with optional weighting.
 
+    Applies a per-jet selection and counts the number of jets passing it,
+    either per event or for leading jets only. Returns weighted jet counts,
+    supporting both single and multiple weight sets.
+
+    Arguments:
+    ----------
+    jets : array-like
+        Per-event jet collection with shape (n_events, n_jets, 4).
+    weights : array-like
+        Event weights (1D or 2D for multiple weight sets).
+    individual_jet_selection : callable
+        Function taking (pt, y, phi, m) and returning a boolean mask.
+    leading_jet_only : bool, optional
+        If True, only consider the leading jet per event (default: False).
+
+    Returns:
+    --------
+    count : float or np.ndarray
+        Weighted jet count. Returns a float for 1D weights, or array for
+        multiple weight sets.
+    """
     if leading_jet_only:
         leading = ak.firsts(jets)  # None if event has no jets
 
@@ -1108,3 +1180,406 @@ def count_jets(jets, weights, individual_jet_selection, leading_jet_only=False):
         return float(ak.sum(njets_pass * weights))
 
     return np.array([float(ak.sum(njets_pass * w)) for w in weights])
+
+
+def count_jets_vectorized(
+    jets, weights, individual_jet_selection, leading_jet_only=False
+):
+    # --- Compute njets_pass (already vectorized via awkward) ---
+    if leading_jet_only:
+        leading = ak.firsts(jets)
+
+        pt = leading[:, 0]
+        y = leading[:, 1]
+        phi = leading[:, 2]
+        m = leading[:, 3]
+
+        mask = individual_jet_selection(pt, y, phi, m)
+        njets_pass = ak.fill_none(mask, False)
+
+    else:
+        pt = jets[:, :, 0]
+        y = jets[:, :, 1]
+        phi = jets[:, :, 2]
+        m = jets[:, :, 3]
+
+        mask = individual_jet_selection(pt, y, phi, m)
+        njets_pass = ak.sum(mask, axis=1)
+
+    # convert once
+    njets_pass = ak.to_numpy(njets_pass)
+    weights = np.asarray(weights)
+
+    # --- 1D weights ---
+    if weights.ndim == 1:
+        weighted_sum = np.sum(njets_pass * weights)
+        weighted_var = np.sum(njets_pass * weights**2)
+        return weighted_sum, weighted_var
+
+    # --- 2D weights: (n_weights, n_events) ---
+    # Broadcast njets_pass to (n_weights, n_events)
+    weighted_sum = np.sum(weights * njets_pass, axis=1)
+    weighted_var = np.sum(weights**2 * njets_pass, axis=1)
+    return weighted_sum, weighted_var
+
+
+def make_jet_count_histograms(
+    jets_list,
+    weights_dict,
+    individual_jet_selection,
+    bin_edges,
+    observable_name="jet_count",
+    leading_jet_only=False,
+):
+    """
+    Build histogram of jet counts across bins using count_jets.
+
+    Parameters
+    ----------
+    jets_list : list
+        List of jet collections, one per bin.
+    weights_dict : dict
+        Same structure as before (nominal, systematics, bootstrap, etc.).
+    individual_jet_selection : callable
+        Per-jet selection function.
+    bin_edges : array-like
+        Histogram bin edges (len = n_bins + 1).
+    observable_name : str
+        Name of observable for output dict.
+    leading_jet_only : bool
+        Passed to count_jets.
+
+    Returns
+    -------
+    hist_dict : dict
+      dictionary: hist_dict[weight_name] = (hist, variance, bin_edges)
+    """
+
+    n_bins = len(jets_list)
+
+    # --- Identify weight groups ---
+    ensemble = [k for k in weights_dict if k.startswith("ensemble_")]
+    bootstrap_mc = [k for k in weights_dict if k.startswith("bootstrap_mc_")]
+    bootstrap_data = [k for k in weights_dict if k.startswith("bootstrap_data_")]
+    special = set(["nominal"] + ensemble + bootstrap_mc + bootstrap_data)
+    syst_weights = [k for k in weights_dict if k not in special]
+
+    hist_dict = {observable_name: {}}
+
+    # --- Nominal ---
+    nominal_w = np.asarray(weights_dict["nominal"])
+    hist_nom = []
+    hist_var = []
+
+    print("Calculating nominal jet counts...")
+    for jets in jets_list:
+        val, var = count_jets_vectorized(
+            jets,
+            nominal_w,
+            individual_jet_selection,
+            leading_jet_only,
+        )
+        hist_nom.append(val)
+        hist_var.append(var)
+
+    hist_nom = np.asarray(hist_nom)
+    hist_var = np.asarray(hist_var)
+
+    hist_dict[observable_name]["nominal"] = (
+        hist_nom.copy(),
+        hist_var.copy(),
+        np.asarray(bin_edges),
+    )
+
+    # --- Systematics ---
+    for name in syst_weights:
+        print("Calculating jet counts for systematic:", name)
+        w = np.asarray(weights_dict[name])
+        w_eff = nominal_w * w if name.startswith("*") else w
+
+        hist_val = []
+        hist_var = []
+        for jets in jets_list:
+            val, var = count_jets_vectorized(
+                jets,
+                w_eff,
+                individual_jet_selection,
+                leading_jet_only,
+            )
+            hist_val.append(val)
+            hist_var.append(var)
+
+        key = name[1:] if name.startswith("*") else name
+        hist_val = np.asarray(hist_val)
+        hist_var = np.asarray(hist_var)
+
+        hist_dict[observable_name][key] = (
+            hist_val.copy(),
+            hist_var.copy(),
+            np.asarray(bin_edges),
+        )
+
+    # --- Replicas ---
+    for key in ensemble + bootstrap_mc + bootstrap_data:
+        print("Calculating jet counts for systematic:", key)
+        w = np.asarray(weights_dict[key])
+
+        hist_val = []
+        hist_var = []
+        for jets in jets_list:
+            val, var = count_jets_vectorized(
+                jets,
+                w,
+                individual_jet_selection,
+                leading_jet_only,
+            )
+            hist_val.append(val)
+            hist_var.append(var)
+
+        hist_val = np.asarray(hist_val)
+        hist_var = np.asarray(hist_var)
+
+        hist_dict[observable_name][key] = (
+            hist_val.copy(),
+            hist_var.copy(),
+            np.asarray(bin_edges),
+        )
+
+    return hist_dict
+
+
+def make_hists_with_uncertainty(data, bins, observables, weights_dict):
+    """Compute histograms with weights
+
+    Generates nominal, systematic, and replica histograms per observable,
+    returning a structure compatible with `plot_measurement_with_uncertainties`.
+    All variances are set to zero for now.
+
+    Arguments:
+    ----------
+    data : dict
+        Dictionary of arrays per observable.
+    bins : dict
+        Dictionary of bin edges per observable.
+    observables : list
+        List of observable names to histogram.
+    weights_dict : dict
+        Dictionary of event weights: nominal, systematics, and replicas.
+
+    Returns:
+    --------
+    hist_dict : dict
+        Nested dictionary: hist_dict[observable][weight_name] = (hist, variance, bin_edges)
+    """
+    hist_dict = {}
+
+    for obs in observables:
+        data_obs = np.asarray(data[obs])
+        bin_edges = np.asarray(bins[obs])
+        n_bins = len(bin_edges) - 1
+
+        # --- Identify weight groups ---
+        nominal_w = np.asarray(weights_dict["nominal"])
+        ensemble = [k for k in weights_dict if k.startswith("ensemble_")]
+        bootstrap_mc = [k for k in weights_dict if k.startswith("bootstrap_mc_")]
+        bootstrap_data = [k for k in weights_dict if k.startswith("bootstrap_data_")]
+        special = set(["nominal"] + ensemble + bootstrap_mc + bootstrap_data)
+        syst_weights = [k for k in weights_dict if k not in special]
+
+        # --- Nominal histogram ---
+        hist_nom, _ = np.histogram(data_obs, bins=bin_edges, weights=nominal_w)
+        hist_nom_v, _ = np.histogram(
+            data_obs, bins=bin_edges, weights=nominal_w * nominal_w
+        )
+
+        # --- Systematic histograms ---
+        hist_syst = {}
+        hist_syst_v = {}
+        for name in syst_weights:
+            w = np.asarray(weights_dict[name])
+            w_eff = nominal_w * w if name.startswith("*") else w
+            hist_var, _ = np.histogram(data_obs, bins=bin_edges, weights=w_eff)
+            hist_var_v, _ = np.histogram(
+                data_obs, bins=bin_edges, weights=w_eff * w_eff
+            )
+            key = name[1:] if name.startswith("*") else name
+            hist_syst[key] = hist_var
+            hist_syst_v[key] = hist_var_v
+
+        # --- Replica histograms ---
+        hist_replica = {}
+        hist_replica_v = {}
+        for key in ensemble + bootstrap_mc + bootstrap_data:
+            w = np.asarray(weights_dict[key])
+            hist, _ = np.histogram(data_obs, bins=bin_edges, weights=w)
+            hist_v, _ = np.histogram(data_obs, bins=bin_edges, weights=w * w)
+            hist_replica[key] = hist
+            hist_replica_v[key] = hist_v
+
+        # --- Build output dict for this observable ---
+        hist_dict[obs] = {}
+        hist_dict[obs]["nominal"] = (
+            hist_nom.copy(),
+            hist_nom_v.copy(),
+            bin_edges,
+        )
+        for key, hist in hist_syst.items():
+            hist_dict[obs][key] = (hist.copy(), hist_syst_v[key].copy(), bin_edges)
+        for key, hist in hist_replica.items():
+            hist_dict[obs][key] = (hist.copy(), hist_replica_v[key].copy(), bin_edges)
+
+    return hist_dict
+
+
+def append_ns_weights_with_theory(
+    weights, t_mc_truth, t_ns_truth, selection_mc, selection_ns
+):
+    """
+    Append NS weights to MC weights and create NS theory branches.
+
+    Parameters
+    ----------
+    weights : dict
+        Existing MG weight branches.
+    t_mc_truth : structured array or dataframe
+        MG truth tree.
+    t_ns_truth : structured array or dataframe
+        NS truth tree.
+    selection_mc : array-like
+        Boolean mask for MG events.
+    selection_ns : array-like
+        Boolean mask for NS events.
+    """
+
+    # --- Load NS nominal weights ---
+    ns_nominal = np.array(t_ns_truth["weight_mc"])[selection_ns]
+
+    # --- Append NS weights to MG branches ---
+    for key in weights:
+        if key == "nominal":
+            weights[key] = np.concatenate([weights[key], ns_nominal])
+        elif key.startswith("*"):
+            weights[key] = np.concatenate([weights[key], np.ones_like(ns_nominal)])
+        else:
+            weights[key] = np.concatenate([weights[key], ns_nominal])
+
+    # --- Define DSID/factor maps ---
+    DSIDs_Diboson = [
+        363356,
+        363358,
+        364250,
+        364253,
+        364254,
+        364255,
+        363494,
+        363355,
+        363357,
+        363359,
+        363360,
+        363489,
+    ]
+    DSIDs_Herwig7 = [830007]
+
+    factors = {"Diboson": 0.3, "EW_Zjj": 0.2}
+    DSID_map = {"Diboson": DSIDs_Diboson, "EW_Zjj": DSIDs_Herwig7}
+
+    # --- Function to compute theory scale ---
+    def get_theory_scale(mc_channel_numbers, DSIDs, fraction, is_up):
+        scale = np.ones_like(mc_channel_numbers, dtype=float)
+        mask = np.isin(mc_channel_numbers, DSIDs)
+        scale[mask] = 1 + fraction if is_up else 1 - fraction
+        return scale
+
+    # --- Concatenate MG + NS mcChannelNumbers ---
+    mcChannelNumbers_mc = np.array(t_mc_truth["mcChannelNumber"])[selection_mc]
+    mcChannelNumbers_ns = np.array(t_ns_truth["mcChannelNumber"])[selection_ns]
+    mcChannelNumbers_all = np.concatenate([mcChannelNumbers_mc, mcChannelNumbers_ns])
+
+    # --- Create NS theory branches ---
+    for non_strong_smpl in ["Diboson", "EW_Zjj"]:
+        DSIDs = DSID_map[non_strong_smpl]
+        fraction = factors[non_strong_smpl]
+
+        for updown in ["_Up"]:
+            is_up = updown == "_Up"
+            # Start with a copy of the nominal weights (MG+NS)
+            weight_branch = weights["nominal"].copy()
+            # Apply theory scaling to all events (MG stays 1 automatically)
+            theory_scale = get_theory_scale(
+                mcChannelNumbers_all, DSIDs, fraction, is_up
+            )
+            weight_branch *= theory_scale
+            # Store in weights
+            branch_name = f"weights_ns_theory_{non_strong_smpl.lower()}{updown.lower()}"
+            weights[branch_name] = weight_branch
+
+    return weights
+
+
+def json_to_hist(
+    file_name,
+    bins,
+    var,
+    unfold_pT200=True,
+    add_stat=True,
+    only_stat=False,
+):
+    """
+    Convert JSON blocks to a binned histogram using NumPy.
+
+    Returns a dictionary:
+      'nominal'   : bin contents
+      'total_unc' : bin errors
+      'bins'      : bin edges
+    """
+    print(f"reading json for {var}")
+
+    xSec = []
+    relErr = []
+    statErr = []
+
+    # --- Read JSON blocks ---
+    with open(file_name, "r") as f:
+        json_block = ""
+        for line in f:
+            json_block += line
+            if "}" in line:
+                try:
+                    j = json.loads(json_block)
+                    if f"{var}_xSec" in j:
+                        xSec = j[f"{var}_xSec"]
+                    elif f"{var}_RelErrors" in j:
+                        relErr = j[f"{var}_RelErrors"]
+                    elif f"{var}_xSec_AbsStatErr" in j:
+                        statErr = j[f"{var}_xSec_AbsStatErr"]
+                except Exception as e:
+                    print(f"Error parsing JSON block: {e}")
+                json_block = ""
+
+    xSec = np.array(xSec)
+    relErr = np.array(relErr)
+    statErr = np.array(statErr)
+
+    # --- Fill arrays ---
+    n_bins = len(bins) - 1
+    nominal = np.zeros(n_bins)
+    total_unc = np.zeros(n_bins)
+
+    start = 1 if unfold_pT200 else 0
+
+    for i in range(n_bins):
+        content = xSec[i] if (i) < len(xSec) else 0.0
+        # syst = (relErr[i + start] * content) if (i + start) < len(relErr) else 0.0
+        syst = (relErr[i] * content) if (i) < len(relErr) else 0.0
+        stat = statErr[i + start] if (i + start) < len(statErr) else 0.0
+
+        nominal[i] = content
+
+        if only_stat:
+            total_unc[i] = stat
+        elif add_stat:
+            total_unc[i] = np.sqrt(stat**2 + syst**2)
+        else:
+            total_unc[i] = syst
+
+    return {"nominal": nominal, "total_unc": total_unc, "bins": np.array(bins)}

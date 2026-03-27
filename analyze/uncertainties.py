@@ -78,6 +78,8 @@ class UncertaintyCalculator:
             "weights_theoryPSsoft",
             "weights_theoryMPI",
             "weights_theoryPSscale",
+            "weights_ns_theory_diboson_up",
+            "weights_ns_theory_ew_zjj_up",
         ]
         self.sherpa_uncertainties = [
             "weights_theoryQCD",
@@ -382,6 +384,7 @@ class UncertaintyCalculator:
         self,
         all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
         measured_key: str = "nominal",
+        ungrouped: bool = False,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
         """Calculate all uncertainties from histogram dictionary.
         Will only calculate uncertainties that are defined in the
@@ -401,6 +404,8 @@ class UncertaintyCalculator:
             - bins: The bin edges
         measured_key : str, optional
             Key in all_hists for the measured/unfolded distribution (default: "nominal")
+        ungrouped : bool, optional
+            If True, return only ungrouped uncertainties without applying grouping
 
         Returns:
         --------
@@ -516,7 +521,8 @@ class UncertaintyCalculator:
                 syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
                 syst_info[syst_key] = syst_def.copy()
-
+        if ungrouped:
+            return syst_uncerts, syst_covs, syst_info
         # Apply uncertainty grouping
         if self.uncertainty_groups:
             syst_uncerts, syst_covs, syst_info = self._apply_grouping(

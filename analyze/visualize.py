@@ -19,6 +19,30 @@ from tqdm import tqdm
 mh.style.use("ATLAS")
 
 
+def draw_textbox(ax, box):
+    """Draw a top-left aligned text box on the axes with a rounded border.
+
+    Args:
+        ax: matplotlib axes to draw on.
+        box: dict with keys:
+            - left_align, top_align: position in axes fraction (0-1)
+            - text: string to display
+            - fontsize: font size
+    """
+    ax.text(
+        box["left_align"],
+        box["top_align"],
+        box["text"],
+        fontsize=box["fontsize"],
+        verticalalignment="top",
+        horizontalalignment="left",
+        bbox=dict(
+            boxstyle="round,pad=0.3", facecolor="none", edgecolor="none", alpha=0
+        ),
+        transform=ax.transAxes,
+    )
+
+
 def get_nnid_uncertainties(
     results_dict: dict[str, tuple[np.ndarray, np.ndarray]],
     index: int,
@@ -1226,6 +1250,7 @@ def plot_measurement_with_uncertainties(
     color: str = "blue",
     do_chi2_test: bool = False,
     simple_corr_labels: bool = False,
+    legend_loc: str = "lower right",
 ) -> tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot cross-section measurement and uncertainty budget.
 
@@ -1508,7 +1533,7 @@ def plot_measurement_with_uncertainties(
         ax.set_ylim(0, 12)
     ax.set_ylabel(ylabel)
     ax.set_xticks([])
-    ax.legend(fontsize=12, loc="lower right")
+    ax.legend(fontsize=12, loc=legend_loc)
     ax.tick_params(axis="x", direction="in", top=True)
 
     # Ratio plot
@@ -1667,103 +1692,6 @@ def plot_measurement_with_uncertainties(
     return fig_cross_section, fig_uncertainty_budget, fig_correlation_matrix
 
 
-def draw_variable_on_subfig(subfig, var, bins, i):
-
-    axs = subfig.subplots(
-        2, 1, sharex=True, sharey=False, gridspec_kw={"height_ratios": [3, 1]}
-    )
-
-    bins = np.array(bins)
-    bin_centers = 0.5 * (bins[1:] + bins[:-1])
-    bin_widths = bins[1:] - bins[:-1]
-
-    # choose dataframe
-    if "trackj1" in var:
-        df = multifold[mask_trackj1]
-    elif "trackj2" in var:
-        df = multifold[mask_trackj2]
-    else:
-        df = multifold
-
-    # ----------------
-    # Sherpa
-    counts = mc_preds[i]["sherpa_counts"]
-    sherpa_density = counts / lumi / bin_widths
-    sherpa_error = mc_preds[i]["sherpa_err"] / mc_preds[i]["sherpa_counts"]
-
-    make_error_boxes(
-        axs[0],
-        bin_centers,
-        sherpa_density,
-        np.vstack([bin_widths / 2, bin_widths / 2]),
-        np.vstack([sherpa_density * sherpa_error, sherpa_density * sherpa_error]),
-        facecolor="deeppink",
-        alpha=0.25,
-        marker="s",
-        label="Sherpa",
-    )
-
-    # ----------------
-    # MadGraph
-    counts = mc_preds[i]["mgfxfx_counts"]
-    mgfxfx_density = counts / lumi / bin_widths
-    mgfxfx_error = mc_preds[i]["mgfxfx_err"] / mc_preds[i]["mgfxfx_counts"]
-
-    make_error_boxes(
-        axs[0],
-        bin_centers,
-        mgfxfx_density,
-        np.vstack([bin_widths / 2, bin_widths / 2]),
-        np.vstack([mgfxfx_density * mgfxfx_error, mgfxfx_density * mgfxfx_error]),
-        facecolor="dodgerblue",
-        alpha=0.25,
-        marker="^",
-        label="MadGraph",
-    )
-
-    # ----------------
-    # MultiFold
-    multifold_density, _, _ = axs[0].hist(
-        df[var],
-        weights=df.weights_nominal,
-        bins=bins,
-        color="black",
-        linewidth=2,
-        density=True,
-        alpha=0,
-    )
-
-    multifold_density *= np.sum(df.weights_nominal)
-
-    axs[0].errorbar(
-        bin_centers,
-        multifold_density,
-        xerr=bin_widths / 2,
-        yerr=multifold_density * uncertainties[var + "_total"] / 100,
-        marker=".",
-        linestyle="None",
-        color="k",
-        markersize=4,
-    )
-
-    axs[1].errorbar(
-        bin_centers,
-        np.ones(len(bin_centers)),
-        xerr=bin_widths / 2,
-        yerr=uncertainties[var + "_total"] / 100,
-        marker=".",
-        linestyle="None",
-        color="k",
-        markersize=4,
-    )
-
-    axs[1].set_xlim(bins[0], bins[-1])
-    axs[1].set_ylim([0.2, 1.8])
-
-    axs[0].set_ylabel(labels[var], fontsize=12)
-    axs[1].set_xlabel(plot_labels[var], fontsize=16)
-
-
 def tprofile(x, y, w, bins):
 
     nbins = len(bins) - 1
@@ -1802,9 +1730,48 @@ def make_error_boxes(
     label=None,
     marker=".",
     fillstyle="full",
-    markersize=3,
+    markersize=5,
+    markeredgewidth=2,
 ):
+    """Draw rectangular error boxes with overlaid error bars.
 
+    Visualizes uncertainties using filled boxes plus standard error bars.
+    Each box spans the full x and y uncertainty for a point.
+
+    Arguments:
+    ----------
+    ax : matplotlib.axes.Axes
+      Axes to draw on.
+    xdata : array-like
+      X coordinates.
+    ydata : array-like
+      Y coordinates.
+    xerror : array-like
+      X uncertainties (shape: 2 x N).
+    yerror : array-like
+      Y uncertainties (shape: 2 x N).
+    facecolor : str, optional
+      Box fill color (default: "r").
+    edgecolor : str, optional
+      Box edge color (default: "none").
+    alpha : float, optional
+      Box transparency (default: 0.4).
+    label : str or None, optional
+      Legend label.
+    marker : str, optional
+      Marker style (default: ".").
+    fillstyle : str, optional
+      Marker fill style (default: "full").
+    markersize : float, optional
+      Marker size (default: 3).
+    markeredgewidth : float, optional
+      Marker edge width (default: 2).
+
+    Returns:
+    --------
+    artists : matplotlib.container.ErrorbarContainer
+      Errorbar container for the plotted data.
+    """
     # Loop over data points; create box from errors at each point
     errorboxes = [
         Rectangle((x - xe[0], y - ye[0]), xe.sum(), ye.sum())
@@ -1832,6 +1799,764 @@ def make_error_boxes(
         color=facecolor,
         fillstyle="none",
         markersize=markersize,
+        markeredgewidth=markeredgewidth,
     )
 
     return artists
+
+
+def make_uncertainty_budget_fig(
+    bin_edges,
+    uncertainty_details,
+    figsize=(6.4, 4.8),
+    xlabel="default xlabel",
+    log_xscale=False,
+    llab: str = "Simulation Internal",
+    rlab: str = "Z+jets Omnifold",
+    data_measurement_mode=True,
+    measured_hist=None,
+    target_hist=None,
+    do_chi2_test=False,
+    simple_corr_labels: bool = False,
+    draw_this_group: str = None,
+):
+    """Create uncertainty budget and correlation matrix plots.
+
+    Produces:
+    1. Uncertainty budget plot with total and per-systematic contributions.
+    2. Correlation matrix plot from the total covariance.
+
+    Optionally computes method bias and performs a chi-squared test when not in
+    data measurement mode.
+
+    Arguments:
+    ----------
+    bin_edges : array-like
+        Bin edges of the observable.
+    uncertainty_details : tuple
+        (uncertainties, covariance matrices, metadata) per systematic.
+    figsize : tuple, optional
+        Figure size (default: (6.4, 4.8)).
+    xlabel : str, optional
+        X-axis label.
+    log_xscale : bool, optional
+        Use log scale for x-axis (default: False).
+    llab : str, optional
+        Left ATLAS label.
+    rlab : str, optional
+        Right ATLAS label.
+    data_measurement_mode : bool, optional
+        If True, disables method bias and chi2 (default: True).
+    measured_hist : array-like, optional
+        Measured distribution (required if data_measurement_mode=False).
+    target_hist : array-like, optional
+        Target distribution (required if data_measurement_mode=False).
+    do_chi2_test : bool, optional
+        Perform chi-squared test (default: False).
+    simple_corr_labels : bool, optional
+        Simplify correlation matrix labels (default: False).
+
+    Returns:
+    --------
+    fig_uncertainty_budget : matplotlib.figure.Figure
+        Uncertainty budget plot.
+    fig_correlation_matrix : matplotlib.figure.Figure
+        Correlation matrix plot.
+    """
+    if data_measurement_mode:
+        mbias = None
+        rel_mbias = None
+    else:
+        if measured_hist is None or target_hist is None:
+            raise ValueError(
+                "measured_hist and target_hist must be provided when data_measurement_mode is False"
+            )
+        mbias = (measured_hist - target_hist) ** 2
+        rel_mbias = np.sqrt(mbias) / np.where(target_hist > 0, target_hist, 1)
+
+    # Only works fro data in current implimentation, would need to be modify the output of uncertainty_calculator.get_total_theory_uncertainty for it to work on MG or Sherpa
+    total_vars = np.sum(np.array(list(uncertainty_details[0].values())) ** 2, axis=0)
+    total_uncert = np.sqrt(total_vars)
+    total_uncert_plot = np.append(total_uncert, total_uncert[-1])
+
+    # ===== Figure 2: Uncertainty budget plot =====
+    fig_uncertainty_budget, ax = plt.subplots(figsize=figsize)
+
+    # Plot total uncertainty, only for the full uncertainty list, not for individual groups
+    if draw_this_group is None:
+        ax.plot(
+            bin_edges,
+            total_uncert_plot,
+            "--",
+            color="black",
+            label="Total unc.",
+            drawstyle="steps-post",
+            linewidth=2,
+        )
+
+    # Plot individual uncertainty_details
+    for syst_name in uncertainty_details[2].keys():
+        if draw_this_group is not None and draw_this_group not in syst_name:
+            continue
+        syst_uncert = uncertainty_details[0][syst_name]
+        plot_syst_uncert = np.append(syst_uncert, syst_uncert[-1])
+        ax.plot(
+            bin_edges,
+            plot_syst_uncert,
+            "-",
+            color=uncertainty_details[2][syst_name]["color"],
+            label=uncertainty_details[2][syst_name]["name"],
+            drawstyle="steps-post",
+        )
+
+    # Plot method bias (only in standard mode, not data comparison mode)
+    if rel_mbias is not None:
+        plot_mbias = np.append(rel_mbias, rel_mbias[-1])
+        ax.fill_between(
+            bin_edges,
+            0,
+            plot_mbias,
+            step="post",
+            color="gray",
+            alpha=0.3,
+            label="Method bias",
+        )
+
+    # Set plot properties
+    if log_xscale:
+        ax.set_xscale("log")
+    ax.set_xlim(bin_edges[0], bin_edges[-1])
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Uncertainty budget")
+
+    # Set y-axis limits
+    if rel_mbias is not None:
+        top_uncert = np.max(np.concatenate([total_uncert_plot, plot_mbias]))
+    else:
+        top_uncert = np.max(total_uncert_plot)
+    if draw_this_group is not None:  # overrides rel-mbias being not None
+        top_uncert = 0
+        for syst_name in uncertainty_details[2].keys():
+            if draw_this_group in syst_name:
+                top_uncert = max(top_uncert, np.max(uncertainty_details[0][syst_name]))
+    if top_uncert > 0.2 or np.isnan(top_uncert):
+        ax.set_ylim(bottom=0.0, top=0.2)
+    else:
+        ax.set_ylim(bottom=0.0, top=top_uncert * 1.2)
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.4, -0.1),
+        ncol=4,
+        fontsize=8,
+        frameon=False,
+    )
+
+    mh.atlas.label(
+        ax=ax,
+        llabel=llab,
+        rlabel=rlab,
+    )
+
+    fig_uncertainty_budget.tight_layout()
+    fig_uncertainty_budget.subplots_adjust(bottom=0.2)
+
+    # Calculate total covariance matrix
+    total_cov = np.sum(list(uncertainty_details[1].values()), axis=0)
+
+    # Calculate chi2 covariance matrix (excludes certain systematics)
+    chi2_cov = np.sum(
+        [
+            uncertainty_details[1][key]
+            for key in uncertainty_details[1].keys()
+            if key not in ["Muon", "Tracking", "lumi", "pileup"]
+        ],
+        axis=0,
+    )
+    # Calculate chi-squared test if requested (only when not in data_measurement_mode)
+    chi2_label = ""
+    if do_chi2_test and not data_measurement_mode:
+        dof = len(bin_edges) - 1
+        D = measured_hist - target_hist
+        chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
+        p_value = 1 - stats.chi2.cdf(chi2, dof)
+        chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
+        print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
+
+    # ===== Figure 3: Correlation matrix plot =====
+    if (
+        draw_this_group is None
+    ):  # only draw correlation matrix for the full covariance, not for individual groups
+        fig_correlation_matrix = plot_correlation_matrix(
+            total_cov=total_cov,
+            bins=bin_edges,
+            llab=llab,
+            simple_labels=simple_corr_labels,
+        )
+
+
+def nice_midpoint(low, up):
+    """
+    Compute a 'nice' midpoint between low and up.
+
+    Snaps the midpoint to a "nice" number (multiples of 5, 2.5, or 2 scaled
+    to the range size) near the actual center.
+
+    Args:
+        low (float): lower bound
+        up (float): upper bound
+
+    Returns:
+        float: snapped midpoint
+    """
+    midpoint = 0.5 * (low + up)
+    distance = up - low
+
+    # Choose step based on range
+    if distance > 5:
+        steps = [5, 2.5, 2]
+    elif distance > 1:
+        steps = [1, 0.5, 0.25]
+    elif distance > 0.2:
+        steps = [0.2, 0.1, 0.05]
+    else:
+        steps = [0.02, 0.01, 0.005]
+
+    # Find the step closest to the range scale
+    step = min(steps, key=lambda s: abs(s - distance / 2))
+
+    # Snap midpoint to nearest multiple of step
+    snapped = round(midpoint / step) * step
+    return snapped
+
+
+def draw_plot(
+    omni_results,
+    binning,
+    ylabel="default",
+    xlabel="default",
+    mgfxfx_truth_results=None,
+    sherpa_truth_results=None,
+    ibu_results=None,
+    draw_uncertainty_budget=True,
+    is_xSec=True,
+    logyScale=True,
+    ratio_ylim=[0.2, 1.8],
+    dashed_lines_in_ratio=True,  #
+    text_box=None,
+    is_omni_data=False,
+    results_list=None,
+    formating_dicts=None,
+    pdf_name=None,
+):
+    """Draw measurement with optional theory comparisons and ratio plot.
+
+    Creates a main cross-section (or density) plot with uncertainties, optionally
+    including Sherpa and/or MadGraph predictions, and a ratio subplot. Can also
+    produce an uncertainty budget figure.
+
+    Arguments:
+    ----------
+    omni_results : dict
+        Histogram dictionary for OmniFold result ("nominal" key expected).
+    binning : array-like
+        Bin edges of the observable.
+    ylabel : str, optional
+        Y-axis label.
+    xlabel : str, optional
+        X-axis label.
+    mgfxfx_truth_results : dict, optional
+        MadGraph truth histogram.
+    sherpa_truth_results : dict, optional
+        Sherpa truth histogram.
+    draw_uncertainty_budget : bool, optional
+        If True, produces uncertainty budget plot.
+    is_xSec : bool, optional
+        If True, converts to cross-section.
+    ratio_ylim : list, optional
+        Y-limits for ratio subplot.
+    dashed_lines_in_ratio: bool or list, optional
+        if false, no dashed. if True, lines at snapped midpoints. If a list, draw lines at giveny values.
+    is_omni_data : bool, optional
+        If True, treats omni_results as data (False = pseudodata).
+    results_list : list of dicts, optional
+        If provided, list of additional result dictionaries to plot, "omni_result" is reated as reference alwayse.
+    formating_dicts : list of dicts, optional
+        If results_list is provided, list of formatting dicts for each result dict (e.g., color, label). Must be same length as results_list.
+        dictionary must contain the following items:
+            - "color": color for the result (e.g., "red")
+            - "label": label for the legend (e.g., "MadGraph")
+            - "marker": marker style for the result (e.g., "o")
+            - "is_omni_data": bool, whether this result should be treated as data (for uncertainty calculation)
+            - "is_madgraph": bool, whether this result is a MadGraph prediction.  If false and is_omni_data false, assume sherpa. (for uncertainty calculation)
+    pdf_loc : str, optional
+        If provided, location to save the figure as a PDF file (e.g., "obs.pdf").
+    Returns:
+    --------
+    None
+        Produces matplotlib figures.
+    """
+    additional_results = results_list is not None and formating_dicts is not None
+    if additional_results:
+        if len(results_list) != len(formating_dicts):
+            raise ValueError("results_list and formating_dicts must be the same length")
+
+    hist_params_OmniFold = {
+        "color": "black",
+        "linewidth": 2,
+        "density": True,
+        "alpha": 0,
+    }
+    formating_IBU = {
+        "is_madgraph": False,
+        "is_omni_data": True,
+        "color": "green",
+        "marker": "o",
+        "label": "IBU Measurement",
+    }
+
+    lumi = 140.1
+    draw_ratioplot = (
+        (mgfxfx_truth_results is not None)
+        or (sherpa_truth_results is not None)
+        or additional_results
+    )
+    height_ratios = [3, 1] if 1 + int(draw_ratioplot) == 2 else [3]
+    dpi = 150  # default
+    fig, axs = plt.subplots(
+        1 + int(draw_ratioplot),
+        1,
+        sharex=True,
+        sharey=False,
+        gridspec_kw={"height_ratios": height_ratios},
+        figsize=(12 * 2 / 3, 8 * 2 / 3),  # is 12 by 8 but smaller
+    )
+    fig.subplots_adjust(hspace=0.0)
+    if not draw_ratioplot:
+        axs = [axs]  # Ensure axs is always a list for consistent indexing
+
+    bin_centers = 0.5 * (binning[1:] + binning[:-1])
+    bin_widths = np.array(
+        [binning[n + 1] - binning[n] for n in range(len(binning) - 1)]
+    )
+
+    # Create uncertainty calculator (using default definitions)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=True)
+
+    # Nominal Omnifold result
+    omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
+        omni_results, measured_key="nominal"
+    )
+    omni_uncert = np.sqrt(
+        np.sum(np.array(list(omni_uncert_tuple[0].values())) ** 2, axis=0)
+    )
+    # Calculate theory uncertainties for MadGraph
+    if mgfxfx_truth_results is not None:
+        mgfxfx_uncert = uncertainty_calculator.get_total_theory_uncertainty(
+            mgfxfx_truth_results, measured_key="nominal", is_madgraph=True
+        )
+    # Calculate theory uncertainties for Sherpa
+    if sherpa_truth_results is not None:
+        sherpa_uncert = uncertainty_calculator.get_total_theory_uncertainty(
+            sherpa_truth_results, measured_key="nominal", is_madgraph=False
+        )
+
+    # Calculate uncertainties for additional results if provided
+    if additional_results:
+        results_uncerts = []
+        for result_dict, fmt in zip(results_list, formating_dicts):
+            if fmt["is_omni_data"]:
+                result_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
+                    result_dict, measured_key="nominal"
+                )
+                result_uncert = np.sqrt(
+                    np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
+                )
+            else:
+                result_uncert = uncertainty_calculator.get_total_theory_uncertainty(
+                    result_dict, measured_key="nominal", is_madgraph=fmt["is_madgraph"]
+                )
+            results_uncerts.append(result_uncert)
+
+    if draw_uncertainty_budget:
+        make_uncertainty_budget_fig(
+            binning,
+            omni_uncert_tuple,
+            figsize=(12 * 2 / 3, 8 * 2 / 3),  # is 12 by 8 but smaller
+            xlabel=xlabel,
+            log_xscale=False,
+            llab="Simulation Internal",
+            rlab="Z+jets Omnifold",
+            data_measurement_mode=True,
+            measured_hist=None,
+            target_hist=None,
+            do_chi2_test=False,
+            simple_corr_labels=True,
+        )
+    # if "trackj1" in var:
+    #     df = multifold[mask_trackj1]
+    # elif "trackj2" in var:
+    #     df = multifold[mask_trackj2]
+    # else:
+    #     df = multifold
+
+    ### Sherpa
+    if sherpa_truth_results is not None:
+        sherpa_density = sherpa_truth_results["nominal"][0]
+        if is_xSec:
+            sherpa_density = sherpa_density / lumi / bin_widths
+        _ = make_error_boxes(
+            axs[0],
+            bin_centers,
+            sherpa_density,
+            np.vstack([bin_widths / 2, bin_widths / 2]),
+            np.vstack([sherpa_density * sherpa_uncert, sherpa_density * sherpa_uncert]),
+            facecolor="deeppink",
+            alpha=0.25,
+            marker="s",
+            label=r"Drell Yan: Sherpa2.2.11 + X",
+        )
+
+    ### MGFxFx
+    if mgfxfx_truth_results is not None:
+        mgfxfx_density = mgfxfx_truth_results["nominal"][0]
+        if is_xSec:
+            mgfxfx_density = mgfxfx_density / lumi / bin_widths
+        _ = make_error_boxes(
+            axs[0],
+            bin_centers,
+            mgfxfx_density,
+            np.vstack([bin_widths / 2, bin_widths / 2]),
+            np.vstack([mgfxfx_density * mgfxfx_uncert, mgfxfx_density * mgfxfx_uncert]),
+            facecolor="dodgerblue",
+            alpha=0.25,
+            marker="^",
+            label=("Drell Yan: MG5+Py8 + X"),
+        )
+
+    ### Additional results
+    if additional_results:
+        for result_dict, fmt, result_uncert in zip(
+            results_list, formating_dicts, results_uncerts
+        ):
+            result_density = result_dict["nominal"][0]
+            if is_xSec:
+                if fmt["is_omni_data"]:
+                    result_density = result_density / lumi / bin_widths
+                else:
+                    result_density = result_density / bin_widths
+            _ = make_error_boxes(
+                axs[0],
+                bin_centers,
+                result_density,
+                np.vstack([bin_widths / 2, bin_widths / 2]),
+                np.vstack(
+                    [result_density * result_uncert, result_density * result_uncert]
+                ),
+                facecolor=fmt["color"],
+                alpha=0.25,
+                marker=fmt["marker"],
+                label=fmt["label"],
+            )
+    if ibu_results is not None:
+        ibu_density = ibu_results["nominal"]
+        ibu_uncertainty = ibu_results["total_unc"]
+        _ = make_error_boxes(
+            axs[0],
+            bin_centers,
+            ibu_density,
+            np.vstack([bin_widths / 2, bin_widths / 2]),
+            np.vstack([ibu_uncertainty, ibu_uncertainty]),
+            facecolor=formating_IBU["color"],
+            alpha=0.25,
+            marker=formating_IBU["marker"],
+            label=formating_IBU["label"],
+        )
+
+    ### OmniFold
+    omni_density = omni_results["nominal"][0]
+    if is_xSec:
+        omni_density = omni_density / bin_widths
+
+    omni_plot = axs[0].hist(
+        binning[:-1],
+        bins=binning,
+        weights=omni_density,
+        align="mid",
+        **hist_params_OmniFold,
+    )
+
+    mh.atlas.label(
+        ax=axs[0],
+        loc=0,
+        llabel="Simulation Internal",
+        rlabel="Z+jets Omnifold",
+    )
+
+    if text_box is not None:
+        draw_textbox(axs[0], text_box)
+
+    axs[0].minorticks_on()
+    axs[0].xaxis.set_tick_params(labelsize=16, which="both", direction="in", top=True)
+    axs[0].yaxis.set_tick_params(labelsize=16, which="both", direction="in", right=True)
+    axs[0].set_ylabel(ylabel, fontsize=16, labelpad=2, loc="top")
+    y_min = min(omni_density)
+    y_max = max(omni_density)
+
+    # Start from omni (always present)
+    y_min = np.min(omni_density)
+    y_max = np.max(omni_density)
+
+    # Compare with MG
+    if mgfxfx_truth_results is not None:
+        y_min = min(y_min, np.min(mgfxfx_density))
+        y_max = max(y_max, np.max(mgfxfx_density))
+
+    # Compare with Sherpa
+    if sherpa_truth_results is not None:
+        y_min = min(y_min, np.min(sherpa_density))
+        y_max = max(y_max, np.max(sherpa_density))
+
+    # Compare with additional results
+    if additional_results:
+        for result_dict in results_list:
+            y = result_dict["nominal"][0]
+            y_min = min(y_min, np.min(y))
+            y_max = max(y_max, np.max(y))
+    if ibu_results is not None:
+        y_min = min(y_min, np.min(ibu_density))
+        y_max = max(y_max, np.max(ibu_density))
+
+    axs[0].set_ylim([0.3 * y_min, 1.7 * y_max])
+
+    axs[0].errorbar(
+        bin_centers,
+        omni_density,
+        xerr=bin_widths / 2,
+        yerr=omni_uncert * omni_density,
+        marker=".",
+        linestyle="None",
+        color="k",
+        alpha=1,
+        ecolor="k",
+        label="Omnifold Measurement",
+        markersize=5,
+        linewidth=1,
+        markeredgewidth=2,
+    )
+
+    # this just adds the X = text under MG or Sherpa, but only if one of them is being plotted, otherwise just draw regulat legend
+    if mgfxfx_truth_results is not None or sherpa_truth_results is not None:
+        handles, labels = axs[0].get_legend_handles_labels()
+        targets = ("Drell Yan: Sherpa2.2.11 + X", "Drell Yan: MG5+Py8 + X")
+        insert_idx = (
+            max(
+                (i for i, l in enumerate(labels) if any(t in l for t in targets)),
+                default=-1,
+            )
+            + 1
+        )
+        handles.insert(insert_idx, plt.Line2D([], [], linestyle="None", color="white"))
+        labels.insert(insert_idx, r"X = EW Zjj, VZ$\rightarrow$V$\mu\mu$")
+        axs[0].legend(handles, labels, fontsize=14, frameon=False, loc="best")
+    else:
+        axs[0].legend(fontsize=14, frameon=False, loc="best")
+
+    if logyScale:
+        axs[0].set_yscale("log")
+    else:
+        axs[0].set_yscale("linear")
+    if draw_ratioplot:
+        axs[1].minorticks_on()
+        axs[1].errorbar(
+            bin_centers,
+            np.ones(len(bin_centers)),
+            xerr=bin_widths / 2,
+            yerr=omni_uncert,
+            marker=".",
+            linestyle="None",
+            color="k",
+            alpha=1,
+            ecolor="k",
+            label="Omnifold Measurement",
+            markersize=5,
+            linewidth=1,
+            markeredgewidth=2,
+        )
+        if sherpa_truth_results is not None:
+            _ = make_error_boxes(
+                axs[1],
+                bin_centers,
+                sherpa_density / omni_density,
+                np.vstack([bin_widths / 2, bin_widths / 2]),
+                np.vstack(
+                    [
+                        (sherpa_density / omni_density) * sherpa_uncert,
+                        (sherpa_density / omni_density) * sherpa_uncert,
+                    ]
+                ),
+                facecolor="deeppink",
+                alpha=0.25,
+                marker="s",
+                label=r"Sherpa",
+            )
+        if mgfxfx_truth_results is not None:
+            _ = make_error_boxes(
+                axs[1],
+                bin_centers,
+                mgfxfx_density / omni_density,
+                np.vstack([bin_widths / 2, bin_widths / 2]),
+                np.vstack(
+                    [
+                        (mgfxfx_density / omni_density) * mgfxfx_uncert,
+                        (mgfxfx_density / omni_density) * mgfxfx_uncert,
+                    ]
+                ),
+                facecolor="dodgerblue",
+                alpha=0.25,
+                marker="^",
+                label=r"MGFxFx",
+            )
+        if additional_results:
+            for result_dict, fmt, result_uncert in zip(
+                results_list, formating_dicts, results_uncerts
+            ):
+                result_density = result_dict["nominal"][0]
+                _ = make_error_boxes(
+                    axs[1],
+                    bin_centers,
+                    result_density / omni_density,
+                    np.vstack([bin_widths / 2, bin_widths / 2]),
+                    np.vstack(
+                        [
+                            (result_density / omni_density) * result_uncert,
+                            (result_density / omni_density) * result_uncert,
+                        ]
+                    ),
+                    facecolor=fmt["color"],
+                    alpha=0.25,
+                    marker=fmt["marker"],
+                    label=fmt["label"],
+                )
+        if ibu_results is not None:
+            _ = make_error_boxes(
+                axs[1],
+                bin_centers,
+                ibu_density / omni_density,
+                np.vstack([bin_widths / 2, bin_widths / 2]),
+                np.vstack(
+                    [
+                        (ibu_uncertainty / omni_density),
+                        (ibu_uncertainty / omni_density),
+                    ]
+                ),
+                facecolor=formating_IBU["color"],
+                alpha=0.25,
+                marker=formating_IBU["marker"],
+                label=formating_IBU["label"],
+            )
+
+        axs[1].set_xlim(binning[0], binning[-1])
+        axs[1].set_ylim(ratio_ylim)
+        axs[1].xaxis.set_tick_params(
+            labelsize=16, which="both", direction="in", top=True
+        )
+        axs[1].yaxis.set_tick_params(
+            labelsize=16, which="both", direction="in", right=True
+        )
+        if is_omni_data:
+            ratio_ylabel = "MC / Data"
+        else:
+            ratio_ylabel = "MC / Pseudodata"
+        axs[1].set_ylabel(ratio_ylabel, fontsize=16, labelpad=2, loc="center")
+        axs[1].set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
+
+        line1 = nice_midpoint(ratio_ylim[0], 1)
+        line2 = nice_midpoint(1, ratio_ylim[1])
+        axs[1].axhline(line1, color="gray", linestyle="--", linewidth=1)
+        axs[1].axhline(line2, color="gray", linestyle="--", linewidth=1)
+
+    if pdf_name is not None:
+        fig.savefig(pdf_name, dpi=200, format="pdf", bbox_inches="tight")
+    return
+
+
+def draw_uncertainty_group(
+    omni_results,
+    binning,
+    group,
+    xlabel="default",
+):
+    # possible groupings are
+
+    bin_centers = 0.5 * (binning[1:] + binning[:-1])
+    bin_widths = np.array(
+        [binning[n + 1] - binning[n] for n in range(len(binning) - 1)]
+    )
+
+    # Create uncertainty calculator (using default definitions)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=True)
+    omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
+        omni_results, measured_key="nominal", ungrouped=True
+    )
+    omni_uncert = np.sqrt(
+        np.sum(np.array(list(omni_uncert_tuple[0].values())) ** 2, axis=0)
+    )
+    make_uncertainty_budget_fig(
+        binning,
+        omni_uncert_tuple,
+        figsize=(7.4, 6),
+        xlabel=xlabel,
+        log_xscale=False,
+        llab="Simulation Internal",
+        rlab="Z+jets Omnifold",
+        data_measurement_mode=True,
+        measured_hist=None,
+        target_hist=None,
+        do_chi2_test=False,
+        simple_corr_labels=True,
+        draw_this_group=group,
+    )
+
+
+def draw_mc_syst_uncertainties(results):
+    """
+    Plots (systematic - nominal)/nominal for all systematics for MC theory predictions.
+
+    Parameters
+    ----------
+    results : dict
+        Keys include 'nominal' and keys of all systematic variations.
+        Each value is a tuple: (hist, variance, bin_edges)
+
+    Note this function does not plot stat errors.
+    """
+
+    nominal, _, bin_edges = results["nominal"]
+    syst_keys = [k for k in results if k != "nominal"]
+
+    # Prepare figure
+    plt.figure(figsize=(8, 6))
+
+    colors = plt.cm.tab20.colors  # use 20 distinct colors
+    for i, key in enumerate(syst_keys):
+        hist, _, _ = results[key]
+        rel_variation = (hist - nominal) / nominal  # (var-nom)/nom
+
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        plt.plot(
+            bin_centers,
+            rel_variation,
+            label=key,
+            color=colors[i % len(colors)],
+            marker="o",
+        )
+
+    plt.axhline(0, color="black", linestyle="--", linewidth=1)
+    plt.xlabel("x")
+    plt.ylabel("(syst - nominal)/nominal")
+    plt.title("systematic variations")
+    plt.legend(fontsize=8)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
