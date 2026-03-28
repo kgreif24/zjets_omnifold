@@ -54,7 +54,7 @@ class UncertaintyCalculator:
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
         smooth_hv : bool, optional
-            If True, smooth the hidden variable uncertainty only (default: False)
+            If True, smooth the hidden variable & hvhad uncertainty only (default: False)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -515,7 +515,7 @@ class UncertaintyCalculator:
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
-                if syst_key == "hv" and self.smooth_hv:
+                if (syst_key == "hv" or syst_key == "hvhad") and self.smooth_hv:
                     bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
                 syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist

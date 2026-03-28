@@ -2016,7 +2016,9 @@ def nice_midpoint(low, up):
     if distance > 5:
         steps = [5, 2.5, 2]
     elif distance > 1:
-        steps = [1, 0.5, 0.25]
+        steps = [1, 0.75]
+    elif distance > 0.5:
+        steps = [0.5, 0.25]
     elif distance > 0.2:
         steps = [0.2, 0.1, 0.05]
     else:
@@ -2358,9 +2360,9 @@ def draw_plot(
         )
         handles.insert(insert_idx, plt.Line2D([], [], linestyle="None", color="white"))
         labels.insert(insert_idx, r"X = EW Zjj, VZ$\rightarrow$V$\mu\mu$")
-        axs[0].legend(handles, labels, fontsize=14, frameon=False, loc="best")
+        axs[0].legend(handles, labels, fontsize=12, frameon=False, loc="best")
     else:
-        axs[0].legend(fontsize=14, frameon=False, loc="best")
+        axs[0].legend(fontsize=12, frameon=False, loc="best")
 
     if logyScale:
         axs[0].set_yscale("log")
