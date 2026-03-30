@@ -187,7 +187,7 @@ class UncertaintyCalculator:
                 "prefix": None,
             },
             "hvhad": {
-                "name": "Hidden variable (HC)",
+                "name": "Hadron composition",
                 "color": "orange",
                 "stochastic": False,
                 "prefix": None,
@@ -264,6 +264,18 @@ class UncertaintyCalculator:
                 "stochastic": False,
                 "prefix": None,
             },
+            "nonstrongDiboson": {
+                "name": "Non-strong diboson",
+                "color": "rebeccapurple",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "nonstrongEW": {
+                "name": "Non-strong EW",
+                "color": "sandybrown",
+                "stochastic": False,
+                "prefix": None,
+            },
         }
 
     @staticmethod
@@ -297,6 +309,7 @@ class UncertaintyCalculator:
                 "theoryMPI",
                 "theoryPSscale",
             ],
+            "Non-strong": ["nonstrongDiboson", "nonstrongEW"],
         }
 
     def add_uncertainty(
