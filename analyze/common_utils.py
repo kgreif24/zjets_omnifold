@@ -1583,3 +1583,65 @@ def json_to_hist(
             total_unc[i] = syst
 
     return {"nominal": nominal, "total_unc": total_unc, "bins": np.array(bins)}
+
+
+def validate_expression(result, *inputs):
+    """
+    Enforce -99 masking on a computed array.
+
+    Arguments:
+    result : np.ndarray
+        Computed result from numpy operations
+
+    *inputs : np.ndarray
+        Input arrays used to compute the result (used to propagate -99)
+
+    Returns:
+    np.ndarray
+        Cleaned array with invalid entries set to -99
+    """
+    import numpy as np
+
+    result = np.asarray(result).copy()
+
+    # --- Build mask from inputs ---
+    mask = np.zeros_like(result, dtype=bool)
+
+    for arr in inputs:
+        if arr is not None:
+            mask |= arr == -99
+
+    # --- Include invalid numeric results ---
+    mask |= ~np.isfinite(result)  # catches nan, inf
+
+    # --- Apply mask ---
+    result[mask] = -99.0
+
+    return result
+
+
+import h5py
+import numpy as np
+
+
+def save_to_hdf5(filename, **data):
+    """
+    Save arbitrary named arrays to an HDF5 file.
+
+    Example:
+        save_to_hdf5("data.h5", x=x, y=y, z=z)
+    """
+    with h5py.File(filename, "w") as f:
+        for key, value in data.items():
+            f.create_dataset(key, data=value)
+
+
+def load_from_hdf5(filename):
+    """
+    Load all datasets into a dictionary.
+    """
+    data = {}
+    with h5py.File(filename, "r") as f:
+        for key in f.keys():
+            data[key] = f[key][:]
+    return data
