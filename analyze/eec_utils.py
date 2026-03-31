@@ -9,6 +9,7 @@ from __future__ import annotations
 
 
 import numpy as np
+import boost_histogram as bh
 import dask
 import awkward as ak
 import vector
@@ -140,9 +141,11 @@ def _histogram_chunk(
     flat_zs = ak.to_numpy(ak.flatten(zs))
     flat_weights = ak.to_numpy(ak.flatten(pair_weights) * ak.flatten(energy_products))
 
-    # Build histograms
-    hist, _ = np.histogram(flat_zs, bins=bins, weights=flat_weights)
-    hist_var, _ = np.histogram(flat_zs, bins=bins, weights=flat_weights**2)
+    # Build histogram — Weight storage accumulates sum(w) and sum(w^2) in one pass
+    h = bh.Histogram(bh.axis.Variable(bins), storage=bh.storage.Weight())
+    h.fill(flat_zs, weight=flat_weights)
+    hist = h.values()
+    hist_var = h.variances()
     return hist, hist_var, bins
 
 
