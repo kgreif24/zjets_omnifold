@@ -2047,7 +2047,7 @@ def draw_plot(
     is_xSec=True,
     logyScale=True,
     ratio_ylim=[0.2, 1.8],
-    dashed_lines_in_ratio=True,  
+    dashed_lines_in_ratio=True,
     text_box=None,
     is_omni_data=False,
     results_list=None,
@@ -2171,7 +2171,6 @@ def draw_plot(
         results_uncerts = []
         for result_dict, fmt in zip(results_list, formatting_dicts):
             if fmt["is_omni_data"]:
-                omni_density = omni_results["nominal"][0]
                 result_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
                     result_dict, measured_key="nominal"
                 )
@@ -2180,14 +2179,25 @@ def draw_plot(
                 )
             elif fmt["is_truth_pd"]:
                 data_measurement_mode = True
-                target_hist = np.array(result_dict["nominal"][0])
-                result_uncert = np.where(vals > 0, 1 / np.sqrt(vals), 0) # error is stat only
+                if is_xSec:
+                    target_hist = (
+                        result_dict["nominal"][0] / lumi
+                    )  # omnifold comes pre-lumi-divided, but pseudodata does not
+                    result_uncert = np.where(
+                        target_hist > 0, 1 / np.sqrt(target_hist * lumi), 0
+                    )  # rel error is stat only. get sqrt n before dividing by lumi, then divide by lumi to get error on cross-section.
+                else:
+                    target_hist = result_dict["nominal"][0]
+                    result_uncert = np.where(
+                        target_hist > 0, 1 / np.sqrt(target_hist), 0
+                    )
             else:
                 result_uncert = uncertainty_calculator.get_total_theory_uncertainty(
                     result_dict, measured_key="nominal", is_madgraph=fmt["is_madgraph"]
                 )
             results_uncerts.append(result_uncert)
 
+    omni_density = omni_results["nominal"][0]
     if draw_uncertainty_budget:
         make_uncertainty_budget_fig(
             binning,
@@ -2249,9 +2259,10 @@ def draw_plot(
         for result_dict, fmt, result_uncert in zip(
             results_list, formatting_dicts, results_uncerts
         ):
+
             result_density = result_dict["nominal"][0]
             if is_xSec:
-                if fmt["is_omni_data"]:
+                if not fmt["is_omni_data"]:
                     result_density = result_density / lumi / bin_widths
                 else:
                     result_density = result_density / bin_widths
@@ -2332,6 +2343,11 @@ def draw_plot(
     if additional_results:
         for result_dict in results_list:
             y = result_dict["nominal"][0]
+            if is_xSec:
+                if not fmt["is_omni_data"]:
+                    y = y / lumi / bin_widths
+                else:
+                    y = y / bin_widths
             y_min = min(y_min, np.min(y))
             y_max = max(y_max, np.max(y))
     if ibu_results is not None:
@@ -2433,6 +2449,11 @@ def draw_plot(
                 results_list, formatting_dicts, results_uncerts
             ):
                 result_density = result_dict["nominal"][0]
+                if is_xSec:
+                    if not fmt["is_omni_data"]:
+                        result_density = result_density / lumi / bin_widths
+                    else:
+                        result_density = result_density / bin_widths
                 _ = make_error_boxes(
                     axs[1],
                     bin_centers,
