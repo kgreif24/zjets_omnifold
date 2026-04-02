@@ -2039,6 +2039,7 @@ def draw_plot(
     binning,
     ylabel="default",
     xlabel="default",
+    yratiolabel="default",
     mgfxfx_truth_results=None,
     sherpa_truth_results=None,
     ibu_results=None,
@@ -2046,7 +2047,7 @@ def draw_plot(
     is_xSec=True,
     logyScale=True,
     ratio_ylim=[0.2, 1.8],
-    dashed_lines_in_ratio=True,  #
+    dashed_lines_in_ratio=True,  
     text_box=None,
     is_omni_data=False,
     results_list=None,
@@ -2101,6 +2102,7 @@ def draw_plot(
     None
         Produces matplotlib figures.
     """
+    target_hist = None
     additional_results = results_list is not None and formatting_dicts is not None
     if additional_results:
         if len(results_list) != len(formatting_dicts):
@@ -2169,12 +2171,17 @@ def draw_plot(
         results_uncerts = []
         for result_dict, fmt in zip(results_list, formatting_dicts):
             if fmt["is_omni_data"]:
+                omni_density = omni_results["nominal"][0]
                 result_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
                     result_dict, measured_key="nominal"
                 )
                 result_uncert = np.sqrt(
                     np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
                 )
+            elif fmt["is_truth_pd"]:
+                data_measurement_mode = True
+                target_hist = np.array(result_dict["nominal"][0])
+                result_uncert = np.where(vals > 0, 1 / np.sqrt(vals), 0) # error is stat only
             else:
                 result_uncert = uncertainty_calculator.get_total_theory_uncertainty(
                     result_dict, measured_key="nominal", is_madgraph=fmt["is_madgraph"]
@@ -2190,9 +2197,9 @@ def draw_plot(
             log_xscale=False,
             llab="Simulation Internal",
             rlab="Z+jets Omnifold",
-            data_measurement_mode=True,
-            measured_hist=None,
-            target_hist=None,
+            data_measurement_mode=is_omni_data,
+            measured_hist=omni_density,
+            target_hist=target_hist,
             do_chi2_test=False,
             simple_corr_labels=True,
         )
@@ -2468,7 +2475,9 @@ def draw_plot(
         axs[1].yaxis.set_tick_params(
             labelsize=16, which="both", direction="in", right=True
         )
-        if is_omni_data:
+        if "default" not in yratiolabel:
+            ratio_ylabel = yratiolabel
+        elif is_omni_data:
             ratio_ylabel = "MC / Data"
         else:
             ratio_ylabel = "MC / Pseudodata"
