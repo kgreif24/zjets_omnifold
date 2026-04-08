@@ -1819,6 +1819,7 @@ def make_uncertainty_budget_fig(
     do_chi2_test=False,
     simple_corr_labels: bool = False,
     draw_group=None,
+    pdf_name = None,
 ):
     """Create uncertainty budget and correlation matrix plots.
 
@@ -1871,8 +1872,10 @@ def make_uncertainty_budget_fig(
             raise ValueError(
                 "measured_hist and target_hist must be provided when data_measurement_mode is False"
             )
-        mbias = (measured_hist - target_hist) ** 2
-        rel_mbias = np.sqrt(mbias) / np.where(target_hist > 0, target_hist, 1)
+        denom = np.where(target_hist > 0, target_hist, 1)
+        mbias = (target_hist - measured_hist ) ** 2
+        rel_mbias = np.sqrt(mbias) / denom
+        signed_rel_mbias = (target_hist - measured_hist) / denom
 
     # Only works fro data in current implimentation, would need to be modify the output of uncertainty_calculator.get_total_theory_uncertainty for it to work on MG or Sherpa
     total_vars = np.sum(np.array(list(uncertainty_details[0].values())) ** 2, axis=0)
@@ -1913,6 +1916,11 @@ def make_uncertainty_budget_fig(
 
     # Plot method bias (only in standard mode, not data comparison mode)
     if rel_mbias is not None:
+        # we can decite to use signed rel_mbias by if the plotted nominal uncertainties are signed
+        if (bottom_uncert < 0):
+            rel_mbias = signed_rel_mbias
+            bottom_uncert = min(bottom_uncert, min(rel_mbias))
+            
         plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         ax.fill_between(
             bin_edges,
@@ -1923,13 +1931,14 @@ def make_uncertainty_budget_fig(
             alpha=0.3,
             label="Method bias",
         )
-
+    
     # Set plot properties
     if log_xscale:
         ax.set_xscale("log")
     ax.set_xlim(bin_edges[0], bin_edges[-1])
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Uncertainty budget")
+    ax.set_xlabel(xlabel, fontsize=14, labelpad=2)
 
     # Set y-axis limits
     if rel_mbias is not None:
@@ -1937,7 +1946,6 @@ def make_uncertainty_budget_fig(
     else:
         top_uncert = np.max(total_uncert_plot)
     if draw_group is not None:  # overrides rel-mbias being not None
-        top_uncert = 0
         for syst_name in uncertainty_details[2].keys():
             if syst_name in draw_group:
                 top_uncert = max(top_uncert, np.max(uncertainty_details[0][syst_name]))
@@ -1975,11 +1983,12 @@ def make_uncertainty_budget_fig(
         ],
         axis=0,
     )
+
     # Calculate chi-squared test if requested (only when not in data_measurement_mode)
     chi2_label = ""
     if do_chi2_test and not data_measurement_mode:
         dof = len(bin_edges) - 1
-        D = measured_hist - target_hist
+        D = target_hist - measured_hist 
         chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
         p_value = 1 - stats.chi2.cdf(chi2, dof)
         chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
@@ -1995,6 +2004,11 @@ def make_uncertainty_budget_fig(
             llab=llab,
             simple_labels=simple_corr_labels,
         )
+    if pdf_name is not None:
+        pdf_name_uncertainties = pdf_name.replace(".pdf", "_uncertainties.pdf")
+        pdf_name_cor = pdf_name.replace(".pdf", "_corr.pdf")
+        fig_uncertainty_budget.savefig(pdf_name_uncertainties, dpi=200, format="pdf", bbox_inches="tight")
+        fig_correlation_matrix.savefig(pdf_name_cor, dpi=200, format="pdf", bbox_inches="tight")
 
 
 def nice_midpoint(low, up):
@@ -2049,11 +2063,13 @@ def draw_plot(
     ratio_ylim=[0.2, 1.8],
     dashed_lines_in_ratio=True,
     text_box=None,
-    is_omni_data=False,
+    is_omni_data=True,
     results_list=None,
     formatting_dicts=None,
     omni_label=None,
     pdf_name=None,
+    is_profile = False,
+    smooth_hv = True
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
@@ -2146,7 +2162,7 @@ def draw_plot(
     )
 
     # Create uncertainty calculator (using default definitions)
-    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=True)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=smooth_hv)
 
     # Nominal Omnifold result
     omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
@@ -2185,9 +2201,12 @@ def draw_plot(
                     )  # omnifold comes pre-lumi-divided, but pseudodata does not
                     result_uncert = np.where(
                         target_hist > 0, 1 / np.sqrt(target_hist * lumi), 0
-                    )  # rel error is stat only. get sqrt n before dividing by lumi, then divide by lumi to get error on cross-section.
+                    )  # rel error is stat only.
+                elif is_profile:
+                    target_hist   = result_dict["nominal"][0]
+                    result_uncert = result_dict["nominal"][1] / result_dict["nominal"][0]
                 else:
-                    target_hist = result_dict["nominal"][0]
+                    target_hist   = result_dict["nominal"][0]
                     result_uncert = np.where(
                         target_hist > 0, 1 / np.sqrt(target_hist), 0
                     )
@@ -2202,7 +2221,7 @@ def draw_plot(
         make_uncertainty_budget_fig(
             binning,
             omni_uncert_tuple,
-            figsize=(12 * 2 / 3, 8 * 2 / 3),  # is 12 by 8 but smaller
+            figsize=( 12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
             xlabel=xlabel,
             log_xscale=False,
             llab="Simulation Internal",
@@ -2210,8 +2229,9 @@ def draw_plot(
             data_measurement_mode=is_omni_data,
             measured_hist=omni_density,
             target_hist=target_hist,
-            do_chi2_test=False,
+            do_chi2_test=True,
             simple_corr_labels=True,
+            pdf_name = pdf_name,
         )
     # if "trackj1" in var:
     #     df = multifold[mask_trackj1]
@@ -2501,8 +2521,8 @@ def draw_plot(
         elif is_omni_data:
             ratio_ylabel = "MC / Data"
         else:
-            ratio_ylabel = "MC / Pseudodata"
-        axs[1].set_ylabel(ratio_ylabel, fontsize=16, labelpad=2, loc="center")
+            ratio_ylabel = "Target / Pseudodata"
+        axs[1].set_ylabel(ratio_ylabel, fontsize=15, labelpad=2, loc="center")
         axs[1].set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
 
         line1 = nice_midpoint(ratio_ylim[0], 1)
@@ -2521,6 +2541,8 @@ def draw_uncertainty_group(
     group,
     xlabel="default",
     signed=False,
+    smooth_hv = True,
+    target_hist=None,
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
@@ -2557,11 +2579,18 @@ def draw_uncertainty_group(
     )
 
     # Create uncertainty calculator (using default definitions)
-    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=True)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=smooth_hv)
     omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
         omni_results, measured_key="nominal", ungrouped=True, signed=signed
     )
     grouping = uncertainty_calculator.uncertainty_groups[group]
+
+    if target_hist is not None:
+        omni_density = omni_results["nominal"][0]
+        target_hist  = target_hist["nominal"][0]
+    else:
+        omni_density = None
+    
     make_uncertainty_budget_fig(
         binning,
         omni_uncert_tuple,
@@ -2570,9 +2599,9 @@ def draw_uncertainty_group(
         log_xscale=False,
         llab="Simulation Internal",
         rlab="Z+jets Omnifold",
-        data_measurement_mode=True,
-        measured_hist=None,
-        target_hist=None,
+        data_measurement_mode=(target_hist is None),
+        measured_hist=omni_density,
+        target_hist=target_hist,
         do_chi2_test=False,
         simple_corr_labels=True,
         draw_group=grouping,

@@ -224,49 +224,61 @@ class UncertaintyCalculator:
             },
             "theoryQCD": {
                 "name": "Theory QCD",
-                "color": "chartreuse",
+                "color": "limegreen",        # strong green
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPDF": {
                 "name": "Theory PDF",
-                "color": "lawngreen",
+                "color": "teal",             # green-blue
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryAlphaS": {
                 "name": "Theory AlphaS",
-                "color": "olive",
+                "color": "darkcyan",         # deeper cyan
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSsoft": {
                 "name": "Theory PS soft",
-                "color": "palegreen",
+                "color": "turquoise",        # bright cyan
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSjet": {
                 "name": "Theory PS jet",
-                "color": "lightgreen",
+                "color": "deepskyblue",      # bright blue
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryMPI": {
                 "name": "Theory MPI",
-                "color": "aquamarine",
+                "color": "royalblue",        # strong blue
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSscale": {
                 "name": "Theory PS scale",
-                "color": "lime",
+                "color": "slateblue",        # blue-purple
                 "stochastic": False,
                 "prefix": None,
             },
             "topBackground": {
                 "name": "Top background",
                 "color": "tomato",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "nonstrongDiboson": {
+                "name": "Non-strong diboson",
+                "color": "rebeccapurple",
+                "stochastic": False,
+                "prefix": None,
+            },
+            "nonstrongEW": {
+                "name": "Non-strong EW",
+                "color": "sandybrown",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -303,6 +315,7 @@ class UncertaintyCalculator:
                 "theoryMPI",
                 "theoryPSscale",
             ],
+            "Non-strong": ["nonstrongDiboson", "nonstrongEW"],
         }
 
     def add_uncertainty(
@@ -530,12 +543,32 @@ class UncertaintyCalculator:
                 syst_info[syst_key] = syst_def.copy()
         if ungrouped:
             return syst_uncerts, syst_covs, syst_info
+
+          # make cov diagonal for some variables
+        # for syst_key, syst_def in self.uncertainty_definitions.items():
+        #     if syst_key in ["theoryPSsoft","theoryPSjet","theoryMPI","theoryPSscale"]:
+        #         syst_covs[syst_key] = np.diag(np.diag(syst_covs[syst_key]))
+            # if syst_key in ["theoryPSscale"]:
+            #     cov = syst_covs[syst_key].copy()
+            #     n_bins = cov.shape[0]
+                
+            #     # Define last 4 bins
+            #     last_bins = np.arange(n_bins - 4, n_bins)
+            #     first_bins = np.arange(n_bins - 4)
+                
+            #     # Zero off-diagonal correlations between the two blocks
+            #     cov[np.ix_(first_bins, last_bins)] = 0
+            #     cov[np.ix_(last_bins, first_bins)] = 0
+            #     cov[np.ix_(last_bins, last_bins)] = np.diag(np.diag(cov[np.ix_(last_bins, last_bins)]))
+            #     syst_covs[syst_key] = cov
+            #     print(cov)
+                
         # Apply uncertainty grouping
         if self.uncertainty_groups:
             syst_uncerts, syst_covs, syst_info = self._apply_grouping(
                 syst_uncerts, syst_covs, syst_info
             )
-
+            
         return syst_uncerts, syst_covs, syst_info
 
     def _apply_grouping(

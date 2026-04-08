@@ -843,6 +843,7 @@ def jet_radial_profile(
     n_events = len(event_jet_indices)
     if max_events > 0:
         n_events = min(n_events, max_events)
+        print(f"Calculating using {n_events} events")
 
     annulus_edges = np.asarray(annulus_edges)
     n_bins = len(annulus_edges) - 1
@@ -875,13 +876,18 @@ def jet_radial_profile(
     n_jets_replica = {k: 0.0 for k in ensemble + bootstrap_mc + bootstrap_data}
 
     # --- Event loop ---
+    if max_events > 0:
+        sample_indices = np.random.choice(len(event_jet_indices), size=n_events, replace=False)
+    else:
+        sample_indices = np.arange(n_events)
     next_progress = 0.1
-    for ievt in range(n_events):
 
-        frac = (ievt + 1) / n_events
+    print("0% complete")
+    for i, ievt in enumerate(sample_indices):
+        frac = (i + 1) / n_events
         if frac >= next_progress:
             print(
-                f"{int(next_progress*100)}% complete ({ievt+1}/{n_events} events)",
+                f"{int(next_progress*100)}% complete ({i+1}/{n_events} events)",
                 flush=True,
             )
             next_progress += 0.1
