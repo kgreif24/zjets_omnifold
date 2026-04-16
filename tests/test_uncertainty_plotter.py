@@ -16,7 +16,7 @@ test_uncertainty_definitions = {
     },
     "data-stat": {
         "name": "Data Stat",
-        "color ": "blue",
+        "color": "blue",
         "stochastic": True,
         "prefix": "bootstrap_data_",
     },
@@ -136,7 +136,9 @@ def test_dual_target_mode(tmp_path):
     assert plotter.target2_path == "./assets/truth_evts_100_200.root"
 
     # Test basic functionality with dual target mode
-    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz", "./assets/target2_wgts.npz")
+    plotter.plot(
+        "./assets/unc_wgts.npz", "./assets/target_wgts.npz", "./assets/target2_wgts.npz"
+    )
 
 
 def test_uncertainty_budget_plot(tmp_path):
@@ -179,7 +181,9 @@ def test_cached_pass190_for_all_trees(tmp_path):
 
     # Test that caching works for all trees
     # This tests the _get_cached_pass190 method
-    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz", "./assets/target2_wgts.npz")
+    plotter.plot(
+        "./assets/unc_wgts.npz", "./assets/target_wgts.npz", "./assets/target2_wgts.npz"
+    )
 
 
 def test_kinematic_cuts_all_trees(tmp_path):

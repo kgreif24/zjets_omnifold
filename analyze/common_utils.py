@@ -10,50 +10,49 @@ import awkward as ak
 
 def extract_kinematics(
     tree,
-    pass_flags,
-    get_truth: bool = True,
     start: int = None,
     stop: int = None,
-    filter_presliced: bool = False,
+    min_track_pt: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Extract kinematics and masses from a ROOT file TTree.
+
+    Returns arrays for all particles in each event: the two Z-decay muons (indices 0
+    and 1) followed by tracks (indices 2+). The muon kinematics are always included
+    and are unaffected by any pT cuts.
 
     Arguments:
     ----------
     tree : uproot.TTree
         The TTree object from uproot containing event data.
-    pass_flags : np.ndarray
-        Boolean array of pass flags for event filtering.
-    get_truth : bool, optional
-        If True, get truth-level data. If False, get reco-level data.
     start : int, optional
         Starting event index. If None, start at the beginning of the array.
     stop : int, optional
         Stopping event index. If None, stop at the end of the array.
-    filter_presliced : bool, optional
-        If True, pass_flags is already sliced for the [start:stop] range and
-        should not be sliced again. Default False.
+    min_track_pt : float, optional
+        Minimum pT threshold (in GeV) applied to tracks only. Tracks below this
+        threshold have their kinematics zeroed out; muons are unaffected.
+        If None, no cut is applied (default: None).
 
     Returns:
     --------
     pt : np.ndarray
-        Per-event pT arrays, shape (n_events, n_particles).
+        Per-event pT arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     eta : np.ndarray
-        Per-event eta arrays, shape (n_events, n_particles).
+        Per-event eta arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     phi : np.ndarray
-        Per-event phi arrays, shape (n_events, n_particles).
+        Per-event phi arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     masses : np.ndarray
-        Per-event mass arrays, shape (n_events, n_particles).
+        Per-event mass arrays, shape (n_events, n_particles). Indices 0 and 1 are the
+        two Z-decay muons; indices 2+ are tracks.
     """
 
     kinematics, pdgids = get_kinematics(
         tree,
-        pass_flags,
-        get_truth=get_truth,
-        get_truth_pdgids=get_truth,
         start=start,
         stop=stop,
-        filter_presliced=filter_presliced,
     )
 
     # Extract pT, eta, phi from kinematics array
@@ -65,83 +64,73 @@ def extract_kinematics(
     # Get masses from pdgids
     masses = get_masses(pdgids)[:, 0, :]
 
+    if min_track_pt is not None:
+        # Particles 0 and 1 are muons; indices 2+ are tracks.
+        # Build a per-particle keep mask: always True for muons, pT-filtered for tracks.
+        muon_mask = ak.ones_like(pt[:, :2], dtype=bool)
+        track_keep = pt[:, 2:] >= min_track_pt
+        keep_mask = ak.concatenate([muon_mask, track_keep], axis=1)
+        pt = ak.where(keep_mask, pt, 0.0)
+        eta = ak.where(keep_mask, eta, 0.0)
+        phi = ak.where(keep_mask, phi, 0.0)
+        masses = ak.where(keep_mask, masses, 0.0)
+
     return pt, eta, phi, masses
 
 
 def get_kinematics(
     tree,
-    evt_filter,
-    get_truth=False,
-    get_truth_pdgids=False,
     start=None,
     stop=None,
-    filter_presliced=False,
 ):
     """get_kinematics - This function will accept an uproot TTree object, and return the
     muon and track kinematics concatenated as a single awkward array.
 
-    The function will also return a set of indeces which describe which AK4 track jet
-    in the event a given track corresponds to, and pdgids for the particles.
-    For reco level data, the pdgids will be either 13 (muon) or 211 (charged pion).
-    For truth level data, the they can have the pdgid for common charged hadrons.
-    Note the absolute value of the pdgids is used.
-
-    Filtering can be applied to the events by passing a boolean array to the
-    "evt_filter" argument.
+    The returned kinematics array contains muons first (indices 0 and 1 correspond to
+    the two Z-decay muons), followed by tracks (indices 2+). pdgids for the muons are
+    set to 13. Truth-level pdgids are used for tracks, which can include common charged
+    hadrons. Note the absolute value of the pdgids is used.
 
     Arguments:
     tree - uproot TTree object
-    evt_filter - boolean array of events to keep
-    get_truth - If true, get the truth level data instead of reco, optional
-    get_truth_pdgids - If true, get the truth level pdgids instead of fixing all tracks
-        to 211 (charged pion), optional
     start - starting event index, optional
     stop - stopping event index, optional
-    filter_presliced - If true, evt_filter is already sliced for [start:stop] range
-        and should not be sliced again, optional
 
     Returns:
-    (ak.Array) - awkward array of the concatenated kinematics
-    (ak.Array) - awkward array of the pdgids
+    (ak.Array) - awkward array of shape (n_events, 3, n_particles) containing the
+        concatenated muon and track kinematics, where axis 1 is [pT, eta, phi].
+        Particles 0 and 1 are the two Z-decay muons; particles 2+ are tracks.
+    (ak.Array) - awkward array of the pdgids for all particles (muons and tracks)
     """
-
-    # Apply start / stop to filter (unless already pre-sliced)
-    if not filter_presliced and (start is not None or stop is not None):
-        evt_filter = evt_filter[start:stop]
-
-    # Set prekey based on get_truth
-    prekey = ""
-    if get_truth:
-        prekey = "truth_"
 
     # Get kinematics
     m1_pt = ak.unflatten(
-        tree[prekey + "pT_l1"].array(entry_start=start, entry_stop=stop),
+        tree["truth_pT_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m1_eta = ak.unflatten(
-        tree[prekey + "eta_l1"].array(entry_start=start, entry_stop=stop),
+        tree["truth_eta_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m1_phi = ak.unflatten(
-        tree[prekey + "phi_l1"].array(entry_start=start, entry_stop=stop),
+        tree["truth_phi_l1"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_pt = ak.unflatten(
-        tree[prekey + "pT_l2"].array(entry_start=start, entry_stop=stop),
+        tree["truth_pT_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_eta = ak.unflatten(
-        tree[prekey + "eta_l2"].array(entry_start=start, entry_stop=stop),
+        tree["truth_eta_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     m2_phi = ak.unflatten(
-        tree[prekey + "phi_l2"].array(entry_start=start, entry_stop=stop),
+        tree["truth_phi_l2"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
@@ -158,42 +147,30 @@ def get_kinematics(
     m2_pdgids = ak.unflatten(m2_pdgids, 1, axis=1)
     pdgids = ak.concatenate([m1_pdgids, m2_pdgids], axis=2)
 
-    # Apply filter
-    kinematics = kinematics[evt_filter == 1, ...]
-    assert ak.all(kinematics > -98), "Kinematics contains -99s"
-    pdgids = pdgids[evt_filter == 1, ...]
-
     # Track information
     track_pt = ak.unflatten(
-        tree[prekey + "pT_tracks"].array(entry_start=start, entry_stop=stop),
+        tree["truth_pT_tracks"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     track_eta = ak.unflatten(
-        tree[prekey + "eta_tracks"].array(entry_start=start, entry_stop=stop),
+        tree["truth_eta_tracks"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     track_phi = ak.unflatten(
-        tree[prekey + "phi_tracks"].array(entry_start=start, entry_stop=stop),
+        tree["truth_phi_tracks"].array(entry_start=start, entry_stop=stop),
         1,
         axis=0,
     )
     track_kinematics = ak.concatenate([track_pt, track_eta, track_phi], axis=1)
 
     # Track pdgids
-    track_pdgids = 211 * ak.ones_like(track_pt)
-    if get_truth_pdgids:
-        assert get_truth, "Cannot get truth level pdgids without truth level data"
-        track_pdgids = ak.unflatten(
-            tree[prekey + "pdgId_tracks"].array(entry_start=start, entry_stop=stop),
-            1,
-            axis=0,
-        )
-
-    # Apply filter then truncate if necessary
-    track_kinematics = track_kinematics[evt_filter == 1, ...]
-    track_pdgids = track_pdgids[evt_filter == 1, ...]
+    track_pdgids = ak.unflatten(
+        tree["truth_pdgId_tracks"].array(entry_start=start, entry_stop=stop),
+        1,
+        axis=0,
+    )
 
     # Concatenate muon and track information
     kinematics = ak.concatenate([kinematics, track_kinematics], axis=2)
