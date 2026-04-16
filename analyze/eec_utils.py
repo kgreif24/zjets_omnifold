@@ -9,6 +9,7 @@ from __future__ import annotations
 
 
 import numpy as np
+import boost_histogram as bh
 import dask
 import awkward as ak
 import vector
@@ -20,10 +21,9 @@ import common_utils as cu
 def _calculate_eec_chunk(
     file_path: str,
     tree_name: str,
-    pass_flags_chunk: np.ndarray,
     start: int,
     stop: int,
-    get_truth: bool = True,
+    invert_z: bool = False,
 ) -> tuple[ak.Array, ak.Array, np.ndarray]:
     """Calculate EEC for a chunk of events.
 
@@ -37,14 +37,13 @@ def _calculate_eec_chunk(
         Path to the ROOT file.
     tree_name : str
         Name of the TTree in the ROOT file.
-    pass_flags_chunk : np.ndarray
-        Boolean array of pass flags for event filtering, pre-sliced for this chunk.
     start : int
         Starting event index (for tree reading).
     stop : int
         Stopping event index (for tree reading).
-    get_truth : bool, optional
-        If True, get truth-level data.
+    invert_z : bool, optional
+        If True, invert the z values to look at the back-to-back region.
+        Default is False.
 
     Returns:
     --------
@@ -66,11 +65,8 @@ def _calculate_eec_chunk(
         # pass_flags_chunk is already sliced for this chunk
         pt, eta, phi, masses = cu.extract_kinematics(
             tree,
-            pass_flags_chunk,
-            get_truth=get_truth,
             start=start,
             stop=stop,
-            filter_presliced=True,
         )
     counts = ak.to_numpy(ak.count(pt, axis=1))
 
@@ -98,6 +94,10 @@ def _calculate_eec_chunk(
     energy_products = energy_weight_pairs.a * energy_weight_pairs.b
     cos_thetas = p3_unit_pairs.a.dot(p3_unit_pairs.b)
     zs = (1 - cos_thetas) / 2
+
+    # Invert z values if we want to look at the back-to-back region
+    if invert_z:
+        zs = 1 - zs
 
     return energy_sums, energy_products, zs, counts
 
@@ -141,9 +141,11 @@ def _histogram_chunk(
     flat_zs = ak.to_numpy(ak.flatten(zs))
     flat_weights = ak.to_numpy(ak.flatten(pair_weights) * ak.flatten(energy_products))
 
-    # Build histograms
-    hist, _ = np.histogram(flat_zs, bins=bins, weights=flat_weights)
-    hist_var, _ = np.histogram(flat_zs, bins=bins, weights=flat_weights**2)
+    # Build histogram — Weight storage accumulates sum(w) and sum(w^2) in one pass
+    h = bh.Histogram(bh.axis.Variable(bins), storage=bh.storage.Weight())
+    h.fill(flat_zs, weight=flat_weights)
+    hist = h.values()
+    hist_var = h.variances()
     return hist, hist_var, bins
 
 
@@ -160,9 +162,9 @@ def _sum_histograms(
 def calculate_eec_parallel(
     file_path: str,
     tree_name: str,
-    pass_flags: np.ndarray,
-    get_truth: bool = True,
     chunk_size: int = 100_000,
+    max_events: int | None = None,
+    invert_z: bool = False,
 ) -> list:
     """Calculate EEC in parallel using Dask delayed tasks.
 
@@ -170,23 +172,16 @@ def calculate_eec_parallel(
     The delayed results can be passed to build_histograms_parallel for efficient
     pipelining where histogram computation begins as soon as chunks complete.
 
-    Note: pass_flags is pre-sliced per chunk before being attached to the task
-    graph, avoiding memory issues with large arrays being serialized in full.
-    File path and tree name are passed instead of TTree objects to allow each
-    worker to open its own file handle (TTree objects don't serialize properly).
-
     Arguments:
     ----------
     file_path : str
         Path to the ROOT file.
     tree_name : str
         Name of the TTree in the ROOT file.
-    pass_flags : np.ndarray
-        Boolean array of pass flags for event filtering.
-    get_truth : bool, optional
-        If True, get truth-level data. Default True.
     chunk_size : int, optional
         Number of events per chunk. Default 100,000.
+    max_events : int, optional
+        Maximum number of events to process. If None, all events are processed.
 
     Returns:
     --------
@@ -197,7 +192,9 @@ def calculate_eec_parallel(
         List of (start, stop) tuples for each chunk, useful for weight slicing.
     """
 
-    n_events = len(pass_flags)
+    n_events = uproot.open(file_path)[tree_name].num_entries
+    if max_events is not None:
+        n_events = min(n_events, max_events)
     n_chunks = (n_events + chunk_size - 1) // chunk_size
 
     chunk_results = []
@@ -207,14 +204,10 @@ def calculate_eec_parallel(
         start = i * chunk_size
         stop = min((i + 1) * chunk_size, n_events)
 
-        # Pre-slice pass_flags for this chunk to avoid serializing the full array
-        # with each task (which causes memory issues for large arrays)
-        pass_flags_chunk = pass_flags[start:stop]
-
         # Create delayed task for this chunk with pre-sliced flags
         # Pass file_path and tree_name instead of tree object
         chunk_result = dask.delayed(_calculate_eec_chunk)(
-            file_path, tree_name, pass_flags_chunk, start, stop, get_truth
+            file_path, tree_name, start, stop, invert_z=invert_z
         )
         chunk_results.append(chunk_result)
         chunk_ranges.append((start, stop))
@@ -227,7 +220,6 @@ def build_histograms_parallel(
     chunk_ranges: list[tuple[int, int]],
     weights_dict: dict[str, np.ndarray],
     bins: np.ndarray,
-    pass_flags: np.ndarray,
 ) -> dict[str, np.ndarray]:
     """Build histograms in parallel for multiple weight sets using Dask.
 
@@ -246,8 +238,6 @@ def build_histograms_parallel(
         Each array should have shape [n_passing_events].
     bins : np.ndarray
         Bin edges for the histogram.
-    pass_flags : np.ndarray
-        Boolean array of pass flags, used to slice weights correctly.
 
     Returns:
     --------
@@ -255,31 +245,18 @@ def build_histograms_parallel(
         Dictionary mapping weight names to histogram arrays.
     """
 
-    # Pre-compute cumulative counts of passing events for each chunk
-    # This is needed to correctly slice the weights (which only include passing events)
-    passing_counts = []
-    cumsum = 0
-    for start, stop in chunk_ranges:
-        chunk_flags = pass_flags[start:stop]
-        n_passing = int(np.sum(chunk_flags == 1))
-        passing_counts.append((cumsum, cumsum + n_passing))
-        cumsum += n_passing
-
     # Build delayed histogram computations for each chunk and weight set
     all_delayed = {}
     for name in weights_dict.keys():
         all_delayed[name] = []
 
     for i, chunk_result in enumerate(chunk_results):
-        wgt_start, wgt_stop = passing_counts[i]
+        wgt_start, wgt_stop = chunk_ranges[i]
 
         for name, event_weights in weights_dict.items():
-            # Slice weights for this chunk (only passing events)
-            chunk_weights = event_weights[wgt_start:wgt_stop]
-
             # Create delayed histogram task
             hist_tuple = dask.delayed(_histogram_chunk)(
-                chunk_result, chunk_weights, bins
+                chunk_result, event_weights[wgt_start:wgt_stop], bins
             )
             all_delayed[name].append(hist_tuple)
 
@@ -296,12 +273,11 @@ def build_histograms_parallel(
 def run_eec_workflow_parallel(
     file_path: str,
     tree_name: str,
-    pass_flags: np.ndarray,
     weights_dict: dict[str, np.ndarray],
     bins: np.ndarray,
-    get_truth: bool = True,
     chunk_size: int = 100_000,
     max_events: int | None = None,
+    invert_z: bool = False,
 ) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Run the full EEC workflow in parallel: compute EECs and build histograms.
 
@@ -314,15 +290,11 @@ def run_eec_workflow_parallel(
         Path to the ROOT file.
     tree_name : str
         Name of the TTree in the ROOT file.
-    pass_flags : np.ndarray
-        Boolean array of pass flags for event filtering.
     weights_dict : dict
         Dictionary mapping weight names to event-level weight arrays.
         Each array should have shape [n_passing_events].
     bins : np.ndarray
         Bin edges for the histogram.
-    get_truth : bool, optional
-        If True, get truth-level data. Default True.
     chunk_size : int, optional
         Number of events per chunk. Default 100,000.
     max_events : int, optional
@@ -330,6 +302,9 @@ def run_eec_workflow_parallel(
         of events in the tree, all events are processed. If specified, only the
         first max_events events are used. The weights_dict arrays are also
         truncated to match the number of passing events in the limited range.
+    invert_z : bool, optional
+        If True, invert the z values (z → 1 - z) to look at the back-to-back
+        region. Default is False.
 
     Returns:
     --------
@@ -339,26 +314,21 @@ def run_eec_workflow_parallel(
     """
 
     # Apply max_events limit if specified
-    if max_events is not None and max_events < len(pass_flags):
-        # Truncate pass_flags to first max_events
-        pass_flags = pass_flags[:max_events]
-
-        # Count passing events in the limited range to truncate weights
-        n_passing_limited = int(np.sum(pass_flags == 1))
-
-        # Truncate all weight arrays to match
+    nevents = uproot.open(file_path)[tree_name].num_entries
+    if max_events is not None and max_events < nevents:
         weights_dict = {
-            name: weights[:n_passing_limited] for name, weights in weights_dict.items()
+            name: weights[:max_events] for name, weights in weights_dict.items()
         }
 
     # Create delayed EEC tasks
     chunk_results, chunk_ranges = calculate_eec_parallel(
-        file_path, tree_name, pass_flags, get_truth=get_truth, chunk_size=chunk_size
+        file_path, tree_name, chunk_size=chunk_size, max_events=max_events,
+        invert_z=invert_z,
     )
 
     # Build histograms in parallel
     histograms = build_histograms_parallel(
-        chunk_results, chunk_ranges, weights_dict, bins, pass_flags
+        chunk_results, chunk_ranges, weights_dict, bins
     )
 
     return histograms

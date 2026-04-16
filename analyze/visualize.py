@@ -78,19 +78,9 @@ def get_nnid_uncertainties(
         # We provide zero for variance initially
         hists[key] = (val[index], np.zeros_like(val[index]), None)
 
-    # Handle mc-stat from bootstrap_mc_ if present
-    mc_stat_keys = [k for k in results_dict.keys() if k.startswith("bootstrap_mc_")]
-    if mc_stat_keys:
-        mc_stat_vals = np.array([results_dict[k][index] for k in mc_stat_keys])
-        # Calculate variance across bootstrap_mc_ members
-        mc_stat_var = np.var(mc_stat_vals, axis=0)
-        # Put it in the nominal key's variance slot for the calculator
-        nominal_val, _, _ = hists[measured_key]
-        hists[measured_key] = (nominal_val, mc_stat_var, None)
-
     # Get signed individual uncertainty components, then process to absolute grouped
     signed_uncerts, syst_covs_individual, syst_info_individual = (
-        calc.calculate_uncertainties(hists, measured_key=measured_key)
+        calc.calculate_uncertainties(hists, measured_key=measured_key, smooth_hv=False)
     )
     syst_uncerts, _, syst_info = calc.process_signed_uncertainties(
         signed_uncerts, syst_covs_individual, syst_info_individual
@@ -163,7 +153,7 @@ def plot_nnid_uncert_budget(
     target_key: str = "truthpd",
     low_limit: int = 0,
     high_limit: Optional[int] = None,
-    point_indices: Optional[np.ndarray] = None,
+    thresholds: Optional[np.ndarray] = None,
     figsize: tuple = (6.4, 4.8),
     llab: str = "Simulation Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
@@ -188,11 +178,11 @@ def plot_nnid_uncert_budget(
     target_key : str
         Key for the target results (default: "truthpd").
     low_limit : int
-        Low limit for the subset of points to plot.
+        Low limit for the subset of thresholds to plot.
     high_limit : int, optional
-        High limit for the subset of points to plot. If None, plot all points.
-    point_indices : np.ndarray, optional
-        Array of point indices for x-axis. If None, uses np.arange(n_points).
+        High limit for the subset of thresholds to plot. If None, plot all thresholds.
+    thresholds : np.ndarray, optional
+        Array of point indices for x-axis. If None, uses np.arange(n_thresholds).
     figsize : tuple
         Figure size.
     llab : str
@@ -223,13 +213,13 @@ def plot_nnid_uncert_budget(
 
     # Apply slicing
     slice_indices = slice(low_limit, high_limit)
-    n_points = len(y_mc[slice_indices])
+    n_thresholds = len(y_mc[slice_indices])
 
     # Use provided point indices or default to 0, 1, 2, ...
-    if point_indices is None:
-        plot_indices = np.arange(n_points)
+    if thresholds is None:
+        plot_indices = np.arange(n_thresholds)
     else:
-        plot_indices = point_indices[slice_indices]
+        plot_indices = thresholds[slice_indices]
 
     # Calculate total fractional uncertainties (sliced)
     total_uncert_nnid = np.sqrt(
@@ -296,6 +286,7 @@ def plot_nnid_uncert_budget(
     ax_nnid.set_xlabel("$i$")
     ax_nnid.set_ylabel("NNID uncertainty")
     ax_nnid.set_xlim(plot_indices[0], plot_indices[-1])
+    ax_nnid.set_xscale("log")
 
     # Set y-axis limits
     if rel_mbias_nnid is not None:
@@ -325,7 +316,7 @@ def plot_nnid_uncert_budget(
     fig_nnid.tight_layout()
     fig_nnid.subplots_adjust(bottom=0.2)
 
-    # ===== Figure 2: avg_r (x-axis) uncertainty budget =====
+    # ===== Figure 2: Median EMD uncertainty budget =====
     fig_avgr, ax_avgr = plt.subplots(figsize=figsize)
 
     # Plot total uncertainty
@@ -362,8 +353,9 @@ def plot_nnid_uncert_budget(
 
     # Set plot properties
     ax_avgr.set_xlabel("$i$")
-    ax_avgr.set_ylabel(r"Mean EMD uncertainty")
+    ax_avgr.set_ylabel(r"Median EMD uncertainty")
     ax_avgr.set_xlim(plot_indices[0], plot_indices[-1])
+    ax_avgr.set_xscale("log")
 
     # Set y-axis limits
     if rel_mbias_avgr is not None:
@@ -402,13 +394,13 @@ def plot_nnid_pseudodata(
     hv_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
     low_limit: int = 0,
     high_limit: Optional[int] = None,
-    point_indices: Optional[np.ndarray] = None,
+    thresholds: Optional[np.ndarray] = None,
     mc_label: str = "Measurement",
     pd_label: str = "Truth Pseudodata",
     figsize=(6.4, 4.8),
     xlim: tuple[float, float] = (6, 70),
     ylim: tuple[float, float] = (0, 10),
-    xlabel: str = r"Mean EMD [GeV]",
+    xlabel: str = r"Median EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Simulation Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
@@ -427,13 +419,13 @@ def plot_nnid_pseudodata(
     hv_results : dict, optional
         Dictionary of hidden variable results (e.g. truth_hv_results).
     low_limit : int
-        Low limit for the subset of points to plot.
+        Low limit for the subset of thresholds to plot.
     high_limit : int, optional
-        High limit for the subset of points to plot. If None, plot all points.
-        Take a subset of the points in the results indexed by these limits
-    point_indices : np.ndarray, optional
+        High limit for the subset of thresholds to plot. If None, plot all thresholds.
+        Take a subset of the thresholds in the results indexed by these limits
+    thresholds : np.ndarray, optional
         Array of point indices for uncertainty budget x-axis. If None, uses
-        np.arange(n_points).
+        np.arange(n_thresholds).
     mc_label : str
         Label for the measurement in the legend.
     pd_label : str
@@ -449,7 +441,7 @@ def plot_nnid_pseudodata(
     plot_uncertainty_budget : bool
         If True, also generate uncertainty budget plots for NNID and avg_r.
     show_connector_lines : bool
-        If True, draw faint lines connecting points at the same location:
+        If True, draw faint lines connecting thresholds at the same location:
         prior to truth pseudodata (light gray), measured to truth pseudodata
         (light blue).
 
@@ -557,7 +549,7 @@ def plot_nnid_pseudodata(
             target_key="truthpd",
             low_limit=low_limit,
             high_limit=high_limit,
-            point_indices=point_indices,
+            thresholds=thresholds,
             figsize=figsize,
             llab=llab,
             rlab=rlab,
@@ -569,20 +561,21 @@ def plot_nnid_pseudodata(
 
 
 def plot_nnid_data(
-    mc_results: dict[str, tuple[np.ndarray, np.ndarray]],
-    hv_results: dict[str, tuple[np.ndarray, np.ndarray]],
-    madgraph_results: dict[str, tuple[np.ndarray, np.ndarray]],
-    sherpa_results: dict[str, tuple[np.ndarray, np.ndarray]],
+    mc_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
+    hv_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
+    madgraph_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
+    sherpa_results: Optional[dict[str, tuple[np.ndarray, np.ndarray]]] = None,
     low_limit: int = 0,
     high_limit: Optional[int] = None,
-    point_indices: Optional[np.ndarray] = None,
+    thresholds: Optional[np.ndarray] = None,
     mc_label: str = "Data",
     madgraph_label: str = "MadGraph",
     sherpa_label: str = "Sherpa",
     figsize: tuple[float, float] = (6.4, 4.8),
     xlim: tuple[float, float] = (6, 70),
     ylim: tuple[float, float] = (0, 10),
-    xlabel: str = r"Mean EMD [GeV]",
+    yscale: str = "linear",
+    xlabel: str = r"Median EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
@@ -592,21 +585,23 @@ def plot_nnid_data(
 
     Arguments:
     ----------
-    mc_results : dict
-        Dictionary of measurement results (e.g. truth_mc_results).
-    hv_results : dict
+    mc_results : dict, optional
+        Dictionary of measurement results (e.g. truth_mc_results). If None,
+        no data measurement is plotted. hv_results must also be provided.
+    hv_results : dict, optional
         Dictionary of hidden variable results for uncertainty calculation.
-    madgraph_results : dict
-        Dictionary of MadGraph truth generator results.
-    sherpa_results : dict
-        Dictionary of Sherpa truth generator results.
+        Required if mc_results is provided.
+    madgraph_results : dict, optional
+        Dictionary of MadGraph truth generator results. If None, not plotted.
+    sherpa_results : dict, optional
+        Dictionary of Sherpa truth generator results. If None, not plotted.
     low_limit : int
-        Low limit for the subset of points to plot.
+        Low limit for the subset of threshold to plot.
     high_limit : int, optional
-        High limit for the subset of points to plot. If None, plot all points.
-    point_indices : np.ndarray, optional
+        High limit for the subset of threshold to plot. If None, plot all threshold.
+    thresholds : np.ndarray, optional
         Array of point indices for uncertainty budget x-axis. If None, uses
-        np.arange(n_points).
+        np.arange(n_thresholds).
     mc_label : str
         Label for the measurement in the legend.
     madgraph_label : str
@@ -619,6 +614,8 @@ def plot_nnid_data(
         X-axis label.
     ylabel : str
         Y-axis label.
+    yscale : str
+        Y-axis scale.
     llab : str
         Left label for ATLAS label.
     rlab : str
@@ -632,136 +629,135 @@ def plot_nnid_data(
         The produced main figure. If plot_uncertainty_budget is True, returns
         a tuple of (main_fig, nnid_uncert_fig, avgr_uncert_fig).
     """
-    # Merge HV results into MC results for uncertainty calculation
-    combined_results = mc_results.copy()
-    combined_results.update(hv_results)
-
-    # Calculate absolute uncertainties for measurement (both axes)
-    # index 0 is NNID (y), index 1 is avg_r (x)
-    dy, _, _ = get_nnid_uncertainties(combined_results, index=0)
-    dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
-
-    # Calculate theory uncertainties for MadGraph and Sherpa
-    dy_madgraph = get_theory_nnid_uncertainties(
-        madgraph_results,
-        index=0,
-        is_madgraph=True,
-        measured_key="madgraph",
-    )
-    dx_madgraph = get_theory_nnid_uncertainties(
-        madgraph_results,
-        index=1,
-        is_madgraph=True,
-        measured_key="madgraph",
-    )
-    dy_sherpa = get_theory_nnid_uncertainties(
-        sherpa_results,
-        index=0,
-        is_madgraph=False,
-        measured_key="sherpa",
-    )
-    dx_sherpa = get_theory_nnid_uncertainties(
-        sherpa_results,
-        index=1,
-        is_madgraph=False,
-        measured_key="sherpa",
-    )
-
-    # Extract nominal measurement and generator predictions
-    # Results are stored as (nnids, avg_r)
-    y_mc, x_mc, _ = mc_results["nominal"]
-    y_madgraph, x_madgraph, _ = madgraph_results["madgraph"]
-    y_sherpa, x_sherpa, _ = sherpa_results["sherpa"]
-
     fig, ax = plt.subplots(figsize=figsize)
 
     # Plot MadGraph prediction
-    ax.errorbar(
-        x_madgraph[low_limit:high_limit],
-        y_madgraph[low_limit:high_limit],
-        color="purple",
-        label=madgraph_label,
-        marker="o",
-        linestyle="none",
-        markersize=4,
-        linewidth=1,
-    )
-
-    box_height = 2 * dy_madgraph[low_limit:high_limit]
-    box_width = 2 * dx_madgraph[low_limit:high_limit]
-    for x, y, h, w in zip(
-        x_madgraph[low_limit:high_limit],
-        y_madgraph[low_limit:high_limit],
-        box_height,
-        box_width,
-    ):
-        ax.add_patch(
-            Rectangle(
-                (x - w / 2, y - h / 2),
-                w,
-                h,
-                alpha=0.3,
-                facecolor="purple",
-                edgecolor=None,
-            )
+    if madgraph_results is not None:
+        dy_madgraph = get_theory_nnid_uncertainties(
+            madgraph_results, index=0, is_madgraph=True, measured_key="madgraph"
         )
+        dx_madgraph = get_theory_nnid_uncertainties(
+            madgraph_results, index=1, is_madgraph=True, measured_key="madgraph"
+        )
+        y_madgraph, x_madgraph, _ = madgraph_results["madgraph"]
+        ax.errorbar(
+            x_madgraph[low_limit:high_limit],
+            y_madgraph[low_limit:high_limit],
+            color="purple",
+            label=madgraph_label,
+            marker="o",
+            linestyle="none",
+            markersize=4,
+            linewidth=1,
+        )
+        box_height = 2 * dy_madgraph[low_limit:high_limit]
+        box_width = 2 * dx_madgraph[low_limit:high_limit]
+        mg_areas = box_height * box_width
+        mg_area_min, mg_area_max = mg_areas.min(), mg_areas.max()
+        mg_alphas = (
+            0.1 + 0.4 * (mg_area_max - mg_areas) / (mg_area_max - mg_area_min)
+            if mg_area_max > mg_area_min
+            else np.full_like(mg_areas, 0.3)
+        )
+        for x, y, h, w, a in zip(
+            x_madgraph[low_limit:high_limit],
+            y_madgraph[low_limit:high_limit],
+            box_height,
+            box_width,
+            mg_alphas,
+        ):
+            ax.add_patch(
+                Rectangle(
+                    (x - w / 2, y - h / 2),
+                    w,
+                    h,
+                    alpha=a,
+                    facecolor="purple",
+                    edgecolor=None,
+                )
+            )
 
     # Plot Sherpa prediction
-    ax.plot(
-        x_sherpa[low_limit:high_limit],
-        y_sherpa[low_limit:high_limit],
-        color="orange",
-        label=sherpa_label,
-        marker="o",
-        linestyle="none",
-        markersize=4,
-        linewidth=1,
-    )
-    box_height = 2 * dy_sherpa[low_limit:high_limit]
-    box_width = 2 * dx_sherpa[low_limit:high_limit]
-    for x, y, h, w in zip(
-        x_sherpa[low_limit:high_limit],
-        y_sherpa[low_limit:high_limit],
-        box_height,
-        box_width,
-    ):
-        ax.add_patch(
-            Rectangle(
-                (x - w / 2, y - h / 2),
-                w,
-                h,
-                alpha=0.3,
-                facecolor="orange",
-                edgecolor=None,
-            )
+    if sherpa_results is not None:
+        dy_sherpa = get_theory_nnid_uncertainties(
+            sherpa_results, index=0, is_madgraph=False, measured_key="sherpa"
         )
+        dx_sherpa = get_theory_nnid_uncertainties(
+            sherpa_results, index=1, is_madgraph=False, measured_key="sherpa"
+        )
+        y_sherpa, x_sherpa, _ = sherpa_results["sherpa"]
+        ax.plot(
+            x_sherpa[low_limit:high_limit],
+            y_sherpa[low_limit:high_limit],
+            color="orange",
+            label=sherpa_label,
+            marker="o",
+            linestyle="none",
+            markersize=4,
+            linewidth=1,
+        )
+        box_height = 2 * dy_sherpa[low_limit:high_limit]
+        box_width = 2 * dx_sherpa[low_limit:high_limit]
+        sh_areas = box_height * box_width
+        sh_area_min, sh_area_max = sh_areas.min(), sh_areas.max()
+        sh_alphas = (
+            0.1 + 0.2 * (sh_area_max - sh_areas) / (sh_area_max - sh_area_min)
+            if sh_area_max > sh_area_min
+            else np.full_like(sh_areas, 0.2)
+        )
+        for x, y, h, w, a in zip(
+            x_sherpa[low_limit:high_limit],
+            y_sherpa[low_limit:high_limit],
+            box_height,
+            box_width,
+            sh_alphas,
+        ):
+            ax.add_patch(
+                Rectangle(
+                    (x - w / 2, y - h / 2),
+                    w,
+                    h,
+                    alpha=a,
+                    facecolor="orange",
+                    edgecolor=None,
+                )
+            )
 
     # Plot measurement as black crosses with error bars in both directions
-    ax.errorbar(
-        x_mc[low_limit:high_limit],
-        y_mc[low_limit:high_limit],
-        xerr=dx[low_limit:high_limit],
-        yerr=dy[low_limit:high_limit],
-        fmt="+",
-        color="black",
-        label=mc_label,
-        markersize=8,
-        capsize=2,
-        linewidth=1,
-    )
+    if mc_results is not None:
+        combined_results = mc_results.copy()
+        combined_results.update(hv_results)
+        dy, _, _ = get_nnid_uncertainties(combined_results, index=0)
+        dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
+        y_mc, x_mc, _ = mc_results["nominal"]
+        ax.errorbar(
+            x_mc[low_limit:high_limit],
+            y_mc[low_limit:high_limit],
+            xerr=dx[low_limit:high_limit],
+            yerr=dy[low_limit:high_limit],
+            fmt="+",
+            color="black",
+            label=mc_label,
+            markersize=8,
+            capsize=2,
+            linewidth=1,
+        )
 
+    ax.set_yscale(yscale)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
 
-    # Set legend order: MadGraph, Sherpa, Measurement
+    # Set legend order: MadGraph (if present), Sherpa (if present), Measurement
     handles, labels = ax.get_legend_handles_labels()
-    order = [
-        labels.index(madgraph_label),
-        labels.index(sherpa_label),
-        labels.index(mc_label),
-    ]
+    order = []
+    if madgraph_results is not None:
+        order.append(labels.index(madgraph_label))
+    if sherpa_results is not None:
+        order.append(labels.index(sherpa_label))
+    if mc_results is not None:
+        order.append(labels.index(mc_label))
     ax.legend(
         [handles[i] for i in order],
         [labels[i] for i in order],
@@ -777,7 +773,7 @@ def plot_nnid_data(
 
     fig.tight_layout()
 
-    if plot_uncertainty_budget:
+    if plot_uncertainty_budget and mc_results is not None:
         # Generate uncertainty budget plots (no method bias for data)
         fig_nnid, fig_avgr = plot_nnid_uncert_budget(
             combined_results=combined_results,
@@ -785,7 +781,7 @@ def plot_nnid_data(
             target_results=None,  # No target for data measurement
             low_limit=low_limit,
             high_limit=high_limit,
-            point_indices=point_indices,
+            thresholds=thresholds,
             figsize=figsize,
             llab=llab,
             rlab=rlab,
@@ -940,11 +936,11 @@ def compare_to_target(
     Arguments:
     ----------
     all_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
-        Dictionary mapping histogram names to tuples of (dims, dims_var, midbins)
+        Dictionary mapping histogram names to tuples of (dims, dims_var, bins)
         where:
         - dims: The correlation dimension values
         - dims_var: The variance of the correlation dimension values
-        - midbins: The midpoints of the bins used in the calculation
+        - bins: The bin edges used in the calculation
     target_hists : same as measurement_hists but for the target
     prior_key : str, optional
         Key in all_hists for the prior distribution (default: "prior").
@@ -1462,12 +1458,21 @@ def plot_measurement_with_uncertainties(
             color="purple",
         )
         box_height = 2 * target_uncert * target_hist
-        for x, y, h, w in zip(bin_centers, target_hist, box_height, bin_errors):
+        t1_areas = box_height * (2 * bin_errors)
+        t1_area_min, t1_area_max = t1_areas.min(), t1_areas.max()
+        t1_alphas = (
+            0.1 + 0.2 * (t1_area_max - t1_areas) / (t1_area_max - t1_area_min)
+            if t1_area_max > t1_area_min
+            else np.full_like(t1_areas, 0.2)
+        )
+        for x, y, h, w, a in zip(
+            bin_centers, target_hist, box_height, bin_errors, t1_alphas
+        ):
             box = Rectangle(
                 (x - w / 2, y - h / 2),
                 w,
                 h,
-                alpha=0.3,
+                alpha=a,
                 facecolor="purple",
                 edgecolor=None,
             )
@@ -1483,12 +1488,21 @@ def plot_measurement_with_uncertainties(
                 color="orange",
             )
             box_height = 2 * target2_uncert * target2_hist
-            for x, y, h, w in zip(bin_centers, target2_hist, box_height, bin_errors):
+            t2_areas = box_height * (2 * bin_errors)
+            t2_area_min, t2_area_max = t2_areas.min(), t2_areas.max()
+            t2_alphas = (
+                0.1 + 0.2 * (t2_area_max - t2_areas) / (t2_area_max - t2_area_min)
+                if t2_area_max > t2_area_min
+                else np.full_like(t2_areas, 0.2)
+            )
+            for x, y, h, w, a in zip(
+                bin_centers, target2_hist, box_height, bin_errors, t2_alphas
+            ):
                 box = Rectangle(
                     (x - w / 2, y - h / 2),
                     w,
                     h,
-                    alpha=0.3,
+                    alpha=a,
                     facecolor="orange",
                     edgecolor=None,
                 )
