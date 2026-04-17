@@ -1293,7 +1293,6 @@ def make_uncertainty_budget_fig(
     do_chi2_test=False,
     simple_corr_labels: bool = False,
     draw_group=None,
-    signed=False,
 ):
     """Create uncertainty budget and correlation matrix plots.
 
@@ -1332,8 +1331,6 @@ def make_uncertainty_budget_fig(
         Simplify correlation matrix labels (default: False).
     draw_group : list of str, optional
         List of uncertainty groups to plot (default: None).
-    signed : bool, optional
-        If True, plot signed uncertainties instead of absolute (default: False).
     Returns:
     --------
     fig_uncertainty_budget : matplotlib.figure.Figure
@@ -1353,7 +1350,6 @@ def make_uncertainty_budget_fig(
         denom = np.where(target_hist > 0, target_hist, 1)
         mbias = (target_hist - measured_hist) ** 2
         rel_mbias = np.sqrt(mbias) / denom
-        signed_rel_mbias = (target_hist - measured_hist) / denom
 
     total_vars = np.sum(np.array(list(uncertainty_details[0].values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)
@@ -1375,11 +1371,9 @@ def make_uncertainty_budget_fig(
         )
 
     # Plot individual uncertainty_details
-    bottom_uncert = 0
     for syst_name in uncertainty_details[2].keys():
         if draw_group is not None and syst_name not in draw_group:
             continue
-        bottom_uncert = min(bottom_uncert, min(uncertainty_details[0][syst_name]))
         syst_uncert = uncertainty_details[0][syst_name]
         plot_syst_uncert = np.append(syst_uncert, syst_uncert[-1])
         ax.plot(
@@ -1393,10 +1387,6 @@ def make_uncertainty_budget_fig(
 
     # Plot method bias (only in standard mode, not data comparison mode)
     if rel_mbias is not None:
-        if signed:
-            rel_mbias = signed_rel_mbias
-            bottom_uncert = min(bottom_uncert, min(rel_mbias))
-
         plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         ax.fill_between(
             bin_edges,
@@ -1417,18 +1407,16 @@ def make_uncertainty_budget_fig(
     ax.set_xlabel(xlabel, fontsize=14, labelpad=2)
 
     # Set y-axis limits
-    if rel_mbias is not None:
-        top_uncert = np.max(np.concatenate([total_uncert_plot, plot_mbias]))
-    else:
-        top_uncert = np.max(total_uncert_plot)
-    if draw_group is not None:  # overrides rel-mbias being not None
+    if draw_group is not None:
+        top_uncert = 0
         for syst_name in uncertainty_details[2].keys():
             if syst_name in draw_group:
                 top_uncert = max(top_uncert, np.max(uncertainty_details[0][syst_name]))
-    # if top_uncert > 0.2 or np.isnan(top_uncert):
-    #     ax.set_ylim(bottom=bottom_uncert, top=0.2)
-    # else:
-    ax.set_ylim(bottom=bottom_uncert * 1.2, top=top_uncert * 1.2)
+    elif rel_mbias is not None:
+        top_uncert = np.max(np.concatenate([total_uncert_plot, plot_mbias]))
+    else:
+        top_uncert = np.max(total_uncert_plot)
+    ax.set_ylim(bottom=0, top=top_uncert * 1.2)
 
     ax.legend(
         loc="upper center",
@@ -1721,8 +1709,13 @@ def draw_plot(
         results_uncerts = []
         for result_dict, fmt in zip(results_list, formatting_dicts):
             if fmt["is_omni_data"]:
-                result_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
-                    result_dict, measured_key="nominal", smooth_hv=smooth_hv
+                signed_uncerts, syst_covs, syst_info = (
+                    uncertainty_calculator.calculate_uncertainties(
+                        result_dict, measured_key="nominal", smooth_hv=smooth_hv
+                    )
+                )
+                result_uncert_tuple = uncertainty_calculator.process_signed_uncertainties(
+                    signed_uncerts, syst_covs, syst_info
                 )
                 result_uncert = np.sqrt(
                     np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
@@ -2064,7 +2057,6 @@ def draw_uncertainty_group(
     binning,
     group,
     xlabel="default",
-    signed=False,
     smooth_hv=True,
     target_hist=None,
 ):
@@ -2083,8 +2075,6 @@ def draw_uncertainty_group(
         (Available groups are: "Tracking", "Muon", "Unfolding", "MC Stat", "Theory").
     xlabel : str, optional
         X-axis label.
-    signed : bool, optional
-        If True, plot signed uncertainties instead of absolute (default: False).
     Returns:
     --------
     None
@@ -2094,7 +2084,7 @@ def draw_uncertainty_group(
     # Create uncertainty calculator (using default definitions)
     uc = uncertainties.UncertaintyCalculator()
     signed_uncerts, syst_covs, syst_info = uc.calculate_uncertainties(
-        omni_results, measured_key="nominal", smooth_hv=smooth_hv, signed=signed
+        omni_results, measured_key="nominal", smooth_hv=smooth_hv
     )
     omni_uncert_tuple = uc.process_signed_uncertainties(
         signed_uncerts, syst_covs, syst_info
