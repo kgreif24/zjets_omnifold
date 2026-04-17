@@ -280,6 +280,11 @@ def plot_nnid_uncert_budget(
 
     # ===== Figure 1: NNID (y-axis) uncertainty budget =====
     fig_nnid, ax_nnid = plt.subplots(figsize=figsize)
+    ax_nnid.minorticks_on()
+    ax_nnid.xaxis.set_tick_params(labelsize=16, which="both", direction="in", top=True)
+    ax_nnid.yaxis.set_tick_params(
+        labelsize=16, which="both", direction="in", right=True
+    )
 
     # Plot total uncertainty
     ax_nnid.plot(
@@ -314,8 +319,8 @@ def plot_nnid_uncert_budget(
         )
 
     # Set plot properties
-    ax_nnid.set_xlabel("$i$")
-    ax_nnid.set_ylabel("NNID uncertainty")
+    ax_nnid.set_xlabel("$i$", fontsize=16, labelpad=2, loc="right")
+    ax_nnid.set_ylabel("NNID uncertainty", fontsize=16, labelpad=2, loc="top")
     ax_nnid.set_xlim(plot_indices[0], plot_indices[-1])
     ax_nnid.set_xscale("log")
 
@@ -339,6 +344,7 @@ def plot_nnid_uncert_budget(
 
     mh.atlas.label(
         ax=ax_nnid,
+        loc=0,
         llabel=llab if not data else "Internal",
         data=data,
         rlabel=rlab,
@@ -349,6 +355,11 @@ def plot_nnid_uncert_budget(
 
     # ===== Figure 2: Median EMD uncertainty budget =====
     fig_avgr, ax_avgr = plt.subplots(figsize=figsize)
+    ax_avgr.minorticks_on()
+    ax_avgr.xaxis.set_tick_params(labelsize=16, which="both", direction="in", top=True)
+    ax_avgr.yaxis.set_tick_params(
+        labelsize=16, which="both", direction="in", right=True
+    )
 
     # Plot total uncertainty
     ax_avgr.plot(
@@ -383,8 +394,8 @@ def plot_nnid_uncert_budget(
         )
 
     # Set plot properties
-    ax_avgr.set_xlabel("$i$")
-    ax_avgr.set_ylabel(r"Median EMD uncertainty")
+    ax_avgr.set_xlabel("$i$", fontsize=16, labelpad=2, loc="right")
+    ax_avgr.set_ylabel(r"Median EMD uncertainty", fontsize=16, labelpad=2, loc="top")
     ax_avgr.set_xlim(plot_indices[0], plot_indices[-1])
     ax_avgr.set_xscale("log")
 
@@ -408,6 +419,7 @@ def plot_nnid_uncert_budget(
 
     mh.atlas.label(
         ax=ax_avgr,
+        loc=0,
         llabel=llab if not data else "Internal",
         data=data,
         rlabel=rlab,
@@ -435,7 +447,7 @@ def plot_nnid_pseudodata(
     ylabel: str = "NNID",
     llab: str = "Simulation Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \\in [330, 370]$ GeV",
-    color: str = "blue",
+    color: str = "black",
     plot_uncertainty_budget: bool = False,
     show_connector_lines: bool = False,
 ) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
@@ -499,6 +511,9 @@ def plot_nnid_pseudodata(
     y_pd, x_pd, _ = pd_results["truthpd"]
 
     fig, ax = plt.subplots(figsize=figsize)
+    ax.minorticks_on()
+    ax.xaxis.set_tick_params(labelsize=16, which="both", direction="in", top=True)
+    ax.yaxis.set_tick_params(labelsize=16, which="both", direction="in", right=True)
 
     # Plot truth pseudodata as black points
     ax.scatter(
@@ -512,7 +527,7 @@ def plot_nnid_pseudodata(
     ax.scatter(
         x_pd[low_limit:high_limit],
         y_pd[low_limit:high_limit],
-        color="black",
+        color="red",
         label=pd_label,
         s=15,
         zorder=2,
@@ -561,12 +576,13 @@ def plot_nnid_pseudodata(
 
     ax.set_ylim(ylim)
     ax.set_xlim(xlim)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.legend(frameon=False)
+    ax.set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
+    ax.set_ylabel(ylabel, fontsize=16, labelpad=2, loc="top")
+    ax.legend(fontsize=12, frameon=False, loc="best")
 
     mh.atlas.label(
         ax=ax,
+        loc=0,
         llabel=llab,
         rlabel=rlab,
     )
@@ -661,6 +677,9 @@ def plot_nnid_data(
         a tuple of (main_fig, nnid_uncert_fig, avgr_uncert_fig).
     """
     fig, ax = plt.subplots(figsize=figsize)
+    ax.minorticks_on()
+    ax.xaxis.set_tick_params(labelsize=16, which="both", direction="in", top=True)
+    ax.yaxis.set_tick_params(labelsize=16, which="both", direction="in", right=True)
 
     # Plot MadGraph prediction
     if madgraph_results is not None:
@@ -674,7 +693,7 @@ def plot_nnid_data(
         ax.errorbar(
             x_madgraph[low_limit:high_limit],
             y_madgraph[low_limit:high_limit],
-            color="purple",
+            color="dodgerblue",
             label=madgraph_label,
             marker="o",
             linestyle="none",
@@ -703,7 +722,7 @@ def plot_nnid_data(
                     w,
                     h,
                     alpha=a,
-                    facecolor="purple",
+                    facecolor="dodgerblue",
                     edgecolor=None,
                 )
             )
@@ -720,7 +739,7 @@ def plot_nnid_data(
         ax.plot(
             x_sherpa[low_limit:high_limit],
             y_sherpa[low_limit:high_limit],
-            color="orange",
+            color="deeppink",
             label=sherpa_label,
             marker="o",
             linestyle="none",
@@ -749,7 +768,7 @@ def plot_nnid_data(
                     w,
                     h,
                     alpha=a,
-                    facecolor="orange",
+                    facecolor="deeppink",
                     edgecolor=None,
                 )
             )
@@ -775,8 +794,8 @@ def plot_nnid_data(
         )
 
     ax.set_yscale(yscale)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
+    ax.set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
+    ax.set_ylabel(ylabel, fontsize=16, labelpad=2, loc="top")
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
 
@@ -792,11 +811,13 @@ def plot_nnid_data(
     ax.legend(
         [handles[i] for i in order],
         [labels[i] for i in order],
+        fontsize=12,
         frameon=False,
     )
 
     mh.atlas.label(
         ax=ax,
+        loc=0,
         llabel=llab,
         data=True,
         rlabel=rlab,
@@ -828,7 +849,7 @@ def compare_to_target(
     target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     prior_key: str = "prior",
     measured_key: str = "nominal",
-    target_key: str = "truthpd",
+    target_key: str = "nominal",
     prior_label: str = "Prior",
     measured_label: str = "Reweighted",
     target_label: str = "Target",
