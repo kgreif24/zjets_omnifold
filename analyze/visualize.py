@@ -2,21 +2,52 @@
 Visualization functions for jet analysis.
 """
 
+import re
+import io
 import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as mh
 import matplotlib.gridspec as gs
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
-import vector
 import uncertainties
 import scipy.stats as stats
 from typing import Optional
-import awkward as ak
 from matplotlib.collections import PatchCollection
-from tqdm import tqdm
 
 # Set ATLAS plotting style
 mh.style.use("ATLAS")
+
+# DPI used when saving figures to disk (e.g. via pdf_name in draw_plot)
+SAVE_DPI = 200
+
+
+def _strip_latex(s):
+    """Return a terminal-friendly version of a LaTeX label string."""
+    s = re.sub(r'\\(?:text|mathrm)\{([^}]*)\}', r'\1', s)  # \text{X} -> X
+    s = re.sub(r'_\{([^}]*)\}', r'_\1', s)  # _{X} -> _X
+    s = re.sub(r'\^\{([^}]*)\}', r'^\1', s)  # ^{X} -> ^X
+    s = s.replace('$', '').replace('\\', '')
+    return s.strip()
+
+
+def figs_to_grid(figs, ncols=4):
+    """Render a list of figures as rasterised thumbnails arranged in a grid."""
+    n = len(figs)
+    nrows = (n + ncols - 1) // ncols
+    grid_fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4, nrows * 3))
+    axes_flat = np.array(axes).flatten()
+    for ax, fig in zip(axes_flat, figs):
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=80, bbox_inches="tight")
+        buf.seek(0)
+        ax.imshow(plt.imread(buf))
+        ax.axis("off")
+        buf.close()
+    for ax in axes_flat[n:]:
+        ax.axis("off")
+    grid_fig.tight_layout(pad=0.3)
+    return grid_fig
 
 
 def draw_textbox(ax, box):
@@ -156,7 +187,7 @@ def plot_nnid_uncert_budget(
     thresholds: Optional[np.ndarray] = None,
     figsize: tuple = (6.4, 4.8),
     llab: str = "Simulation Internal",
-    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \\in [330, 370]$ GeV",
     data: bool = False,
 ) -> tuple[plt.Figure, plt.Figure]:
     """Plot uncertainty budget for NNID measurement.
@@ -403,7 +434,7 @@ def plot_nnid_pseudodata(
     xlabel: str = r"Median EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Simulation Internal",
-    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \\in [330, 370]$ GeV",
     color: str = "blue",
     plot_uncertainty_budget: bool = False,
     show_connector_lines: bool = False,
@@ -578,7 +609,7 @@ def plot_nnid_data(
     xlabel: str = r"Median EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Internal",
-    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \in [330, 370]$ GeV",
+    rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \\in [330, 370]$ GeV",
     plot_uncertainty_budget: bool = False,
 ) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot NNID data measurement compared to truth generators.
@@ -788,116 +819,6 @@ def plot_nnid_data(
             data=True,
         )
         return fig, fig_nnid, fig_avgr
-
-    return fig
-
-
-def plot_jets_eta_phi(
-    jets: list[np.ndarray],
-    figsize=(10, 10),
-    ax=None,
-    s_scale=100.0,
-    alpha=0.6,
-    color=None,
-    label=None,
-    show_legend=True,
-    coords="cartesian",
-) -> plt.Figure:
-    """Plot jets as scatter plots in the eta-phi plane.
-
-    Each constituent is represented as a circle with radius proportional to its pT.
-
-    Arguments:
-    jets - A list of numpy arrays of jet constituents with the form:
-        (n_constituents, 4) where the columns depend on the coords parameter:
-        - If coords="cartesian": (E, px, py, pz)
-        - If coords="ptyphim": (pT, eta, phi, m)
-    figsize - Tuple of figure size (width, height) in inches (default: (10, 10)).
-    ax - Matplotlib axis to plot on. If None, creates a new figure and axis.
-    s_scale - Scale factor for circle sizes (default: 100.0).
-        Circle area = s_scale * pT. Increase for larger circles.
-    alpha - Transparency of circles (default: 0.6).
-    color - Color for the scatter plot. If None, uses default matplotlib color cycle.
-    label - Label for the plot (for legend).
-    show_legend - If True, show legend when label is provided (default: True).
-    coords - Coordinate system: "cartesian" for (E, px, py, pz) or "ptyphim" for
-        (pT, eta, phi, m) (default: "cartesian").
-
-    Returns:
-    fig - Matplotlib figure object.
-
-    Notes:
-    - If multiple jets are provided, all constituents are plotted on the same axis.
-    - The circle size is proportional to the constituent's pT.
-    - For "cartesian" coordinates, eta and phi are calculated from the four-vectors
-      using the vector package.
-    - For "ptyphim" coordinates, eta, phi, and pT are used directly from the input.
-    """
-    # Convert jets to eta-phi coordinates
-    all_eta = []
-    all_phi = []
-    all_pt = []
-
-    for jet in jets:
-        if coords == "cartesian":
-            # Convert four-vectors to vector objects
-            # jet shape: (n_constituents, 4) with (E, px, py, pz)
-            vectors = vector.array(
-                {"E": jet[:, 0], "px": jet[:, 1], "py": jet[:, 2], "pz": jet[:, 3]}
-            )
-
-            # Extract eta, phi, and pT
-            all_eta.extend(vectors.eta)
-            all_phi.extend(vectors.phi)
-            all_pt.extend(vectors.pt)
-        elif coords == "ptyphim":
-            # jet shape: (n_constituents, 4) with (pT, eta, phi, m)
-            all_pt.extend(jet[:, 0])
-            all_eta.extend(jet[:, 1])
-            all_phi.extend(jet[:, 2])
-        else:
-            raise ValueError(f'coords must be "cartesian" or "ptyphim", got "{coords}"')
-
-    # Convert to numpy arrays
-    all_eta = np.array(all_eta)
-    all_phi = np.array(all_phi)
-    all_pt = np.array(all_pt)
-
-    # Create figure if axis not provided
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.figure
-
-    # Calculate circle sizes (proportional to pT)
-    sizes = s_scale * all_pt
-
-    # Plot scatter plot
-    ax.scatter(
-        all_eta,
-        all_phi,
-        s=sizes,
-        alpha=alpha,
-        color=color,
-        label=label,
-    )
-
-    # Set labels and title
-    ax.set_xlabel(r"$\eta$", fontsize=12)
-    ax.set_ylabel(r"$\phi$", fontsize=12)
-    ax.set_title(r"Jet constituents in $\eta$-$\phi$ plane", fontsize=14)
-    ax.grid(True, alpha=0.3)
-
-    # Set axis limits
-    ax.set_xlim(-2.5, 2.5)  # eta range
-    ax.set_ylim(-np.pi, np.pi)  # phi range
-
-    # Show legend if label provided
-    if label is not None and show_legend:
-        ax.legend()
-
-    # Set equal aspect ratio to preserve circular jet shapes
-    ax.set_aspect("equal")
 
     return fig
 
@@ -1224,496 +1145,6 @@ def plot_correlation_matrix(
     return fig
 
 
-def plot_measurement_with_uncertainties(
-    measurement_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
-    target_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
-    target2_hists: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = None,
-    measured_key: str = "nominal",
-    measured_label: str = "Measurement",
-    target_key: str = "truthpd",
-    target_label: str = "Truth Pseudodata",
-    target2_key: str = None,
-    target2_label: str = "MadGraph",
-    data_measurement_mode: bool = False,
-    normalize: bool = False,
-    llab: str = "Simulation Internal",
-    rlab: str = "Z+jets Omnifold",
-    figsize=(6.4, 4.8),
-    ylabel: str = "Corr. Dim.",
-    xlabel: str = "Q [GeV]",
-    xlim=None,
-    ylim=None,
-    rlim=(0.9, 1.1),
-    log_xscale: bool = True,
-    linear_yscale: bool = False,
-    color: str = "blue",
-    do_chi2_test: bool = False,
-    simple_corr_labels: bool = False,
-    legend_loc: str = "lower right",
-) -> tuple[plt.Figure, plt.Figure, plt.Figure]:
-    """Plot cross-section measurement and uncertainty budget.
-
-    This function produces two figures from correlation dimension histograms:
-    1. Cross-section plot comparing measured (unfolded) to target,
-       with total uncertainty
-    2. Uncertainty budget plot showing individual uncertainty contributions
-
-    The function uses UncertaintyCalculator to extract systematic uncertainties
-    from the all_hists dictionary
-
-    Arguments:
-    ----------
-    measurement_hists : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
-        Dictionary mapping histogram names to tuples of (dims, dims_var, midbins)
-        where:
-        - dims: The correlation dimension values
-        - dims_var: The variance of the correlation dimension values
-        - midbins: The bin edges (despite the name, these are edges not midpoints)
-    target_hists : same as measurement_hists but for the target
-    target2_hists : same as measurement_hists but for the second target
-    measured_key : str, optional
-        Key in all_hists for the measured/unfolded distribution (default: "nominal").
-    measured_label : str, optional
-        Label for the measured distribution in the legend (default: "Reweighted").
-    target_key : str, optional
-        Key in all_hists for the target/truth distribution (default: "truthpd").
-    target_label : str, optional
-        Label for the target distribution in the legend (default: "Truth Pseudodata").
-    target2_key : str, optional
-        Key in all_hists for the second target distribution. If provided and
-        data_measurement_mode is True, both targets will be plotted (default: None).
-    target2_label : str, optional
-        Label for the second target distribution in the legend (default: "MadGraph").
-    data_measurement_mode : bool, optional
-        If True, compares data measurement to truth generators
-    normalize : bool, optional
-        If True, normalize the histograms (default: False).
-    llab : str, optional
-        Left label for ATLAS label (default: "Simulation Internal").
-    rlab : str, optional
-        Right label for ATLAS label (default: "Z+jets Omnifold").
-    figsize : tuple, optional
-        Figure size in inches (width, height) (default: (6.4, 4.8)).
-    ylabel : str, optional
-        Label for the y-axis (default: "Correlation Dimension").
-    xlabel : str, optional
-        Label for the x-axis (default: "Q [GeV]").
-    xlim : tuple or None, optional
-        Limits for the x-axis (default: None).
-    ylim : tuple or None, optional
-        Limits for the y-axis (default: None).
-    rlim : tuple, optional
-        Limits for the y-axis of the ratio plot (default: (0.9, 1.1)).
-    log_xscale : bool, optional
-        If True, use logarithmic scale for x-axis (default: True).
-    linear_yscale : bool, optional
-        If True, use linear scale for y-axis (default: False, i.e., log scale).
-    color : str, optional
-        Color to use for the measured distribution (default: "blue").
-    do_chi2_test : bool, optional
-        If True and not in data_measurement_mode, performs chi-squared test
-        comparing measurement to target and prints results (default: False).
-    simple_corr_labels : bool, optional
-        If True, use bin indices instead of bin edge labels in the correlation
-        matrix plot and omit correlation value annotations. Useful for
-        observables with many bins (e.g., EEC). Default: False.
-
-    Returns:
-    --------
-    fig_cross_section : matplotlib.figure.Figure
-        Figure with cross-section measurement plot (main plot + ratio).
-    fig_uncertainty_budget : matplotlib.figure.Figure
-        Figure with uncertainty budget plot showing individual contributions.
-    fig_correlation_matrix : matplotlib.figure.Figure
-        Figure with correlation matrix plot.
-    """
-
-    # Normalize all histograms if desired
-    if normalize:
-        norm_factor_measurement = np.sum(measurement_hists[measured_key][0])
-        norm_factor_target = np.sum(target_hists[target_key][0])
-        norm_factor_target2 = (
-            np.sum(target2_hists[target2_key][0]) if target2_key is not None else None
-        )
-        for key in measurement_hists:
-            measurement_hists[key] = (
-                measurement_hists[key][0] / norm_factor_measurement,
-                measurement_hists[key][1] / norm_factor_measurement**2,
-                measurement_hists[key][2],
-            )
-        for key in target_hists:
-            target_hists[key] = (
-                target_hists[key][0] / norm_factor_target,
-                target_hists[key][1] / norm_factor_target**2,
-                target_hists[key][2],
-            )
-        if target2_key is not None:
-            for key in target2_hists:
-                target2_hists[key] = (
-                    target2_hists[key][0] / norm_factor_target2,
-                    target2_hists[key][1] / norm_factor_target2**2,
-                    target2_hists[key][2],
-                )
-
-    # Extract measured and target histograms
-    if measured_key not in measurement_hists:
-        available = list(measurement_hists.keys())
-        raise KeyError(
-            f"Key '{measured_key}' not found in measurement_hists. "
-            f"Available keys: {available}"
-        )
-    if target_key not in target_hists:
-        available = list(target_hists.keys())
-        raise KeyError(
-            f"Key '{target_key}' not found in target_hists. "
-            f"Available keys: {available}"
-        )
-
-    measured_hist, _, bin_edges = measurement_hists[measured_key]
-    target_hist, _, _ = target_hists[target_key]
-
-    # Extract second target if provided
-    target2_hist = None
-    if target2_key is not None:
-        if target2_key not in target2_hists:
-            available = list(target2_hists.keys())
-            raise KeyError(
-                f"Key '{target2_key}' not found in target2_hists. "
-                f"Available keys: {available}"
-            )
-        target2_hist, _, _ = target2_hists[target2_key]
-
-    # Calculate method bias (only in standard mode, not data comparison mode)
-    if data_measurement_mode:
-        mbias = None
-        rel_mbias = None
-    else:
-        mbias = (measured_hist - target_hist) ** 2
-        rel_mbias = np.sqrt(mbias) / np.where(target_hist > 0, target_hist, 1)
-
-    # Create bin centers and errors for errorbar plots
-    bin_centers = (bin_edges[1:] + bin_edges[:-1]) / 2
-    bin_errors = (bin_edges[1:] - bin_edges[:-1]) / 2
-
-    # Create uncertainty calculator (using default definitions)
-    uncertainty_calculator = uncertainties.UncertaintyCalculator()
-
-    # Calculate systematic uncertainties using UncertaintyCalculator
-    signed_syst, syst_covs_individual, syst_info_individual = (
-        uncertainty_calculator.calculate_uncertainties(
-            measurement_hists, measured_key=measured_key
-        )
-    )
-    syst, syst_covs, syst_info = uncertainty_calculator.process_signed_uncertainties(
-        signed_syst, syst_covs_individual, syst_info_individual
-    )
-    total_vars = np.sum(np.array(list(syst.values())) ** 2, axis=0)
-    total_uncert = np.sqrt(total_vars)
-
-    # Calculate total covariance matrix
-    total_cov = np.sum(list(syst_covs.values()), axis=0)
-
-    # Calculate chi2 covariance matrix (excludes certain systematics)
-    chi2_cov = np.sum(
-        [
-            syst_covs[key]
-            for key in syst_covs.keys()
-            if key not in ["Muon", "Tracking", "lumi", "pileup"]
-        ],
-        axis=0,
-    )
-
-    # If in data measurement mode, calculate theory uncertainties for targets
-    if data_measurement_mode:
-        target_uncert = uncertainty_calculator.get_total_theory_uncertainty(
-            target_hists, measured_key=target_key, is_madgraph=True
-        )
-        if target2_key is not None:
-            target2_uncert = uncertainty_calculator.get_total_theory_uncertainty(
-                target2_hists, measured_key=target2_key, is_madgraph=False
-            )
-
-    # Duplicate last values for step plots
-    target_plot = np.append(target_hist, target_hist[-1])  # For pseudo-measurement
-    total_uncert_plot = np.append(total_uncert, total_uncert[-1])
-
-    # ===== Figure 1: Cross-section plot =====
-    fig_cross_section, (ax, rax) = plt.subplots(
-        2,
-        1,
-        figsize=figsize,
-        sharex=True,
-        gridspec_kw={"height_ratios": [2, 1]},
-    )
-    plt.subplots_adjust(hspace=0, top=0.95)
-
-    # Main plot
-    if data_measurement_mode:
-        # In data measurement mode: targets as colored points, measured as black points
-        ax.plot(
-            bin_centers,
-            target_hist,
-            "o",
-            label=target_label,
-            color="purple",
-        )
-        box_height = 2 * target_uncert * target_hist
-        t1_areas = box_height * (2 * bin_errors)
-        t1_area_min, t1_area_max = t1_areas.min(), t1_areas.max()
-        t1_alphas = (
-            0.1 + 0.2 * (t1_area_max - t1_areas) / (t1_area_max - t1_area_min)
-            if t1_area_max > t1_area_min
-            else np.full_like(t1_areas, 0.2)
-        )
-        for x, y, h, w, a in zip(
-            bin_centers, target_hist, box_height, bin_errors, t1_alphas
-        ):
-            box = Rectangle(
-                (x - w / 2, y - h / 2),
-                w,
-                h,
-                alpha=a,
-                facecolor="purple",
-                edgecolor=None,
-            )
-            ax.add_patch(box)
-
-        # Add second target if provided
-        if target2_hist is not None:
-            ax.plot(
-                bin_centers,
-                target2_hist,
-                "o",
-                label=target2_label,
-                color="orange",
-            )
-            box_height = 2 * target2_uncert * target2_hist
-            t2_areas = box_height * (2 * bin_errors)
-            t2_area_min, t2_area_max = t2_areas.min(), t2_areas.max()
-            t2_alphas = (
-                0.1 + 0.2 * (t2_area_max - t2_areas) / (t2_area_max - t2_area_min)
-                if t2_area_max > t2_area_min
-                else np.full_like(t2_areas, 0.2)
-            )
-            for x, y, h, w, a in zip(
-                bin_centers, target2_hist, box_height, bin_errors, t2_alphas
-            ):
-                box = Rectangle(
-                    (x - w / 2, y - h / 2),
-                    w,
-                    h,
-                    alpha=a,
-                    facecolor="orange",
-                    edgecolor=None,
-                )
-                ax.add_patch(box)
-
-        # Measurement
-        ax.errorbar(
-            bin_centers,
-            measured_hist,
-            marker="+",
-            linestyle="none",
-            xerr=bin_errors,
-            yerr=total_uncert * measured_hist,
-            label=measured_label,
-            color="black",
-        )
-
-    else:
-        # Standard mode: target as dashed line, measured as colored points
-        ax.plot(
-            bin_edges,
-            target_plot,
-            "--",
-            label=target_label,
-            color="black",
-            drawstyle="steps-post",
-        )
-        ax.errorbar(
-            bin_centers,
-            measured_hist,
-            yerr=total_uncert * measured_hist,
-            marker="o",
-            linestyle="none",
-            label=measured_label,
-            color=color,
-        )
-
-    # Set plot properties
-    if not linear_yscale:
-        ax.set_yscale("log")
-    if log_xscale:
-        ax.set_xscale("log")
-    if xlim is not None:
-        ax.set_xlim(xlim)
-    else:
-        ax.set_xlim(bin_edges[0], bin_edges[-1])
-    if ylim is not None:
-        ax.set_ylim(ylim)
-    else:
-        ax.set_ylim(0, 12)
-    ax.set_ylabel(ylabel)
-    ax.set_xticks([])
-    ax.legend(fontsize=12, loc=legend_loc)
-    ax.tick_params(axis="x", direction="in", top=True)
-
-    # Ratio plot
-    rax.axhline(1, color="black", linestyle="--")
-    if data_measurement_mode:
-        # In data measurement mode: ratio is target/measured
-        # Avoid division by zero
-        measured_safe = np.where(measured_hist > 0, measured_hist, np.nan)
-        ratio = target_hist / measured_safe
-        ratio_uncert = np.sqrt(target_uncert**2 + total_uncert**2)
-        rax.errorbar(
-            bin_centers,
-            ratio,
-            xerr=bin_errors,
-            yerr=ratio_uncert,
-            fmt="o",
-            color="purple",
-        )
-
-        # Add second target ratio if provided
-        if target2_hist is not None:
-            ratio2 = target2_hist / measured_safe
-            ratio2_uncert = np.sqrt(target2_uncert**2 + total_uncert**2)
-            rax.errorbar(
-                bin_centers,
-                ratio2,
-                xerr=bin_errors,
-                yerr=ratio2_uncert,
-                fmt="o",
-                color="orange",
-            )
-
-        rax.set_ylabel("Ratio")
-    else:
-        # Standard mode: ratio is measured/target
-        rax.errorbar(
-            bin_centers,
-            measured_hist / target_plot[:-1],  # Remove duplicated last bin
-            xerr=bin_errors,
-            yerr=total_uncert,
-            fmt="o",
-            color=color,
-        )
-        rax.set_ylabel("Ratio to target")
-
-    rax.set_xlabel(xlabel)
-    if log_xscale:
-        rax.set_xscale("log")
-    if xlim is not None:
-        rax.set_xlim(xlim)
-    else:
-        rax.set_xlim(bin_edges[0], bin_edges[-1])
-    if rlim is not None:
-        rax.set_ylim(rlim)
-    else:
-        rax.set_ylim(0.9, 1.1)
-
-    # Calculate chi-squared test if requested (only when not in data_measurement_mode)
-    chi2_label = ""
-    if do_chi2_test and not data_measurement_mode:
-        dof = len(bin_edges) - 1
-        D = measured_hist - target_hist
-        chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
-        p_value = 1 - stats.chi2.cdf(chi2, dof)
-        chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
-        print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
-
-    mh.atlas.label(
-        ax=ax,
-        llabel=llab,
-        rlabel=rlab + chi2_label,
-    )
-
-    # ===== Figure 2: Uncertainty budget plot =====
-    fig_uncertainty_budget, ax = plt.subplots(figsize=figsize)
-
-    # Plot total uncertainty
-    ax.plot(
-        bin_edges,
-        total_uncert_plot,
-        "--",
-        color="black",
-        label="Total unc.",
-        drawstyle="steps-post",
-        linewidth=2,
-    )
-
-    # Plot individual uncertainties
-    for syst_name in syst_info.keys():
-        syst_uncert = syst[syst_name]
-        plot_syst_uncert = np.append(syst_uncert, syst_uncert[-1])
-        ax.plot(
-            bin_edges,
-            plot_syst_uncert,
-            "-",
-            color=syst_info[syst_name]["color"],
-            label=syst_info[syst_name]["name"],
-            drawstyle="steps-post",
-        )
-
-    # Plot method bias (only in standard mode, not data comparison mode)
-    if rel_mbias is not None:
-        plot_mbias = np.append(rel_mbias, rel_mbias[-1])
-        ax.fill_between(
-            bin_edges,
-            0,
-            plot_mbias,
-            step="post",
-            color="gray",
-            alpha=0.3,
-            label="Method bias",
-        )
-
-    # Set plot properties
-    if log_xscale:
-        ax.set_xscale("log")
-    ax.set_xlim(bin_edges[0], bin_edges[-1])
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel("Uncertainty budget")
-
-    # Set y-axis limits
-    if rel_mbias is not None:
-        top_uncert = np.max(np.concatenate([total_uncert_plot, plot_mbias]))
-    else:
-        top_uncert = np.max(total_uncert_plot)
-    if top_uncert > 0.2 or np.isnan(top_uncert):
-        ax.set_ylim(bottom=0.0, top=0.2)
-    else:
-        ax.set_ylim(bottom=0.0, top=top_uncert * 1.2)
-
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.4, -0.1),
-        ncol=4,
-        fontsize=8,
-        frameon=False,
-    )
-
-    mh.atlas.label(
-        ax=ax,
-        llabel=llab,
-        rlabel=rlab,
-    )
-
-    fig_uncertainty_budget.tight_layout()
-    fig_uncertainty_budget.subplots_adjust(bottom=0.2)
-
-    # ===== Figure 3: Correlation matrix plot =====
-    fig_correlation_matrix = plot_correlation_matrix(
-        total_cov=total_cov,
-        bins=bin_edges,
-        llab=llab,
-        simple_labels=simple_corr_labels,
-    )
-
-    return fig_cross_section, fig_uncertainty_budget, fig_correlation_matrix
-
-
 def tprofile(x, y, w, bins):
 
     nbins = len(bins) - 1
@@ -1891,12 +1322,12 @@ def make_uncertainty_budget_fig(
     else:
         if measured_hist is None or target_hist is None:
             raise ValueError(
-                "measured_hist and target_hist must be provided when data_measurement_mode is False"
+                "measured_hist and target_hist must be provided "
+                "and not None when data_measurement_mode is False"
             )
         mbias = (measured_hist - target_hist) ** 2
         rel_mbias = np.sqrt(mbias) / np.where(target_hist > 0, target_hist, 1)
 
-    # Only works fro data in current implimentation, would need to be modify the output of uncertainty_calculator.get_total_theory_uncertainty for it to work on MG or Sherpa
     total_vars = np.sum(np.array(list(uncertainty_details[0].values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)
     total_uncert_plot = np.append(total_uncert, total_uncert[-1])
@@ -1904,7 +1335,7 @@ def make_uncertainty_budget_fig(
     # ===== Figure 2: Uncertainty budget plot =====
     fig_uncertainty_budget, ax = plt.subplots(figsize=figsize)
 
-    # Plot total uncertainty, only for the full uncertainty list, not for individual groups
+    # Plot total uncertainty, only for the full uncertainty list
     if draw_this_group is None:
         ax.plot(
             bin_edges,
@@ -1996,25 +1427,28 @@ def make_uncertainty_budget_fig(
         axis=0,
     )
     # Calculate chi-squared test if requested (only when not in data_measurement_mode)
-    chi2_label = ""
     if do_chi2_test and not data_measurement_mode:
         dof = len(bin_edges) - 1
         D = measured_hist - target_hist
         chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
         p_value = 1 - stats.chi2.cdf(chi2, dof)
-        chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
-        print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
+        feature_label = _strip_latex(xlabel)
+        print(f"\n--- χ² test: {feature_label} ---")
+        print(f"  dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
 
     # ===== Figure 3: Correlation matrix plot =====
+    fig_correlation_matrix = None
     if (
         draw_this_group is None
-    ):  # only draw correlation matrix for the full covariance, not for individual groups
+    ):  # only draw correlation matrix for the full covariance
         fig_correlation_matrix = plot_correlation_matrix(
             total_cov=total_cov,
             bins=bin_edges,
             llab=llab,
             simple_labels=simple_corr_labels,
         )
+
+    return fig_uncertainty_budget, fig_correlation_matrix
 
 
 def nice_midpoint(low, up):
@@ -2065,24 +1499,33 @@ def draw_plot(
     draw_uncertainty_budget=True,
     is_xSec=True,
     logyScale=True,
+    logxScale=False,
     ratio_ylim=[0.2, 1.8],
-    dashed_lines_in_ratio=True,  #
     text_box=None,
     is_omni_data=False,
     results_list=None,
     formating_dicts=None,
     pdf_name=None,
+    do_chi2_test=False,
+    llab="Simulation Internal",
+    smooth_hv=True,
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
-    Creates a main cross-section (or density) plot with uncertainties, optionally
-    including Sherpa and/or MadGraph predictions, and a ratio subplot. Can also
-    produce an uncertainty budget figure.
+    Creates a main cross-section (or density) plot with uncertainties,
+    optionally including Sherpa and/or MadGraph predictions, and a ratio
+    subplot. Can also produce an uncertainty budget figure.
+
+    The OmniFold result (``omni_results``) is always treated as the reference
+    in the ratio panel. Additional curves — including truth pseudodata — are
+    overlaid via ``results_list`` and ``formating_dicts``.
 
     Arguments:
     ----------
     omni_results : dict
-        Histogram dictionary for OmniFold result ("nominal" key expected).
+        Histogram dictionary for the OmniFold result. Must contain a
+        ``"nominal"`` key; systematic variation keys are used for the
+        uncertainty calculation.
     binning : array-like
         Bin edges of the observable.
     ylabel : str, optional
@@ -2090,35 +1533,86 @@ def draw_plot(
     xlabel : str, optional
         X-axis label.
     mgfxfx_truth_results : dict, optional
-        MadGraph truth histogram.
+        MadGraph truth histogram dict. Must contain a ``"nominal"`` key
+        plus theory variation keys for uncertainty bands.
     sherpa_truth_results : dict, optional
-        Sherpa truth histogram.
+        Sherpa truth histogram dict. Same key requirements as
+        ``mgfxfx_truth_results``.
+    ibu_results : dict, optional
+        IBU result dict with ``"nominal"`` and ``"total_unc"`` keys.
     draw_uncertainty_budget : bool, optional
-        If True, produces uncertainty budget plot.
+        If True, also produces an uncertainty budget figure (default: True).
     is_xSec : bool, optional
-        If True, converts to cross-section.
+        If True, converts histograms to cross-section units by dividing by
+        bin widths. Set to False if histograms are already normalized or in
+        the desired units (default: True).
+    logyScale : bool, optional
+        If True, use a log y-scale on the main panel (default: True).
+    logxScale : bool, optional
+        If True, use a log x-scale on both the main and ratio panels
+        (default: False).
     ratio_ylim : list, optional
-        Y-limits for ratio subplot.
-    dashed_lines_in_ratio: bool or list, optional
-        if false, no dashed. if True, lines at snapped midpoints. If a list, draw lines at giveny values.
+        Y-limits for the ratio subplot (default: [0.2, 1.8]).
+    text_box : dict or None, optional
+        If provided, draws a text box via ``draw_textbox``. Dict must have
+        keys ``left_align``, ``top_align``, ``text``, and ``fontsize``.
     is_omni_data : bool, optional
-        If True, treats omni_results as data (False = pseudodata).
+        If True, labels the ratio y-axis as "MC / Data"; otherwise uses
+        "MC / Pseudodata" (default: False).
     results_list : list of dicts, optional
-        If provided, list of additional result dictionaries to plot, "omni_result" is reated as reference alwayse.
+        Additional result dicts to overlay. Each dict must contain a
+        ``"nominal"`` key. ``omni_results`` is always the ratio reference.
+        Use this to overlay truth pseudodata, e.g.::
+
+            vis.draw_plot(
+                omni_results,
+                binning,
+                results_list=[truth_pd_hists],
+                formating_dicts=[{
+                    "color": "red",
+                    "label": "Truth pseudodata",
+                    "marker": "o",
+                    "is_omni_data": False,
+                    "is_madgraph": True,
+                }],
+            )
+
     formating_dicts : list of dicts, optional
-        If results_list is provided, list of formatting dicts for each result dict (e.g., color, label). Must be same length as results_list.
-        dictionary must contain the following items:
-            - "color": color for the result (e.g., "red")
-            - "label": label for the legend (e.g., "MadGraph")
-            - "marker": marker style for the result (e.g., "o")
-            - "is_omni_data": bool, whether this result should be treated as data (for uncertainty calculation)
-            - "is_madgraph": bool, whether this result is a MadGraph prediction.  If false and is_omni_data false, assume sherpa. (for uncertainty calculation)
-    pdf_loc : str, optional
-        If provided, location to save the figure as a PDF file (e.g., "obs.pdf").
+        One formatting dict per entry in ``results_list`` (must be the same
+        length). Each dict must contain:
+
+        - ``"color"`` — matplotlib color string (e.g. ``"red"``)
+        - ``"label"`` — legend label string
+        - ``"marker"`` — matplotlib marker string (e.g. ``"o"``)
+        - ``"is_omni_data"`` — bool; if True, uses the OmniFold uncertainty
+          calculation; if False, uses theory uncertainties
+        - ``"is_madgraph"`` — bool; if ``is_omni_data`` is False, determines
+          whether MadGraph (True) or Sherpa (False) theory uncertainties are
+          applied
+    pdf_name : str, optional
+        If provided, saves all figures to a single multi-page PDF at this
+        path using ``SAVE_DPI``. Page order: main plot, uncertainty budget
+        (if ``draw_uncertainty_budget=True``), correlation matrix.
+    do_chi2_test : bool, optional
+        If True, performs a chi-squared test comparing the OmniFold result
+        to the first entry in ``results_list`` and prints the result. Only
+        has effect in pseudodata mode (``is_omni_data=False``) and requires
+        at least one entry in ``results_list`` to use as the target
+        (default: False).
+    llab : str, optional
+        Left label shown on the uncertainty budget figure (default:
+        ``"Simulation Internal"``).
+    smooth_hv : bool, optional
+        Passed to ``UncertaintyCalculator.calculate_uncertainties``. If True
+        (default), applies smoothing to the hadronisation/shower uncertainty
+        before combining. Set to False to use the raw variation.
+
     Returns:
     --------
-    None
-        Produces matplotlib figures.
+    tuple[plt.Figure, plt.Figure | None]
+        ``(fig, fig_budget)`` where ``fig`` is the main cross-section plot and
+        ``fig_budget`` is the uncertainty budget figure (``None`` if
+        ``draw_uncertainty_budget=False``).
     """
     additional_results = results_list is not None and formating_dicts is not None
     if additional_results:
@@ -2139,14 +1633,12 @@ def draw_plot(
         "label": "IBU Measurement",
     }
 
-    lumi = 140.1
     draw_ratioplot = (
         (mgfxfx_truth_results is not None)
         or (sherpa_truth_results is not None)
         or additional_results
     )
     height_ratios = [3, 1] if 1 + int(draw_ratioplot) == 2 else [3]
-    dpi = 150  # default
     fig, axs = plt.subplots(
         1 + int(draw_ratioplot),
         1,
@@ -2165,11 +1657,16 @@ def draw_plot(
     )
 
     # Create uncertainty calculator (using default definitions)
-    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=True)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator()
 
-    # Nominal Omnifold result
-    omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
-        omni_results, measured_key="nominal"
+    # Nominal Omnifold result: calculate then group uncertainties
+    signed_uncerts, syst_covs, syst_info = (
+        uncertainty_calculator.calculate_uncertainties(
+            omni_results, measured_key="nominal", smooth_hv=smooth_hv
+        )
+    )
+    omni_uncert_tuple = uncertainty_calculator.process_signed_uncertainties(
+        signed_uncerts, syst_covs, syst_info
     )
     omni_uncert = np.sqrt(
         np.sum(np.array(list(omni_uncert_tuple[0].values())) ** 2, axis=0)
@@ -2191,7 +1688,7 @@ def draw_plot(
         for result_dict, fmt in zip(results_list, formating_dicts):
             if fmt["is_omni_data"]:
                 result_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
-                    result_dict, measured_key="nominal"
+                    result_dict, measured_key="nominal", smooth_hv=smooth_hv
                 )
                 result_uncert = np.sqrt(
                     np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
@@ -2202,33 +1699,33 @@ def draw_plot(
                 )
             results_uncerts.append(result_uncert)
 
+    fig_budget, fig_cov = None, None
     if draw_uncertainty_budget:
-        make_uncertainty_budget_fig(
+        chi2_target = (
+            results_list[0]["nominal"][0]
+            if (results_list and not is_omni_data)
+            else None
+        )
+        fig_budget, fig_cov = make_uncertainty_budget_fig(
             binning,
             omni_uncert_tuple,
             figsize=(12 * 2 / 3, 8 * 2 / 3),  # is 12 by 8 but smaller
             xlabel=xlabel,
-            log_xscale=False,
-            llab="Simulation Internal",
+            log_xscale=logxScale,
+            llab=llab,
             rlab="Z+jets Omnifold",
-            data_measurement_mode=True,
-            measured_hist=None,
-            target_hist=None,
-            do_chi2_test=False,
+            data_measurement_mode=is_omni_data,
+            measured_hist=omni_results["nominal"][0],
+            target_hist=chi2_target,
+            do_chi2_test=do_chi2_test and chi2_target is not None,
             simple_corr_labels=True,
         )
-    # if "trackj1" in var:
-    #     df = multifold[mask_trackj1]
-    # elif "trackj2" in var:
-    #     df = multifold[mask_trackj2]
-    # else:
-    #     df = multifold
 
-    ### Sherpa
+    # Sherpa
     if sherpa_truth_results is not None:
         sherpa_density = sherpa_truth_results["nominal"][0]
         if is_xSec:
-            sherpa_density = sherpa_density / lumi / bin_widths
+            sherpa_density = sherpa_density / bin_widths
         _ = make_error_boxes(
             axs[0],
             bin_centers,
@@ -2241,11 +1738,11 @@ def draw_plot(
             label=r"Drell Yan: Sherpa2.2.11 + X",
         )
 
-    ### MGFxFx
+    # MGFxFx
     if mgfxfx_truth_results is not None:
         mgfxfx_density = mgfxfx_truth_results["nominal"][0]
         if is_xSec:
-            mgfxfx_density = mgfxfx_density / lumi / bin_widths
+            mgfxfx_density = mgfxfx_density / bin_widths
         _ = make_error_boxes(
             axs[0],
             bin_centers,
@@ -2258,17 +1755,14 @@ def draw_plot(
             label=("Drell Yan: MG5+Py8 + X"),
         )
 
-    ### Additional results
+    # Additional results
     if additional_results:
         for result_dict, fmt, result_uncert in zip(
             results_list, formating_dicts, results_uncerts
         ):
             result_density = result_dict["nominal"][0]
             if is_xSec:
-                if fmt["is_omni_data"]:
-                    result_density = result_density / lumi / bin_widths
-                else:
-                    result_density = result_density / bin_widths
+                result_density = result_density / bin_widths
             _ = make_error_boxes(
                 axs[0],
                 bin_centers,
@@ -2297,12 +1791,12 @@ def draw_plot(
             label=formating_IBU["label"],
         )
 
-    ### OmniFold
+    # OmniFold
     omni_density = omni_results["nominal"][0]
     if is_xSec:
         omni_density = omni_density / bin_widths
 
-    omni_plot = axs[0].hist(
+    axs[0].hist(
         binning[:-1],
         bins=binning,
         weights=omni_density,
@@ -2313,7 +1807,7 @@ def draw_plot(
     mh.atlas.label(
         ax=axs[0],
         loc=0,
-        llabel="Simulation Internal",
+        llabel=llab,
         rlabel="Z+jets Omnifold",
     )
 
@@ -2343,15 +1837,18 @@ def draw_plot(
 
     # Compare with additional results
     if additional_results:
-        for result_dict in results_list:
+        for result_dict, fmt in zip(results_list, formating_dicts):
             y = result_dict["nominal"][0]
+            if is_xSec:
+                y = y / bin_widths
             y_min = min(y_min, np.min(y))
             y_max = max(y_max, np.max(y))
     if ibu_results is not None:
         y_min = min(y_min, np.min(ibu_density))
         y_max = max(y_max, np.max(ibu_density))
 
-    axs[0].set_ylim([0.3 * y_min, 1.7 * y_max])
+    # Adjust y-axis limits
+    axs[0].set_ylim([0.3 * y_min, 1.3 * y_max])
 
     axs[0].errorbar(
         bin_centers,
@@ -2369,7 +1866,7 @@ def draw_plot(
         markeredgewidth=2,
     )
 
-    # this just adds the X = text under MG or Sherpa, but only if one of them is being plotted, otherwise just draw regulat legend
+    # this just adds the X = text under MG or Sherpa
     if mgfxfx_truth_results is not None or sherpa_truth_results is not None:
         handles, labels = axs[0].get_legend_handles_labels()
         targets = ("Drell Yan: Sherpa2.2.11 + X", "Drell Yan: MG5+Py8 + X")
@@ -2390,6 +1887,8 @@ def draw_plot(
         axs[0].set_yscale("log")
     else:
         axs[0].set_yscale("linear")
+    if logxScale:
+        axs[0].set_xscale("log")
     if draw_ratioplot:
         axs[1].minorticks_on()
         axs[1].errorbar(
@@ -2446,6 +1945,8 @@ def draw_plot(
                 results_list, formating_dicts, results_uncerts
             ):
                 result_density = result_dict["nominal"][0]
+                if is_xSec:
+                    result_density = result_density / bin_widths
                 _ = make_error_boxes(
                     axs[1],
                     bin_centers,
@@ -2481,6 +1982,8 @@ def draw_plot(
             )
 
         axs[1].set_xlim(binning[0], binning[-1])
+        if logxScale:
+            axs[1].set_xscale("log")
         axs[1].set_ylim(ratio_ylim)
         axs[1].xaxis.set_tick_params(
             labelsize=16, which="both", direction="in", top=True
@@ -2501,8 +2004,15 @@ def draw_plot(
         axs[1].axhline(line2, color="gray", linestyle="--", linewidth=1)
 
     if pdf_name is not None:
-        fig.savefig(pdf_name, dpi=200, format="pdf", bbox_inches="tight")
-    return
+        with PdfPages(pdf_name) as pdf:
+            pdf.savefig(fig, dpi=SAVE_DPI, bbox_inches="tight")
+            if fig_budget is not None:
+                pdf.savefig(fig_budget, dpi=SAVE_DPI, bbox_inches="tight")
+            if fig_cov is not None:
+                pdf.savefig(fig_cov, dpi=SAVE_DPI, bbox_inches="tight")
+    if fig_cov is not None:
+        plt.close(fig_cov)
+    return fig, fig_budget
 
 
 def draw_uncertainty_group(
@@ -2511,20 +2021,10 @@ def draw_uncertainty_group(
     group,
     xlabel="default",
 ):
-    # possible groupings are
-
-    bin_centers = 0.5 * (binning[1:] + binning[:-1])
-    bin_widths = np.array(
-        [binning[n + 1] - binning[n] for n in range(len(binning) - 1)]
-    )
-
     # Create uncertainty calculator (using default definitions)
-    uncertainty_calculator = uncertainties.UncertaintyCalculator(smooth_hv=True)
+    uncertainty_calculator = uncertainties.UncertaintyCalculator()
     omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
         omni_results, measured_key="nominal", ungrouped=True
-    )
-    omni_uncert = np.sqrt(
-        np.sum(np.array(list(omni_uncert_tuple[0].values())) ** 2, axis=0)
     )
     make_uncertainty_budget_fig(
         binning,
