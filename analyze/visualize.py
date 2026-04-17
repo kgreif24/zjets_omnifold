@@ -24,10 +24,10 @@ SAVE_DPI = 200
 
 def _strip_latex(s):
     """Return a terminal-friendly version of a LaTeX label string."""
-    s = re.sub(r'\\(?:text|mathrm)\{([^}]*)\}', r'\1', s)  # \text{X} -> X
-    s = re.sub(r'_\{([^}]*)\}', r'_\1', s)  # _{X} -> _X
-    s = re.sub(r'\^\{([^}]*)\}', r'^\1', s)  # ^{X} -> ^X
-    s = s.replace('$', '').replace('\\', '')
+    s = re.sub(r"\\(?:text|mathrm)\{([^}]*)\}", r"\1", s)  # \text{X} -> X
+    s = re.sub(r"_\{([^}]*)\}", r"_\1", s)  # _{X} -> _X
+    s = re.sub(r"\^\{([^}]*)\}", r"^\1", s)  # ^{X} -> ^X
+    s = s.replace("$", "").replace("\\", "")
     return s.strip()
 
 
@@ -1292,7 +1292,8 @@ def make_uncertainty_budget_fig(
     target_hist=None,
     do_chi2_test=False,
     simple_corr_labels: bool = False,
-    draw_this_group: str = None,
+    draw_group=None,
+    signed=False,
 ):
     """Create uncertainty budget and correlation matrix plots.
 
@@ -1329,7 +1330,10 @@ def make_uncertainty_budget_fig(
         Perform chi-squared test (default: False).
     simple_corr_labels : bool, optional
         Simplify correlation matrix labels (default: False).
-
+    draw_group : list of str, optional
+        List of uncertainty groups to plot (default: None).
+    signed : bool, optional
+        If True, plot signed uncertainties instead of absolute (default: False).
     Returns:
     --------
     fig_uncertainty_budget : matplotlib.figure.Figure
@@ -1346,8 +1350,10 @@ def make_uncertainty_budget_fig(
                 "measured_hist and target_hist must be provided "
                 "and not None when data_measurement_mode is False"
             )
-        mbias = (measured_hist - target_hist) ** 2
-        rel_mbias = np.sqrt(mbias) / np.where(target_hist > 0, target_hist, 1)
+        denom = np.where(target_hist > 0, target_hist, 1)
+        mbias = (target_hist - measured_hist) ** 2
+        rel_mbias = np.sqrt(mbias) / denom
+        signed_rel_mbias = (target_hist - measured_hist) / denom
 
     total_vars = np.sum(np.array(list(uncertainty_details[0].values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)
@@ -1357,7 +1363,7 @@ def make_uncertainty_budget_fig(
     fig_uncertainty_budget, ax = plt.subplots(figsize=figsize)
 
     # Plot total uncertainty, only for the full uncertainty list
-    if draw_this_group is None:
+    if draw_group is None:
         ax.plot(
             bin_edges,
             total_uncert_plot,
@@ -1369,9 +1375,11 @@ def make_uncertainty_budget_fig(
         )
 
     # Plot individual uncertainty_details
+    bottom_uncert = 0
     for syst_name in uncertainty_details[2].keys():
-        if draw_this_group is not None and draw_this_group not in syst_name:
+        if draw_group is not None and syst_name not in draw_group:
             continue
+        bottom_uncert = min(bottom_uncert, min(uncertainty_details[0][syst_name]))
         syst_uncert = uncertainty_details[0][syst_name]
         plot_syst_uncert = np.append(syst_uncert, syst_uncert[-1])
         ax.plot(
@@ -1385,6 +1393,10 @@ def make_uncertainty_budget_fig(
 
     # Plot method bias (only in standard mode, not data comparison mode)
     if rel_mbias is not None:
+        if signed:
+            rel_mbias = signed_rel_mbias
+            bottom_uncert = min(bottom_uncert, min(rel_mbias))
+
         plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         ax.fill_between(
             bin_edges,
@@ -1402,21 +1414,21 @@ def make_uncertainty_budget_fig(
     ax.set_xlim(bin_edges[0], bin_edges[-1])
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Uncertainty budget")
+    ax.set_xlabel(xlabel, fontsize=14, labelpad=2)
 
     # Set y-axis limits
     if rel_mbias is not None:
         top_uncert = np.max(np.concatenate([total_uncert_plot, plot_mbias]))
     else:
         top_uncert = np.max(total_uncert_plot)
-    if draw_this_group is not None:  # overrides rel-mbias being not None
-        top_uncert = 0
+    if draw_group is not None:  # overrides rel-mbias being not None
         for syst_name in uncertainty_details[2].keys():
-            if draw_this_group in syst_name:
+            if syst_name in draw_group:
                 top_uncert = max(top_uncert, np.max(uncertainty_details[0][syst_name]))
-    if top_uncert > 0.2 or np.isnan(top_uncert):
-        ax.set_ylim(bottom=0.0, top=0.2)
-    else:
-        ax.set_ylim(bottom=0.0, top=top_uncert * 1.2)
+    # if top_uncert > 0.2 or np.isnan(top_uncert):
+    #     ax.set_ylim(bottom=bottom_uncert, top=0.2)
+    # else:
+    ax.set_ylim(bottom=bottom_uncert * 1.2, top=top_uncert * 1.2)
 
     ax.legend(
         loc="upper center",
@@ -1447,10 +1459,11 @@ def make_uncertainty_budget_fig(
         ],
         axis=0,
     )
+
     # Calculate chi-squared test if requested (only when not in data_measurement_mode)
     if do_chi2_test and not data_measurement_mode:
         dof = len(bin_edges) - 1
-        D = measured_hist - target_hist
+        D = target_hist - measured_hist
         chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
         p_value = 1 - stats.chi2.cdf(chi2, dof)
         feature_label = _strip_latex(xlabel)
@@ -1459,9 +1472,7 @@ def make_uncertainty_budget_fig(
 
     # ===== Figure 3: Correlation matrix plot =====
     fig_correlation_matrix = None
-    if (
-        draw_this_group is None
-    ):  # only draw correlation matrix for the full covariance
+    if draw_group is None:  # only draw correlation matrix for the full covariance
         fig_correlation_matrix = plot_correlation_matrix(
             total_cov=total_cov,
             bins=bin_edges,
@@ -1514,6 +1525,7 @@ def draw_plot(
     binning,
     ylabel="default",
     xlabel="default",
+    yratiolabel="default",
     mgfxfx_truth_results=None,
     sherpa_truth_results=None,
     ibu_results=None,
@@ -1523,9 +1535,10 @@ def draw_plot(
     logxScale=False,
     ratio_ylim=[0.2, 1.8],
     text_box=None,
-    is_omni_data=False,
+    is_omni_data=True,
     results_list=None,
-    formating_dicts=None,
+    formatting_dicts=None,
+    omni_label=None,
     pdf_name=None,
     do_chi2_test=False,
     llab="Simulation Internal",
@@ -1594,7 +1607,8 @@ def draw_plot(
                     "label": "Truth pseudodata",
                     "marker": "o",
                     "is_omni_data": False,
-                    "is_madgraph": True,
+                    "is_truth_pd": True,
+                    "is_madgraph": False,
                 }],
             )
 
@@ -1635,20 +1649,19 @@ def draw_plot(
         ``fig_budget`` is the uncertainty budget figure (``None`` if
         ``draw_uncertainty_budget=False``).
     """
-    additional_results = results_list is not None and formating_dicts is not None
+    target_hist = None
+    additional_results = results_list is not None and formatting_dicts is not None
     if additional_results:
-        if len(results_list) != len(formating_dicts):
-            raise ValueError("results_list and formating_dicts must be the same length")
+        if len(results_list) != len(formatting_dicts):
+            raise ValueError(
+                "results_list and formatting_dicts must be the same length"
+            )
 
-    hist_params_OmniFold = {
-        "color": "black",
-        "linewidth": 2,
-        "density": True,
-        "alpha": 0,
-    }
-    formating_IBU = {
-        "is_madgraph": False,
-        "is_omni_data": True,
+    if omni_label is None:
+        omni_label = (
+            "Omnifold Measurement" if is_omni_data else "Omnifold Pseudomeasurement"
+        )
+    formatting_IBU = {
         "color": "green",
         "marker": "o",
         "label": "IBU Measurement",
@@ -1706,7 +1719,7 @@ def draw_plot(
     # Calculate uncertainties for additional results if provided
     if additional_results:
         results_uncerts = []
-        for result_dict, fmt in zip(results_list, formating_dicts):
+        for result_dict, fmt in zip(results_list, formatting_dicts):
             if fmt["is_omni_data"]:
                 result_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
                     result_dict, measured_key="nominal", smooth_hv=smooth_hv
@@ -1714,6 +1727,12 @@ def draw_plot(
                 result_uncert = np.sqrt(
                     np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
                 )
+            elif fmt["is_truth_pd"]:
+                if is_xSec:
+                    target_hist = result_dict["nominal"][0] / bin_widths
+                else:
+                    target_hist = result_dict["nominal"][0]
+                result_uncert = np.zeros_like(target_hist)
             else:
                 result_uncert = uncertainty_calculator.get_total_theory_uncertainty(
                     result_dict, measured_key="nominal", is_madgraph=fmt["is_madgraph"]
@@ -1730,7 +1749,7 @@ def draw_plot(
         fig_budget, fig_cov = make_uncertainty_budget_fig(
             binning,
             omni_uncert_tuple,
-            figsize=(12 * 2 / 3, 8 * 2 / 3),  # is 12 by 8 but smaller
+            figsize=(12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
             xlabel=xlabel,
             log_xscale=logxScale,
             llab=llab,
@@ -1779,8 +1798,9 @@ def draw_plot(
     # Additional results
     if additional_results:
         for result_dict, fmt, result_uncert in zip(
-            results_list, formating_dicts, results_uncerts
+            results_list, formatting_dicts, results_uncerts
         ):
+
             result_density = result_dict["nominal"][0]
             if is_xSec:
                 result_density = result_density / bin_widths
@@ -1806,10 +1826,10 @@ def draw_plot(
             ibu_density,
             np.vstack([bin_widths / 2, bin_widths / 2]),
             np.vstack([ibu_uncertainty, ibu_uncertainty]),
-            facecolor=formating_IBU["color"],
+            facecolor=formatting_IBU["color"],
             alpha=0.25,
-            marker=formating_IBU["marker"],
-            label=formating_IBU["label"],
+            marker=formatting_IBU["marker"],
+            label=formatting_IBU["label"],
         )
 
     # OmniFold
@@ -1822,7 +1842,8 @@ def draw_plot(
         bins=binning,
         weights=omni_density,
         align="mid",
-        **hist_params_OmniFold,
+        density=True,
+        alpha=0,
     )
 
     mh.atlas.label(
@@ -1858,7 +1879,7 @@ def draw_plot(
 
     # Compare with additional results
     if additional_results:
-        for result_dict, fmt in zip(results_list, formating_dicts):
+        for result_dict, fmt in zip(results_list, formatting_dicts):
             y = result_dict["nominal"][0]
             if is_xSec:
                 y = y / bin_widths
@@ -1881,7 +1902,7 @@ def draw_plot(
         color="k",
         alpha=1,
         ecolor="k",
-        label="Omnifold Measurement",
+        label=omni_label,
         markersize=5,
         linewidth=1,
         markeredgewidth=2,
@@ -1963,7 +1984,7 @@ def draw_plot(
             )
         if additional_results:
             for result_dict, fmt, result_uncert in zip(
-                results_list, formating_dicts, results_uncerts
+                results_list, formatting_dicts, results_uncerts
             ):
                 result_density = result_dict["nominal"][0]
                 if is_xSec:
@@ -1996,10 +2017,10 @@ def draw_plot(
                         (ibu_uncertainty / omni_density),
                     ]
                 ),
-                facecolor=formating_IBU["color"],
+                facecolor=formatting_IBU["color"],
                 alpha=0.25,
-                marker=formating_IBU["marker"],
-                label=formating_IBU["label"],
+                marker=formatting_IBU["marker"],
+                label=formatting_IBU["label"],
             )
 
         axs[1].set_xlim(binning[0], binning[-1])
@@ -2012,11 +2033,13 @@ def draw_plot(
         axs[1].yaxis.set_tick_params(
             labelsize=16, which="both", direction="in", right=True
         )
-        if is_omni_data:
+        if "default" not in yratiolabel:
+            ratio_ylabel = yratiolabel
+        elif is_omni_data:
             ratio_ylabel = "MC / Data"
         else:
-            ratio_ylabel = "MC / Pseudodata"
-        axs[1].set_ylabel(ratio_ylabel, fontsize=16, labelpad=2, loc="center")
+            ratio_ylabel = "Target / Pseudodata"
+        axs[1].set_ylabel(ratio_ylabel, fontsize=15, labelpad=2, loc="center")
         axs[1].set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
 
         line1 = nice_midpoint(ratio_ylim[0], 1)
@@ -2041,12 +2064,47 @@ def draw_uncertainty_group(
     binning,
     group,
     xlabel="default",
+    signed=False,
+    smooth_hv=True,
+    target_hist=None,
 ):
+    """Draw measurement with optional theory comparisons and ratio plot.
+
+    Creates a plot with uncertainties of a given group of uncertainties.
+
+    Arguments:
+    ----------
+    omni_results : dict
+        Histogram dictionary for result ("nominal" key expected).
+    binning : array-like
+        Bin edges of the observable.
+    group : str
+        Uncertainty group to plot
+        (Available groups are: "Tracking", "Muon", "Unfolding", "MC Stat", "Theory").
+    xlabel : str, optional
+        X-axis label.
+    signed : bool, optional
+        If True, plot signed uncertainties instead of absolute (default: False).
+    Returns:
+    --------
+    None
+        Produces matplotlib figures.
+    """
+
     # Create uncertainty calculator (using default definitions)
-    uncertainty_calculator = uncertainties.UncertaintyCalculator()
-    omni_uncert_tuple = uncertainty_calculator.calculate_uncertainties(
-        omni_results, measured_key="nominal", ungrouped=True
+    uc = uncertainties.UncertaintyCalculator()
+    signed_uncerts, syst_covs, syst_info = uc.calculate_uncertainties(
+        omni_results, measured_key="nominal", smooth_hv=smooth_hv, signed=signed
     )
+    omni_uncert_tuple = uc.process_signed_uncertainties(
+        signed_uncerts, syst_covs, syst_info
+    )
+    if target_hist is not None:
+        omni_density = omni_results["nominal"][0]
+        target_hist = target_hist["nominal"][0]
+    else:
+        omni_density = None
+
     make_uncertainty_budget_fig(
         binning,
         omni_uncert_tuple,
@@ -2055,12 +2113,12 @@ def draw_uncertainty_group(
         log_xscale=False,
         llab="Simulation Internal",
         rlab="Z+jets Omnifold",
-        data_measurement_mode=True,
-        measured_hist=None,
-        target_hist=None,
+        data_measurement_mode=(target_hist is None),
+        measured_hist=omni_density,
+        target_hist=target_hist,
         do_chi2_test=False,
         simple_corr_labels=True,
-        draw_this_group=group,
+        draw_group=[group],
     )
 
 

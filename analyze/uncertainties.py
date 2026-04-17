@@ -394,6 +394,7 @@ class UncertaintyCalculator:
         all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
         measured_key: str = "nominal",
         smooth_hv: bool = True,
+        signed: bool = False,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
         """Calculate all uncertainties from histogram dictionary.
         Will only calculate uncertainties that are defined in the
@@ -538,7 +539,10 @@ class UncertaintyCalculator:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
             dd_uncert_unnorm = dd_hist - dd_target_hist
-            syst_uncerts["dd"] = dd_uncert_unnorm / measured_hist
+            if signed:
+                syst_uncerts["dd"] = dd_uncert_unnorm / measured_hist
+            else:
+                syst_uncerts["dd"] = np.abs(dd_uncert_unnorm) / measured_hist
             # Note we re-normalize the dd uncertainty to match the measured histogram!
             syst_covs["dd"] = self._fill_covariance_matrix(
                 [dd_uncert_unnorm * (measured_hist / dd_target_hist)],
@@ -557,9 +561,18 @@ class UncertaintyCalculator:
                 if syst_key in ["hv", "hvhad"] and smooth_hv:
                     bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
+                if signed:
+                    syst_uncerts[syst_key] = (uncert_unnorm) / measured_hist
+                else:
+                    syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
                 syst_uncerts[syst_key] = uncert_unnorm / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
                 syst_info[syst_key] = syst_def.copy()
+        # Apply uncertainty grouping
+        if self.uncertainty_groups:
+            syst_uncerts, syst_covs, syst_info = self._apply_grouping(
+                syst_uncerts, syst_covs, syst_info
+            )
 
         return syst_uncerts, syst_covs, syst_info
 

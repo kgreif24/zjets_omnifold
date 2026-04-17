@@ -7,7 +7,6 @@ from __future__ import annotations
 import numpy as np
 import awkward as ak
 import jet_clusterer
-import energyflow as ef
 import psutil
 import sys
 import re
@@ -505,144 +504,6 @@ def build_jets(
     return ak.Array(jets), ak.Array(event_jet_indices)
 
 
-def build_jets_from_indices(
-    event_jet_indices,
-    tree,
-    algorithm,
-    R,
-    ptmin=None,
-    ptmax=None,
-    etamax=None,
-    max_jets=None,
-    get_truth=True,
-    n_jobs=-1,
-    nEvents=-1,  # (-1 = all)
-    random_seed: int | None = None,
-):
-    """
-    Build jet kinematics from precomputed track-to-jet indices.
-
-    Jets are reconstructed by summing the four-momenta of tracks assigned
-    to each jet. Jets are returned as (pt, y, phi, m) and sorted by
-    descending pt.
-
-    Returns
-    -------
-    jets : ak.Array
-        Shape: [n_events, n_jets, 4]
-        Jet kinematics: [pt, y, phi, m]
-    """
-
-    # # -----------------------------------------
-    # # Get track kinematics
-    # # -----------------------------------------
-    if isinstance(tree, list):
-        all_kinematics = get_hadron_kinematics(tree, get_truth=get_truth)
-
-        pt = ak.concatenate([k[0] for k in all_kinematics], axis=0)
-        eta = ak.concatenate([k[1] for k in all_kinematics], axis=0)
-        phi = ak.concatenate([k[2] for k in all_kinematics], axis=0)
-        masses = ak.concatenate([k[3] for k in all_kinematics], axis=0)
-    else:
-        pt, eta, phi, masses = get_hadron_kinematics(tree, get_truth=get_truth)
-
-    # # -----------------------------------------
-    # # Get jet assignments
-    # # -----------------------------------------
-    # event_jet_indices = get_jet_indices(
-    #     tree=tree,
-    #     algorithm=algorithm,
-    #     R=R,
-    #     pt=pt,
-    #     eta=eta,
-    #     phi=phi,
-    #     masses=masses,
-    #     ptmin=ptmin,
-    #     ptmax=ptmax,
-    #     etamax=etamax,
-    #     max_jets=max_jets,
-    #     get_truth=get_truth,
-    #     n_jobs=n_jobs,
-    #     random_seed=random_seed,
-    # )
-
-    # -----------------------------------------
-    # Build jets
-    # -----------------------------------------
-    all_event_jets = []
-    n_events = (
-        len(event_jet_indices)
-        if nEvents == -1
-        else min(nEvents, len(event_jet_indices))
-    )
-
-    progress_interval = max(1, n_events // 10)
-
-    for event_idx, indices in enumerate(event_jet_indices):
-        if event_idx >= n_events:
-            break
-        # Print progress
-        if (event_idx + 1) % progress_interval == 0 or event_idx == n_events - 1:
-            print(
-                f"Processing event {event_idx + 1}/{n_events} "
-                f"({100*(event_idx+1)/n_events:.0f}%)"
-            )
-
-        # -----------------------------------------
-        # Extract per-event track kinematics
-        # -----------------------------------------
-        pt_event = ak.to_numpy(pt[event_idx])
-        eta_event = ak.to_numpy(eta[event_idx])
-        phi_event = ak.to_numpy(phi[event_idx])
-        mass_event = ak.to_numpy(masses[event_idx])
-
-        # Convert tracks → 4-vectors for this event only
-        E = np.sqrt(pt_event**2 * np.cosh(eta_event) ** 2 + mass_event**2)
-        pz = pt_event * np.sinh(eta_event)
-        y = 0.5 * np.log((E + pz) / (E - pz))
-        event_p4s = ef.p4s_from_ptyphims(
-            np.stack([pt_event, y, phi_event, mass_event], axis=-1)
-        )
-        indices = np.asarray(indices)
-        event_jets = []
-
-        # Find jets in this event
-        jet_ids = np.unique(indices)
-        jet_ids = jet_ids[jet_ids >= 0]  # ignore tracks not in any jet
-
-        for jet_id in jet_ids:
-
-            mask = indices == jet_id
-            jet_p4 = np.sum(event_p4s[mask], axis=0)
-
-            jet_pt, jet_y, jet_phi, jet_m = ef.ptyphims_from_p4s(
-                jet_p4, phi_ref=0, mass=True
-            )
-
-            # Apply optional cuts
-            if (ptmax is not None and jet_pt >= ptmax) or (
-                etamax is not None and abs(jet_y) >= etamax
-            ):
-                continue
-
-            event_jets.append([jet_pt, jet_y, jet_phi, jet_m])
-
-        # Sort by descending pT
-        event_jets.sort(key=lambda x: x[0], reverse=True)
-
-        # Limit max jets if requested
-        if max_jets is not None and len(event_jets) > max_jets:
-            if random_seed is not None:
-                np.random.seed(random_seed)
-            event_jets = event_jets[:max_jets]
-
-        all_event_jets.append(event_jets)
-
-    jets = ak.Array(all_event_jets)
-
-    return jets
-
-
 def eval_jet_expressions(jets, expressions, nevents=-1):
     """eval_jet_expressions - Evaluates multiple arithmetic expressions involving jet info fields,
     propagating -99 for missing jets, with progress output every 10%.
@@ -746,375 +607,6 @@ def eval_jet_expressions(jets, expressions, nevents=-1):
 
     print("Finished evaluating all expressions.")
     return results
-
-
-# ------------------------------
-# Numba inner loop (per event)
-# ------------------------------
-@nb.njit
-def _profile_event(
-    tracks_pt,
-    tracks_eta,
-    tracks_phi,
-    tracks_mass,
-    event_jet_indices,
-    jets,
-    annulus_edges,
-    compute_psi,
-    only_leading_jet,
-    only_associated,
-    jet_pt_range,
-    jet_y_max,
-    use_rho_old,
-):
-    """Compute per-event jet radial profile.
-
-    Accumulates either rho (radial momentum density) or psi (cumulative profile)
-    for jets in a single event, using track information and annular binning.
-
-    Arguments:
-    ----------
-    tracks_pt, tracks_eta, tracks_phi, tracks_mass : array-like
-        Track kinematics for the event.
-    event_jet_indices : array-like
-        Mapping of tracks to associated jet indices.
-    jets : array-like
-        Jet kinematics as (pt, y, phi, mass).
-    annulus_edges : array-like
-        Radial bin edges (ΔR).
-    compute_psi : bool
-        If True, compute cumulative psi profile; otherwise rho.
-    only_leading_jet : bool
-        If True, use only the leading jet.
-    only_associated : bool
-        If True, use only tracks associated to each jet.
-    jet_pt_range : tuple or None
-        Optional (min, max) jet pT selection.
-    jet_y_max : float or None
-        Maximum jet rapidity.
-    use_rho_old : bool
-        If True, use legacy rho normalization.
-
-    Returns:
-    --------
-    profile : np.ndarray
-        Accumulated rho or psi profile for the event.
-    n_selected_jets : int
-        Number of jets passing selection.
-    """
-
-    pi = np.pi
-    n_bins = len(annulus_edges) - 1
-    rho_sum = np.zeros(n_bins)
-    psi_sum = np.zeros(n_bins)
-    n_selected_jets = 0
-
-    # precompute annulus normalization
-    if use_rho_old:
-        annulus_norm = annulus_edges[1:] - annulus_edges[:-1]
-    else:
-        annulus_norm = np.pi * (annulus_edges[1:] ** 2 - annulus_edges[:-1] ** 2)
-
-    n_tracks = tracks_pt.shape[0]
-
-    for jidx in range(jets.shape[0]):
-        jet_pt, jet_y, jet_phi, jet_mass = jets[jidx]
-
-        # Only leading jet if requested
-        if only_leading_jet and jidx != 0:
-            continue
-
-        # Jet kinematic cuts
-        if jet_pt_range is not None and (
-            jet_pt < jet_pt_range[0] or jet_pt > jet_pt_range[1]
-        ):
-            continue
-        if jet_y_max is not None and abs(jet_y) > jet_y_max:
-            continue
-
-        n_selected_jets += 1
-
-        # Track selection depending on only_associated
-        if only_associated:
-            mask = np.zeros(n_tracks, dtype=np.bool_)
-            for t in range(n_tracks):
-                if event_jet_indices[t] == jidx:
-                    mask[t] = True
-        else:
-            mask = np.ones(n_tracks, dtype=np.bool_)
-
-        n_selected = np.sum(mask)
-        if n_selected == 0:
-            continue
-
-        # select tracks
-        pt = tracks_pt[mask]
-        eta = tracks_eta[mask]
-        phi = tracks_phi[mask]
-        mass = tracks_mass[mask]
-
-        # compute 4-vectors
-        px = pt * np.cos(phi)
-        py = pt * np.sin(phi)
-        pz = pt * np.sinh(eta)
-        E = np.sqrt(px**2 + py**2 + pz**2 + mass**2)
-        y = 0.5 * np.log((E + pz) / (E - pz))
-
-        # radial distance
-        dphi = (phi - jet_phi + pi) % (2 * pi) - pi
-        dy = y - jet_y
-        dR = np.sqrt(dy**2 + dphi**2)
-
-        # bin indices
-        bin_idx = np.digitize(dR, annulus_edges, right=False) - 1
-        # select valid bins
-        valid_mask = (bin_idx >= 0) & (bin_idx < n_bins)
-        if np.sum(valid_mask) == 0:
-            continue
-
-        bin_idx = bin_idx[valid_mask]
-        px_sel = px[valid_mask]
-        py_sel = py[valid_mask]
-
-        # vector sum per bin
-        px_sum = np.zeros(n_bins)
-        py_sum = np.zeros(n_bins)
-        # pt_sum = np.zeros(n_bins)
-        for i in range(bin_idx.shape[0]):
-            px_sum[bin_idx[i]] += px_sel[i]
-            py_sum[bin_idx[i]] += py_sel[i]
-            # pt_sum[bin_idx[i]] += pt[valid_mask][i] # linear pt sum
-
-        pt_vec = np.sqrt(px_sum**2 + py_sum**2)
-        # pt_vec = pt_sum
-
-        # compute either rho or psi
-        if compute_psi:
-            px_cumulative = np.zeros(n_bins)
-            py_cumulative = np.zeros(n_bins)
-            pt_cumulative = np.zeros(n_bins)
-            for i in range(n_bins):
-                if i == 0:
-                    px_cumulative[i] = px_sum[i]
-                    py_cumulative[i] = py_sum[i]
-                else:
-                    px_cumulative[i] = px_cumulative[i - 1] + px_sum[i]
-                    py_cumulative[i] = py_cumulative[i - 1] + py_sum[i]
-                pt_cumulative[i] = np.sqrt(
-                    px_cumulative[i] ** 2 + py_cumulative[i] ** 2
-                )
-            psi_sum += pt_cumulative / jet_pt
-        else:
-            if use_rho_old:
-                rho_sum += pt_vec / (annulus_norm * jet_pt)
-            else:
-                rho_sum += pt_vec / annulus_norm
-    return (psi_sum if compute_psi else rho_sum), n_selected_jets
-
-
-def jet_radial_profile(
-    jets,
-    event_jet_indices,
-    track_pt,
-    track_eta,
-    track_phi,
-    track_mass,
-    annulus_edges,
-    weights_dict,
-    only_associated=True,
-    jet_pt_range=None,
-    jet_y_max=None,
-    use_rho_old=False,
-    compute_psi=False,
-    only_leading_jet=False,
-    max_events=-1,
-):
-    """Compute jet radial profiles with weights and systematics.
-
-    Loops over events to compute weighted radial jet profiles (rho or psi),
-    including nominal, systematic variations, and replica weights.
-
-    Arguments:
-    ----------
-    jets : array-like
-        Per-event jet collections.
-    event_jet_indices : array-like
-        Track-to-jet association indices per event.
-    track_pt, track_eta, track_phi, track_mass : array-like
-        Per-event track kinematics.
-    annulus_edges : array-like
-        Radial bin edges (ΔR).
-    weights_dict : dict
-        Dictionary of event weights (nominal, systematics, replicas).
-    only_associated : bool, optional
-        Use only tracks associated to jets (default: True).
-    jet_pt_range : tuple or None, optional
-        Jet pT selection.
-    jet_y_max : float or None, optional
-        Maximum jet rapidity.
-    use_rho_old : bool, optional
-        Use legacy rho normalization (default: False).
-    compute_psi : bool, optional
-        Compute psi instead of rho (default: False).
-    only_leading_jet : bool, optional
-        Use only leading jet (default: False).
-    max_events : int, optional
-        Maximum number of events to process (default: -1 = all).
-
-    Returns:
-    --------
-    profile_dict : dict
-        Mapping {weight_name: (profile, variance, bin_edges)}.
-        Variances are currently zero for all entries.
-    """
-
-    # --- Setup ---
-    nominal_w = np.asarray(weights_dict["nominal"])
-    n_events = len(event_jet_indices)
-    if max_events > 0:
-        n_events = min(n_events, max_events)
-
-    annulus_edges = np.asarray(annulus_edges)
-    n_bins = len(annulus_edges) - 1
-
-    # Identify weight groups
-    ensemble = [k for k in weights_dict if k.startswith("ensemble_")]
-    bootstrap_mc = [k for k in weights_dict if k.startswith("bootstrap_mc_")]
-    bootstrap_data = [k for k in weights_dict if k.startswith("bootstrap_data_")]
-
-    special = set(["nominal"] + ensemble + bootstrap_mc + bootstrap_data)
-    syst_weights = [k for k in weights_dict if k not in special]
-
-    # --- Accumulators ---
-    total_profile_nom = np.zeros(n_bins)
-    total_profile_nom_var = np.zeros(n_bins)  # variance accumulator for nominal
-    n_jets_counter = 0.0
-
-    total_profile_var = {name: np.zeros(n_bins) for name in syst_weights}
-    total_profile_var_var = {
-        name: np.zeros(n_bins) for name in syst_weights
-    }  # variance accumulators for systematics
-    n_jets_var = {name: 0.0 for name in syst_weights}
-
-    replica_profiles = {
-        k: np.zeros(n_bins) for k in ensemble + bootstrap_mc + bootstrap_data
-    }
-    replica_profile_var = {
-        k: np.zeros(n_bins) for k in ensemble + bootstrap_mc + bootstrap_data
-    }  # variance accumulators for replicas
-    n_jets_replica = {k: 0.0 for k in ensemble + bootstrap_mc + bootstrap_data}
-
-    # --- Event loop ---
-    next_progress = 0.1
-    for ievt in range(n_events):
-
-        frac = (ievt + 1) / n_events
-        if frac >= next_progress:
-            print(
-                f"{int(next_progress*100)}% complete ({ievt+1}/{n_events} events)",
-                flush=True,
-            )
-            next_progress += 0.1
-
-        # Convert jagged arrays to numpy
-        t_pt = np.asarray(ak.to_numpy(track_pt[ievt]))
-        t_eta = np.asarray(ak.to_numpy(track_eta[ievt]))
-        t_phi = np.asarray(ak.to_numpy(track_phi[ievt]))
-        t_mass = np.asarray(ak.to_numpy(track_mass[ievt]))
-        evt_jets = np.asarray(ak.to_numpy(jets[ievt]))
-        indices = np.asarray(ak.to_numpy(event_jet_indices[ievt]), dtype=np.int64)
-
-        if len(evt_jets) == 0:
-            continue
-
-        # Compute per-event radial profile
-        profile_evt, n_jets = _profile_event(
-            t_pt,
-            t_eta,
-            t_phi,
-            t_mass,
-            indices,
-            evt_jets,
-            annulus_edges,
-            compute_psi,
-            only_leading_jet,
-            only_associated,
-            jet_pt_range,
-            jet_y_max,
-            use_rho_old,
-        )
-
-        # --- Nominal ---
-        w_nom = nominal_w[ievt]
-        total_profile_nom += profile_evt * w_nom
-        total_profile_nom_var += profile_evt * w_nom**2
-        n_jets_counter += n_jets * w_nom
-
-        # --- Systematic variations ---
-        for name in syst_weights:
-            w = np.asarray(weights_dict[name])
-
-            if name.startswith("*"):
-                w_eff = w_nom * w[ievt]
-            else:
-                w_eff = w[ievt]
-
-            total_profile_var[name] += profile_evt * w_eff
-            total_profile_var_var[name] += (
-                profile_evt * w_eff**2
-            )  # accumulate variance for systematics
-            n_jets_var[name] += n_jets * w_eff
-
-        # --- Replica profiles ---
-        for key in replica_profiles:
-            w = np.asarray(weights_dict[key])
-            replica_profiles[key] += profile_evt * w[ievt]
-            replica_profile_var[key] += (
-                profile_evt * w[ievt] ** 2
-            )  # accumulate variance for replicas
-            n_jets_replica[key] += n_jets * w[ievt]
-
-    # --- Build output dictionary ---
-    profile_dict = {}
-
-    # Nominal
-    if n_jets_counter > 0:
-        total_profile_nom /= n_jets_counter
-        total_profile_nom_var /= (
-            n_jets_counter**2
-        )  # variance of mean = variance of sum / (n^2)
-    profile_dict["nominal"] = (
-        total_profile_nom.copy(),
-        total_profile_nom_var.copy(),
-        annulus_edges,
-    )
-
-    # Systematics
-    for name in syst_weights:
-        if n_jets_var[name] > 0:
-            total_profile_var[name] /= n_jets_var[name]
-            total_profile_var_var[name] /= n_jets_var[name] ** 2  # variance of mean
-        key = name
-        if name.startswith("*"):
-            key = name[1:]  # remove * from name for output
-        profile_dict[key] = (
-            total_profile_var[name].copy(),
-            total_profile_var_var[name].copy(),
-            annulus_edges,
-        )
-
-    # Replicas
-    for key in replica_profiles:
-        if n_jets_replica[key] > 0:
-            replica_profiles[key] /= n_jets_replica[key]
-            replica_profile_var[key] /= n_jets_replica[key] ** 2  # variance of mean
-        profile_dict[key] = (
-            replica_profiles[key].copy(),
-            replica_profile_var[key].copy(),
-            annulus_edges,
-        )
-
-    return profile_dict
 
 
 def count_jets(jets, weights, individual_jet_selection, leading_jet_only=False):
@@ -1574,3 +1066,38 @@ def json_to_hist(
             total_unc[i] = syst
 
     return {"nominal": nominal, "total_unc": total_unc, "bins": np.array(bins)}
+
+
+def validate_expression(result, *inputs):
+    """
+    Enforce -99 masking on a computed array.
+
+    Arguments:
+    result : np.ndarray
+        Computed result from numpy operations
+
+    *inputs : np.ndarray
+        Input arrays used to compute the result (used to propagate -99)
+
+    Returns:
+    np.ndarray
+        Cleaned array with invalid entries set to -99
+    """
+    import numpy as np
+
+    result = np.asarray(result).copy()
+
+    # --- Build mask from inputs ---
+    mask = np.zeros_like(result, dtype=bool)
+
+    for arr in inputs:
+        if arr is not None:
+            mask |= arr == -99
+
+    # --- Include invalid numeric results ---
+    mask |= ~np.isfinite(result)  # catches nan, inf
+
+    # --- Apply mask ---
+    result[mask] = -99.0
+
+    return result
