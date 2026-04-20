@@ -12,6 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
 import uncertainties
 import scipy.stats as stats
+import scipy.signal as signal
 from typing import Optional
 from matplotlib.collections import PatchCollection
 
@@ -74,10 +75,51 @@ def draw_textbox(ax, box):
     )
 
 
+def _line_band(
+    ax, x_all, y_all, dy_all, lo, hi, color, label, alpha=0.25, zorder=1, dx_all=None
+):
+    """Plot a solid line with a shaded uncertainty band, sorted by x-coordinate.
+
+    When both dx_all and dy_all are provided, the band is a polygon whose upper
+    edge connects the (x+dx, y+dy) corners and whose lower edge connects the
+    (x-dx, y-dy) corners — equivalent to the diagonal envelope of the 2D error
+    boxes, treating x and y uncertainties as uncorrelated.
+    When only dy_all is provided, a standard vertical fill_between band is drawn.
+    """
+    xs = x_all[lo:hi]
+    ys = y_all[lo:hi]
+    dys = dy_all[lo:hi] if dy_all is not None else None
+    dxs = dx_all[lo:hi] if dx_all is not None else None
+
+    idx = np.argsort(xs)
+    xs, ys = xs[idx], ys[idx]
+    ax.plot(xs, ys, color=color, label=label, linewidth=1.5, zorder=zorder + 1)
+
+    if dys is None:
+        return
+
+    dys = dys[idx]
+
+    if dxs is not None:
+        dxs = dxs[idx]
+        # Upper-right corners sorted by their x position
+        ux, uy = xs + dxs, ys + dys
+        upper_idx = np.argsort(ux)
+        # Lower-left corners sorted by their x position (reversed to close polygon)
+        lx, ly = xs - dxs, ys - dys
+        lower_idx = np.argsort(lx)
+        poly_x = np.concatenate([ux[upper_idx], lx[lower_idx[::-1]]])
+        poly_y = np.concatenate([uy[upper_idx], ly[lower_idx[::-1]]])
+        ax.fill(poly_x, poly_y, color=color, alpha=alpha, zorder=zorder)
+    else:
+        ax.fill_between(xs, ys - dys, ys + dys, color=color, alpha=alpha, zorder=zorder)
+
+
 def get_nnid_uncertainties(
     results_dict: dict[str, tuple[np.ndarray, np.ndarray]],
     index: int,
     measured_key: str = "nominal",
+    smooth_window: Optional[int] = None,
 ) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, dict]]:
     """Calculate uncertainties and uncertainty budget for NNID results.
 
@@ -89,11 +131,15 @@ def get_nnid_uncertainties(
         0 for NNID uncertainties, 1 for avg_r uncertainties.
     measured_key : str
         Key for the nominal results.
+    smooth_window : int or None
+        If set, smooth the total absolute uncertainty with a Savitzky-Golay
+        filter using this window length (must be odd and >= 3). A value of
+        5–9 is typical. None disables smoothing.
 
     Returns:
     --------
     abs_uncert : np.ndarray
-        Absolute total uncertainty array.
+        Absolute total uncertainty array (smoothed if smooth_window is set).
     syst_uncerts : dict[str, np.ndarray]
         Dictionary mapping uncertainty names to fractional uncertainty arrays.
     syst_info : dict[str, dict]
@@ -126,6 +172,19 @@ def get_nnid_uncertainties(
     nominal_vals = results_dict[measured_key][index]
     abs_uncert = total_rel_uncert * nominal_vals
 
+    if smooth_window is not None:
+        # Ensure window is odd and at least 3; clamp to array length
+        w = int(smooth_window)
+        w = min(w, len(abs_uncert))
+        if w % 2 == 0:
+            w -= 1
+        w = max(w, 3)
+        abs_uncert = np.clip(
+            signal.savgol_filter(abs_uncert, window_length=w, polyorder=2),
+            a_min=0,
+            a_max=None,
+        )
+
     return abs_uncert, syst_uncerts, syst_info
 
 
@@ -134,6 +193,7 @@ def get_theory_nnid_uncertainties(
     index: int,
     measured_key: str = "nominal",
     is_madgraph: bool = True,
+    smooth_window: Optional[int] = None,
 ) -> np.ndarray:
     """Calculate absolute theory uncertainties for NNID results.
 
@@ -150,11 +210,14 @@ def get_theory_nnid_uncertainties(
     is_madgraph : bool
         If True, use MadGraph theory uncertainties.
         If False, use Sherpa theory uncertainties.
+    smooth_window : int or None
+        If set, smooth the absolute uncertainty with a Savitzky-Golay filter
+        using this window length (must be odd and >= 3). None disables smoothing.
 
     Returns:
     --------
     abs_uncert : np.ndarray
-        Absolute uncertainty array.
+        Absolute uncertainty array (smoothed if smooth_window is set).
     """
     # Create UncertaintyCalculator
     calc = uncertainties.UncertaintyCalculator()
@@ -174,7 +237,21 @@ def get_theory_nnid_uncertainties(
 
     # Convert to absolute uncertainty
     nominal_vals = results_dict[measured_key][index]
-    return rel_uncert * nominal_vals
+    abs_uncert = rel_uncert * nominal_vals
+
+    if smooth_window is not None:
+        w = int(smooth_window)
+        w = min(w, len(abs_uncert))
+        if w % 2 == 0:
+            w -= 1
+        w = max(w, 3)
+        abs_uncert = np.clip(
+            signal.savgol_filter(abs_uncert, window_length=w, polyorder=2),
+            a_min=0,
+            a_max=None,
+        )
+
+    return abs_uncert
 
 
 def plot_nnid_uncert_budget(
@@ -443,6 +520,8 @@ def plot_nnid_pseudodata(
     figsize=(6.4, 4.8),
     xlim: tuple[float, float] = (6, 70),
     ylim: tuple[float, float] = (0, 10),
+    xscale: str = "linear",
+    yscale: str = "linear",
     xlabel: str = r"Median EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Simulation Internal",
@@ -450,6 +529,7 @@ def plot_nnid_pseudodata(
     color: str = "black",
     plot_uncertainty_budget: bool = False,
     show_connector_lines: bool = False,
+    smooth_window: Optional[int] = None,
 ) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot NNID results with uncertainties.
 
@@ -475,6 +555,10 @@ def plot_nnid_pseudodata(
         Label for the pseudodata in the legend.
     figsize : tuple
         Figure size.
+    xscale : str
+        X-axis scale (e.g. "linear", "log"). Default: "linear".
+    yscale : str
+        Y-axis scale (e.g. "linear", "log"). Default: "linear".
     xlabel : str
         X-axis label.
     ylabel : str
@@ -487,6 +571,9 @@ def plot_nnid_pseudodata(
         If True, draw faint lines connecting thresholds at the same location:
         prior to truth pseudodata (light gray), measured to truth pseudodata
         (light blue).
+    smooth_window : int or None
+        Savitzky-Golay window length for smoothing the uncertainty band.
+        Must be odd and >= 3. None disables smoothing (default).
 
     Returns:
     --------
@@ -501,8 +588,12 @@ def plot_nnid_pseudodata(
 
     # Calculate absolute uncertainties for both axes
     # index 0 is NNID (y), index 1 is avg_r (x)
-    dy, _, _ = get_nnid_uncertainties(combined_results, index=0)
-    dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
+    dy, _, _ = get_nnid_uncertainties(
+        combined_results, index=0, smooth_window=smooth_window
+    )
+    dx, _, _ = get_nnid_uncertainties(
+        combined_results, index=1, smooth_window=smooth_window
+    )
 
     # Extract nominal measurement and pseudodata
     # Results are stored as (nnids, avg_ri, avg_rj)
@@ -515,37 +606,17 @@ def plot_nnid_pseudodata(
     ax.xaxis.set_tick_params(labelsize=16, which="both", direction="in", top=True)
     ax.yaxis.set_tick_params(labelsize=16, which="both", direction="in", right=True)
 
-    # Plot truth pseudodata as black points
-    ax.scatter(
-        x_prior[low_limit:high_limit],
-        y_prior[low_limit:high_limit],
-        color="gray",
-        label="Prior",
-        s=15,
-        zorder=1,
-    )
-    ax.scatter(
-        x_pd[low_limit:high_limit],
-        y_pd[low_limit:high_limit],
-        color="red",
-        label=pd_label,
-        s=15,
-        zorder=2,
+    # Plot prior as solid gray line (no uncertainty band)
+    _line_band(
+        ax, x_prior, y_prior, None, low_limit, high_limit, "gray", "Prior", zorder=1
     )
 
-    # Plot measurement as blue crosses with error bars in both directions
-    ax.errorbar(
-        x_mc[low_limit:high_limit],
-        y_mc[low_limit:high_limit],
-        xerr=dx[low_limit:high_limit],
-        yerr=dy[low_limit:high_limit],
-        fmt="+",
-        color=color,
-        label=mc_label,
-        markersize=8,
-        zorder=3,
-        capsize=2,
-        linewidth=1,
+    # Plot truth pseudodata as solid red line (no uncertainty band — it's the target)
+    _line_band(ax, x_pd, y_pd, None, low_limit, high_limit, "red", pd_label, zorder=2)
+
+    # Plot measurement as solid line with shaded uncertainty band
+    _line_band(
+        ax, x_mc, y_mc, dy, low_limit, high_limit, color, mc_label, zorder=3, dx_all=dx
     )
 
     if show_connector_lines:
@@ -574,6 +645,8 @@ def plot_nnid_pseudodata(
                 linewidth=0.8,
             )
 
+    ax.set_xscale(xscale)
+    ax.set_yscale(yscale)
     ax.set_ylim(ylim)
     ax.set_xlim(xlim)
     ax.set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
@@ -616,17 +689,19 @@ def plot_nnid_data(
     high_limit: Optional[int] = None,
     thresholds: Optional[np.ndarray] = None,
     mc_label: str = "Data",
-    madgraph_label: str = "MadGraph",
-    sherpa_label: str = "Sherpa",
+    madgraph_label: str = "Drell Yan: MG5+Py8 + X",
+    sherpa_label: str = "Drell Yan: Sherpa2.2.11 + X",
     figsize: tuple[float, float] = (6.4, 4.8),
     xlim: tuple[float, float] = (6, 70),
     ylim: tuple[float, float] = (0, 10),
+    xscale: str = "linear",
     yscale: str = "linear",
     xlabel: str = r"Median EMD [GeV]",
     ylabel: str = "NNID",
     llab: str = "Internal",
     rlab: str = "Anti-kt $R=1.0$ jets\n$p_T \\in [330, 370]$ GeV",
     plot_uncertainty_budget: bool = False,
+    smooth_window: Optional[int] = None,
 ) -> plt.Figure | tuple[plt.Figure, plt.Figure, plt.Figure]:
     """Plot NNID data measurement compared to truth generators.
 
@@ -661,14 +736,19 @@ def plot_nnid_data(
         X-axis label.
     ylabel : str
         Y-axis label.
+    xscale : str
+        X-axis scale (e.g. "linear", "log"). Default: "linear".
     yscale : str
-        Y-axis scale.
+        Y-axis scale (e.g. "linear", "log"). Default: "linear".
     llab : str
         Left label for ATLAS label.
     rlab : str
         Right label for ATLAS label.
     plot_uncertainty_budget : bool
         If True, also generate uncertainty budget plots for NNID and avg_r.
+    smooth_window : int or None
+        Savitzky-Golay window length for smoothing the uncertainty band.
+        Must be odd and >= 3. None disables smoothing (default).
 
     Returns:
     --------
@@ -684,115 +764,75 @@ def plot_nnid_data(
     # Plot MadGraph prediction
     if madgraph_results is not None:
         dy_madgraph = get_theory_nnid_uncertainties(
-            madgraph_results, index=0, is_madgraph=True, measured_key="madgraph"
+            madgraph_results, index=0, is_madgraph=True, measured_key="madgraph",
+            smooth_window=smooth_window,
         )
         dx_madgraph = get_theory_nnid_uncertainties(
-            madgraph_results, index=1, is_madgraph=True, measured_key="madgraph"
+            madgraph_results, index=1, is_madgraph=True, measured_key="madgraph",
+            smooth_window=smooth_window,
         )
         y_madgraph, x_madgraph, _ = madgraph_results["madgraph"]
-        ax.errorbar(
-            x_madgraph[low_limit:high_limit],
-            y_madgraph[low_limit:high_limit],
-            color="dodgerblue",
-            label=madgraph_label,
-            marker="o",
-            linestyle="none",
-            markersize=4,
-            linewidth=1,
+        _line_band(
+            ax,
+            x_madgraph,
+            y_madgraph,
+            dy_madgraph,
+            low_limit,
+            high_limit,
+            "dodgerblue",
+            madgraph_label,
+            dx_all=dx_madgraph,
         )
-        box_height = 2 * dy_madgraph[low_limit:high_limit]
-        box_width = 2 * dx_madgraph[low_limit:high_limit]
-        mg_areas = box_height * box_width
-        mg_area_min, mg_area_max = mg_areas.min(), mg_areas.max()
-        mg_alphas = (
-            0.1 + 0.4 * (mg_area_max - mg_areas) / (mg_area_max - mg_area_min)
-            if mg_area_max > mg_area_min
-            else np.full_like(mg_areas, 0.3)
-        )
-        for x, y, h, w, a in zip(
-            x_madgraph[low_limit:high_limit],
-            y_madgraph[low_limit:high_limit],
-            box_height,
-            box_width,
-            mg_alphas,
-        ):
-            ax.add_patch(
-                Rectangle(
-                    (x - w / 2, y - h / 2),
-                    w,
-                    h,
-                    alpha=a,
-                    facecolor="dodgerblue",
-                    edgecolor=None,
-                )
-            )
 
     # Plot Sherpa prediction
     if sherpa_results is not None:
         dy_sherpa = get_theory_nnid_uncertainties(
-            sherpa_results, index=0, is_madgraph=False, measured_key="sherpa"
+            sherpa_results, index=0, is_madgraph=False, measured_key="sherpa",
+            smooth_window=smooth_window,
         )
         dx_sherpa = get_theory_nnid_uncertainties(
-            sherpa_results, index=1, is_madgraph=False, measured_key="sherpa"
+            sherpa_results, index=1, is_madgraph=False, measured_key="sherpa",
+            smooth_window=smooth_window,
         )
         y_sherpa, x_sherpa, _ = sherpa_results["sherpa"]
-        ax.plot(
-            x_sherpa[low_limit:high_limit],
-            y_sherpa[low_limit:high_limit],
-            color="deeppink",
-            label=sherpa_label,
-            marker="o",
-            linestyle="none",
-            markersize=4,
-            linewidth=1,
+        _line_band(
+            ax,
+            x_sherpa,
+            y_sherpa,
+            dy_sherpa,
+            low_limit,
+            high_limit,
+            "deeppink",
+            sherpa_label,
+            dx_all=dx_sherpa,
         )
-        box_height = 2 * dy_sherpa[low_limit:high_limit]
-        box_width = 2 * dx_sherpa[low_limit:high_limit]
-        sh_areas = box_height * box_width
-        sh_area_min, sh_area_max = sh_areas.min(), sh_areas.max()
-        sh_alphas = (
-            0.1 + 0.2 * (sh_area_max - sh_areas) / (sh_area_max - sh_area_min)
-            if sh_area_max > sh_area_min
-            else np.full_like(sh_areas, 0.2)
-        )
-        for x, y, h, w, a in zip(
-            x_sherpa[low_limit:high_limit],
-            y_sherpa[low_limit:high_limit],
-            box_height,
-            box_width,
-            sh_alphas,
-        ):
-            ax.add_patch(
-                Rectangle(
-                    (x - w / 2, y - h / 2),
-                    w,
-                    h,
-                    alpha=a,
-                    facecolor="deeppink",
-                    edgecolor=None,
-                )
-            )
 
-    # Plot measurement as black crosses with error bars in both directions
+    # Plot measurement as solid line with shaded uncertainty band
     if mc_results is not None:
         combined_results = mc_results.copy()
         combined_results.update(hv_results)
-        dy, _, _ = get_nnid_uncertainties(combined_results, index=0)
-        dx, _, _ = get_nnid_uncertainties(combined_results, index=1)
+        dy, _, _ = get_nnid_uncertainties(
+            combined_results, index=0, smooth_window=smooth_window
+        )
+        dx, _, _ = get_nnid_uncertainties(
+            combined_results, index=1, smooth_window=smooth_window
+        )
         y_mc, x_mc, _ = mc_results["nominal"]
-        ax.errorbar(
-            x_mc[low_limit:high_limit],
-            y_mc[low_limit:high_limit],
-            xerr=dx[low_limit:high_limit],
-            yerr=dy[low_limit:high_limit],
-            fmt="+",
-            color="black",
-            label=mc_label,
-            markersize=8,
-            capsize=2,
-            linewidth=1,
+        _line_band(
+            ax,
+            x_mc,
+            y_mc,
+            dy,
+            low_limit,
+            high_limit,
+            "black",
+            mc_label,
+            alpha=0.2,
+            zorder=3,
+            dx_all=dx,
         )
 
+    ax.set_xscale(xscale)
     ax.set_yscale(yscale)
     ax.set_xlabel(xlabel, fontsize=16, labelpad=2, loc="right")
     ax.set_ylabel(ylabel, fontsize=16, labelpad=2, loc="top")
@@ -808,12 +848,20 @@ def plot_nnid_data(
         order.append(labels.index(sherpa_label))
     if mc_results is not None:
         order.append(labels.index(mc_label))
-    ax.legend(
-        [handles[i] for i in order],
-        [labels[i] for i in order],
-        fontsize=12,
-        frameon=False,
-    )
+    handles_ordered = [handles[i] for i in order]
+    labels_ordered = [labels[i] for i in order]
+    if madgraph_results is not None or sherpa_results is not None:
+        targets = (madgraph_label, sherpa_label)
+        insert_idx = (
+            max(
+                (i for i, l in enumerate(labels_ordered) if any(t in l for t in targets)),
+                default=-1,
+            )
+            + 1
+        )
+        handles_ordered.insert(insert_idx, plt.Line2D([], [], linestyle="None", color="white"))
+        labels_ordered.insert(insert_idx, r"X = EW Zjj, VZ$\rightarrow$V$\mu\mu$")
+    ax.legend(handles_ordered, labels_ordered, fontsize=12, frameon=False)
 
     mh.atlas.label(
         ax=ax,
@@ -1714,11 +1762,11 @@ def draw_plot(
                         result_dict, measured_key="nominal", smooth_hv=smooth_hv
                     )
                 )
-                result_uncert_tuple = uncertainty_calculator.process_signed_uncertainties(
+                result_tuple = uncertainty_calculator.process_signed_uncertainties(
                     signed_uncerts, syst_covs, syst_info
                 )
                 result_uncert = np.sqrt(
-                    np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
+                    np.sum(np.array(list(result_tuple[0].values())) ** 2, axis=0)
                 )
             elif fmt["is_truth_pd"]:
                 if is_xSec:
