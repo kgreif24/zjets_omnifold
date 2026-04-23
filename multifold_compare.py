@@ -58,6 +58,7 @@ if args.data and args.omnifold is not None:
 key = "data" if args.data else "pseudodata"
 multifold = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold.h5")
 hv = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_sherpa.h5")
+nonDY = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_nonDY.h5")
 if not args.data:
     target = pd.read_hdf("/pscratch/sd/k/kgreif/multifold/pseudodata/target.h5")
 
@@ -65,6 +66,7 @@ if not args.data:
 trackj2_mask = multifold["pT_trackj2"] > args.min_pt_trackj2
 multifold = multifold.loc[trackj2_mask].reset_index(drop=True)
 hv = hv.loc[hv["pT_trackj2"] > args.min_pt_trackj2].reset_index(drop=True)
+nonDY = nonDY.loc[nonDY["pT_trackj2"] > args.min_pt_trackj2].reset_index(drop=True)
 if not args.data:
     target = target.loc[target["pT_trackj2"] > args.min_pt_trackj2].reset_index(
         drop=True
@@ -89,8 +91,17 @@ plots = [
 ]
 
 # Initialize the uncertainty calculator
-uncertainty_calculator = UncertaintyCalculator(smooth_hv=True)
+uncertainty_calculator = UncertaintyCalculator()
 uncertainty_calculator.remove_uncertainty("hvhad")
+uncertainty_calculator.remove_uncertainty("nonstrongDiboson")
+uncertainty_calculator.remove_uncertainty("nonstrongEW")
+uncertainty_calculator.add_uncertainty(
+    key="nonDY",
+    name="Non-DY",
+    color="chocolate",
+    stochastic=False,
+    prefix=None,
+)
 
 # Create output directory for plots
 plot_dir = pathlib.Path(args.store)
@@ -152,6 +163,12 @@ for obs_dict in plots:
             hv[obs_dict["key"]], bins=bins, weights=hv["weights_nominal"]
         )
         all_hists["hv"] = (hv_hist, None, bins)
+    # Non-DY histogram
+    if "nonDY" in uncertainty_calculator.uncertainty_definitions:
+        nonDY_hist, _ = np.histogram(
+            nonDY[obs_dict["key"]], bins=bins, weights=nonDY["weights_nominal"]
+        )
+        all_hists["nonDY"] = (nonDY_hist, None, bins)
     # DD histogram (if dd uncertainty is defined and weights_dd exists)
     if (
         "dd" in uncertainty_calculator.uncertainty_definitions
@@ -181,7 +198,7 @@ for obs_dict in plots:
         uncert_name,
         uncert_def,
     ) in uncertainty_calculator.uncertainty_definitions.items():
-        if uncert_def["stochastic"] or uncert_name in ["hv", "dd"]:
+        if uncert_def["stochastic"] or uncert_name in ["hv", "dd", "nonDY"]:
             continue
         weight_key = "weights_" + uncert_name
         uncert_hist, _ = np.histogram(
@@ -190,10 +207,13 @@ for obs_dict in plots:
         all_hists[uncert_name] = (uncert_hist, None, bins)
 
     # Calculate the uncertainties and total uncertainty
+    ismass = key in ["m_trackj1", "m_trackj2"]
     signed_uncerts, syst_covs_individual, syst_info_individual = (
         uncertainty_calculator.calculate_uncertainties(
             all_hists,
             measured_key="nominal",
+            smooth_hv=not ismass,
+            smooth_other=False,
         )
     )
     syst_uncerts, syst_covs, syst_info = (
