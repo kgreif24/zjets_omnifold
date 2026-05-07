@@ -484,14 +484,17 @@ class UncertaintyCalculator:
             mc_stat_bs_keys = [
                 key for key in all_hists.keys() if key.startswith(prefix)
             ]
-            mc_stat_bs_hists = np.array([all_hists[key][0] for key in mc_stat_bs_keys])
-            mc_stat_bs_uncert_unnorm = np.std(mc_stat_bs_hists, axis=0)
-            syst_uncerts["mc-stat-train"] = mc_stat_bs_uncert_unnorm / measured_hist
-            syst_covs["mc-stat-train"] = self._fill_covariance_matrix(
-                mc_stat_bs_hists,
-                means=np.mean(mc_stat_bs_hists, axis=0),
-            )
-            syst_info["mc-stat-train"] = mc_stat_bs_def.copy()
+            if len(mc_stat_bs_keys) > 0:
+                mc_stat_bs_hists = np.array(
+                    [all_hists[key][0] for key in mc_stat_bs_keys]
+                )
+                mc_stat_bs_uncert_unnorm = np.std(mc_stat_bs_hists, axis=0)
+                syst_uncerts["mc-stat-train"] = mc_stat_bs_uncert_unnorm / measured_hist
+                syst_covs["mc-stat-train"] = self._fill_covariance_matrix(
+                    mc_stat_bs_hists,
+                    means=np.mean(mc_stat_bs_hists, axis=0),
+                )
+                syst_info["mc-stat-train"] = mc_stat_bs_def.copy()
 
         # Data statistical uncertainty
         data_stat_def = self.uncertainty_definitions.get("data-stat")

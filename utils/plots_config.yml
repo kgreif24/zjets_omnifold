@@ -289,7 +289,7 @@ plots:
     key: "pT_trackj2"
     ylabel: $d\sigma/dp_{T,j2}$ [fb/GeV]
     xlabel: "$p_{T,j2}$ [GeV]"
-    ulim: 0.080
+    ulim: 0.120
     binlow: 0
     binhigh: 1000.0
     ibubins: 
@@ -447,7 +447,7 @@ plots:
     key: "m_trackj1"
     ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
     xlabel: "$m_{j1}$ [GeV]"
-    ulim: 0.165
+    ulim: 0.200
     binlow: 0
     binhigh: 150
     ibubins: 

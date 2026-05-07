@@ -479,7 +479,10 @@ class UncertaintyPlotter(plotter.Plotter):
                             )
 
                 # Build ensemble histograms for mc stat bootstrap uncertainty
-                if "mc-stat-bs" in self.uncertainty_calculator.uncertainty_definitions:
+                if (
+                    "mc-stat-train"
+                    in self.uncertainty_calculator.uncertainty_definitions
+                ):
                     if (
                         "bootstrap_mc" in use_weight_source
                         and use_weight_source["bootstrap_mc"].size > 0
