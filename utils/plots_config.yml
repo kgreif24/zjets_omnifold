@@ -229,7 +229,7 @@ plots:
     key: "y_ll"
     ylabel: $d\sigma/dy_{\mu\mu}$ [fb]
     xlabel: '$y_{\mu\mu}$'
-    ulim: 0.06
+    ulim: 0.08
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -289,7 +289,7 @@ plots:
     key: "pT_trackj2"
     ylabel: $d\sigma/dp_{T,j2}$ [fb/GeV]
     xlabel: "$p_{T,j2}$ [GeV]"
-    ulim: 0.080
+    ulim: 0.120
     binlow: 0
     binhigh: 1000.0
     ibubins: 
@@ -313,7 +313,7 @@ plots:
     key: "y_trackj1"
     ylabel: $d\sigma/dy_{j1}$ [fb]
     xlabel: "$y_{j1}$"
-    ulim: 0.06
+    ulim: 0.08
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -447,7 +447,7 @@ plots:
     key: "m_trackj1"
     ylabel: $d\sigma/dm_{j1}$ [fb/GeV]
     xlabel: "$m_{j1}$ [GeV]"
-    ulim: 0.165
+    ulim: 0.200
     binlow: 0
     binhigh: 150
     ibubins: 
@@ -505,7 +505,7 @@ plots:
     key: "tau1_trackj1"
     ylabel: $d\sigma/d\tau_{1,j1}$ [fb]
     xlabel: '$\tau_{1,j1}$'
-    ulim: 0.119
+    ulim: 0.150
     binlow: 0
     binhigh: 0.9
     ibubins: 
