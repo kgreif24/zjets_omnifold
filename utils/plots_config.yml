@@ -229,7 +229,7 @@ plots:
     key: "y_ll"
     ylabel: $d\sigma/dy_{\mu\mu}$ [fb]
     xlabel: '$y_{\mu\mu}$'
-    ulim: 0.06
+    ulim: 0.08
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -313,7 +313,7 @@ plots:
     key: "y_trackj1"
     ylabel: $d\sigma/dy_{j1}$ [fb]
     xlabel: "$y_{j1}$"
-    ulim: 0.06
+    ulim: 0.08
     binlow: -3.0
     binhigh: 3.0
     ibubins: 
@@ -505,7 +505,7 @@ plots:
     key: "tau1_trackj1"
     ylabel: $d\sigma/d\tau_{1,j1}$ [fb]
     xlabel: '$\tau_{1,j1}$'
-    ulim: 0.119
+    ulim: 0.150
     binlow: 0
     binhigh: 0.9
     ibubins: 
