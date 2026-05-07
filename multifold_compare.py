@@ -33,10 +33,29 @@ parser.add_argument(
     help="Path to store the plots (default: ./plot_storage/multifold/pd)",
 )
 parser.add_argument(
+    "--min-pt-trackj1",
+    type=float,
+    default=5.0,
+    help="Minimum pT_trackj1 for track-jet-1 observables (default: 5)",
+)
+parser.add_argument(
     "--min-pt-trackj2",
     type=float,
     default=5.0,
-    help="Minimum pT_trackj2 required for plots (default: 5)",
+    help="Minimum pT_trackj2 for track-jet-2 observables (default: 5)",
+)
+parser.add_argument(
+    "--region",
+    type=int,
+    default=0,
+    choices=[0, 1, 2, 3],
+    help=(
+        "Kinematic region to use for plots: "
+        "0=default (pT_ll>200), "
+        "1=high pT_Z (pT_trackj2>50, pT_ll>350), "
+        "2=EW enhanced (m_jj>200, |dy_jj|>2, pT_ll>200), "
+        "3=diboson enhanced (pT_trackj1>32, pT_ll>200)"
+    ),
 )
 parser.add_argument(
     "--png",
@@ -62,16 +81,6 @@ nonDY = pd.read_hdf(f"/pscratch/sd/k/kgreif/multifold/{key}/multifold_nonDY.h5")
 if not args.data:
     target = pd.read_hdf("/pscratch/sd/k/kgreif/multifold/pseudodata/target.h5")
 
-# Require track-jet 2 pT > threshold for all plots/calculations
-trackj2_mask = multifold["pT_trackj2"] > args.min_pt_trackj2
-multifold = multifold.loc[trackj2_mask].reset_index(drop=True)
-hv = hv.loc[hv["pT_trackj2"] > args.min_pt_trackj2].reset_index(drop=True)
-nonDY = nonDY.loc[nonDY["pT_trackj2"] > args.min_pt_trackj2].reset_index(drop=True)
-if not args.data:
-    target = target.loc[target["pT_trackj2"] > args.min_pt_trackj2].reset_index(
-        drop=True
-    )
-
 # Load arrays of weights for building histograms
 dbs_weights = [
     col for col in multifold.keys() if col.startswith("weights_bootstrap_data")
@@ -91,7 +100,7 @@ plots = [
 ]
 
 # Initialize the uncertainty calculator
-uncertainty_calculator = UncertaintyCalculator()
+uncertainty_calculator = UncertaintyCalculator(multifold_nn_init=True)
 uncertainty_calculator.remove_uncertainty("hvhad")
 uncertainty_calculator.remove_uncertainty("nonstrongDiboson")
 uncertainty_calculator.remove_uncertainty("nonstrongEW")
@@ -107,6 +116,96 @@ uncertainty_calculator.add_uncertainty(
 plot_dir = pathlib.Path(args.store)
 plot_dir.mkdir(parents=True, exist_ok=True)
 
+# Observables that require a first track-jet, so pT_trackj1 cut is applied
+TRACKJ1_KEYS = {
+    "pT_trackj1",
+    "y_trackj1",
+    "phi_trackj1",
+    "m_trackj1",
+    "tau1_trackj1",
+    "tau2_trackj1",
+    "tau3_trackj1",
+    "Ntracks_trackj1",
+}
+
+# Observables that require a second track-jet, so pT_trackj2 cut is applied
+TRACKJ2_KEYS = {
+    "pT_trackj2",
+    "y_trackj2",
+    "phi_trackj2",
+    "m_trackj2",
+    "tau1_trackj2",
+    "tau2_trackj2",
+    "tau3_trackj2",
+    "Ntracks_trackj2",
+}
+
+
+def _compute_jj(df):
+    """Return (m_jj, dy_jj) arrays computed from track-jet columns in df."""
+    dy_jj = np.abs(df["y_trackj1"].values - df["y_trackj2"].values)
+    px1 = df["pT_trackj1"].values * np.cos(df["phi_trackj1"].values)
+    py1 = df["pT_trackj1"].values * np.sin(df["phi_trackj1"].values)
+    mt1 = np.sqrt(df["pT_trackj1"].values ** 2 + df["m_trackj1"].values ** 2)
+    pz1 = mt1 * np.sinh(df["y_trackj1"].values)
+    E1 = mt1 * np.cosh(df["y_trackj1"].values)
+    px2 = df["pT_trackj2"].values * np.cos(df["phi_trackj2"].values)
+    py2 = df["pT_trackj2"].values * np.sin(df["phi_trackj2"].values)
+    mt2 = np.sqrt(df["pT_trackj2"].values ** 2 + df["m_trackj2"].values ** 2)
+    pz2 = mt2 * np.sinh(df["y_trackj2"].values)
+    E2 = mt2 * np.cosh(df["y_trackj2"].values)
+    m_jj = np.sqrt(
+        (E1 + E2) ** 2 - (px1 + px2) ** 2 - (py1 + py2) ** 2 - (pz1 + pz2) ** 2
+    )
+    return m_jj, dy_jj
+
+
+def get_kinematic_mask(df, region):
+    """Return a boolean mask selecting events in the requested kinematic region.
+
+    Regions:
+        0: pT_ll > 200 GeV
+        1: pT_trackj2 > 50 GeV AND pT_ll > 350 GeV
+        2: m_jj > 200 GeV AND |dy_jj| > 2 AND pT_ll > 200 GeV
+        3: pT_trackj1 > 32 GeV AND pT_ll > 200 GeV
+    """
+    if region == 0:
+        return df["pT_ll"].values > 200
+    elif region == 1:
+        return (df["pT_trackj2"].values > 50) & (df["pT_ll"].values > 350)
+    elif region == 2:
+        m_jj, dy_jj = _compute_jj(df)
+        return (m_jj > 200) & (dy_jj > 2) & (df["pT_ll"].values > 200)
+    elif region == 3:
+        return (df["pT_trackj1"].values > 32) & (df["pT_ll"].values > 200)
+
+
+# Pre-compute kinematic region masks and trackj2 pT masks
+region_masks = {
+    "multifold": get_kinematic_mask(multifold, args.region),
+    "hv": get_kinematic_mask(hv, args.region),
+    "nonDY": get_kinematic_mask(nonDY, args.region),
+}
+trackj1_masks = {
+    "multifold": multifold["pT_trackj1"].values > args.min_pt_trackj1,
+    "hv": hv["pT_trackj1"].values > args.min_pt_trackj1,
+    "nonDY": nonDY["pT_trackj1"].values > args.min_pt_trackj1,
+}
+trackj2_masks = {
+    "multifold": multifold["pT_trackj2"].values > args.min_pt_trackj2,
+    "hv": hv["pT_trackj2"].values > args.min_pt_trackj2,
+    "nonDY": nonDY["pT_trackj2"].values > args.min_pt_trackj2,
+}
+if not args.data:
+    region_masks["target"] = get_kinematic_mask(target, args.region)
+    trackj1_masks["target"] = target["pT_trackj1"].values > args.min_pt_trackj1
+    trackj2_masks["target"] = target["pT_trackj2"].values > args.min_pt_trackj2
+
+print(
+    f"Kinematic region {args.region}: "
+    f"{region_masks['multifold'].sum()} / {len(multifold)} multifold events pass"
+)
+
 # Dictionary to store chi-squared test results (only used in pseudodata mode)
 chi2_results = {}
 
@@ -116,8 +215,38 @@ for obs_dict in plots:
     key = obs_dict["key"]
     print("Plotting observable", key)
 
-    # Calculate the bins
-    bins = np.array(obs_dict["ibubins"])
+    # Determine per-observable masks
+    is_trackj1 = key in TRACKJ1_KEYS
+    is_trackj2 = key in TRACKJ2_KEYS
+    mf_mask = region_masks["multifold"]
+    hv_mask = region_masks["hv"]
+    nonDY_mask = region_masks["nonDY"]
+    if is_trackj1:
+        mf_mask = mf_mask & trackj1_masks["multifold"]
+        hv_mask = hv_mask & trackj1_masks["hv"]
+        nonDY_mask = nonDY_mask & trackj1_masks["nonDY"]
+    if is_trackj2:
+        mf_mask = mf_mask & trackj2_masks["multifold"]
+        hv_mask = hv_mask & trackj2_masks["hv"]
+        nonDY_mask = nonDY_mask & trackj2_masks["nonDY"]
+
+    mf = multifold.loc[mf_mask].reset_index(drop=True)
+    hv_df = hv.loc[hv_mask].reset_index(drop=True)
+    nonDY_df = nonDY.loc[nonDY_mask].reset_index(drop=True)
+    if not args.data:
+        tgt_mask = region_masks["target"]
+        if is_trackj1:
+            tgt_mask = tgt_mask & trackj1_masks["target"]
+        if is_trackj2:
+            tgt_mask = tgt_mask & trackj2_masks["target"]
+        tgt = target.loc[tgt_mask].reset_index(drop=True)
+
+    # Calculate the bins, using region-specific binning when defined
+    region_key = str(args.region)
+    if "region_bins" in obs_dict and region_key in obs_dict["region_bins"]:
+        bins = np.array(obs_dict["region_bins"][region_key])
+    else:
+        bins = np.array(obs_dict["ibubins"])
 
     # Get bin properties
     bin_centers = (bins[1:] + bins[:-1]) / 2
@@ -128,69 +257,69 @@ for obs_dict in plots:
     # Nominal histogram
     all_hists = {}
     source_hist, _ = np.histogram(
-        multifold[obs_dict["key"]],
+        mf[obs_dict["key"]],
         bins=bins,
-        weights=multifold["weights_nominal"],
+        weights=mf["weights_nominal"],
     )
     mc_var, _ = np.histogram(
-        multifold[obs_dict["key"]], bins=bins, weights=multifold["weights_nominal"] ** 2
+        mf[obs_dict["key"]], bins=bins, weights=mf["weights_nominal"] ** 2
     )
     all_hists["nominal"] = (source_hist, mc_var, bins)
     # Data bootstrap histograms (for data-stat uncertainty)
     if "data-stat" in uncertainty_calculator.uncertainty_definitions:
         for weight in dbs_weights:
             hist, _ = np.histogram(
-                multifold[obs_dict["key"]], bins=bins, weights=multifold[weight]
+                mf[obs_dict["key"]], bins=bins, weights=mf[weight]
             )
             all_hists[weight.removeprefix("weights_")] = (hist, None, bins)
     # MC bootstrap histograms (for mc-stat uncertainty)
     if "mc-stat" in uncertainty_calculator.uncertainty_definitions:
         for weight in mcbs_weights:
             hist, _ = np.histogram(
-                multifold[obs_dict["key"]], bins=bins, weights=multifold[weight]
+                mf[obs_dict["key"]], bins=bins, weights=mf[weight]
             )
             all_hists[weight.removeprefix("weights_")] = (hist, None, bins)
     # Ensemble histograms (for nn-stability uncertainty)
     if "nn-stability" in uncertainty_calculator.uncertainty_definitions:
         for weight in ens_weights:
             hist, _ = np.histogram(
-                multifold[obs_dict["key"]], bins=bins, weights=multifold[weight]
+                mf[obs_dict["key"]], bins=bins, weights=mf[weight]
             )
             all_hists[weight.removeprefix("weights_")] = (hist, None, bins)
     # HV histogram
     if "hv" in uncertainty_calculator.uncertainty_definitions:
         hv_hist, _ = np.histogram(
-            hv[obs_dict["key"]], bins=bins, weights=hv["weights_nominal"]
+            hv_df[obs_dict["key"]], bins=bins, weights=hv_df["weights_nominal"]
         )
         all_hists["hv"] = (hv_hist, None, bins)
     # Non-DY histogram
     if "nonDY" in uncertainty_calculator.uncertainty_definitions:
         nonDY_hist, _ = np.histogram(
-            nonDY[obs_dict["key"]], bins=bins, weights=nonDY["weights_nominal"]
+            nonDY_df[obs_dict["key"]], bins=bins, weights=nonDY_df["weights_nominal"]
         )
         all_hists["nonDY"] = (nonDY_hist, None, bins)
     # DD histogram (if dd uncertainty is defined and weights_dd exists)
     if (
         "dd" in uncertainty_calculator.uncertainty_definitions
-        and "weights_dd" in multifold.columns
+        and "weights_dd" in mf.columns
     ):
         dd_hist, _ = np.histogram(
-            multifold[obs_dict["key"]], bins=bins, weights=multifold["weights_dd"]
+            mf[obs_dict["key"]], bins=bins, weights=mf["weights_dd"]
         )
         all_hists["dd"] = (dd_hist, None, bins)
     # DD target histogram (only needed if dd uncertainty is defined)
     if (
         "dd" in uncertainty_calculator.uncertainty_definitions
-        and "target_dd" in multifold.columns
+        and "target_dd" in mf.columns
     ):
         dd_target_hist, _ = np.histogram(
-            multifold[obs_dict["key"]], bins=bins, weights=multifold["target_dd"]
+            mf[obs_dict["key"]], bins=bins, weights=mf["target_dd"]
         )
         all_hists["target_dd"] = (dd_target_hist, None, bins)
     # Target histogram
     if not args.data:
         target_hist, _ = np.histogram(
-            target[obs_dict["key"]], bins=bins, weights=target["weight_mc"]
+            tgt[obs_dict["key"]], bins=bins, weights=tgt["weight_mc"]
         )
         all_hists["target"] = (target_hist, None, bins)
     # All other histograms
@@ -202,7 +331,7 @@ for obs_dict in plots:
             continue
         weight_key = "weights_" + uncert_name
         uncert_hist, _ = np.histogram(
-            multifold[obs_dict["key"]], bins=bins, weights=multifold[weight_key]
+            mf[obs_dict["key"]], bins=bins, weights=mf[weight_key]
         )
         all_hists[uncert_name] = (uncert_hist, None, bins)
 
@@ -213,7 +342,6 @@ for obs_dict in plots:
             all_hists,
             measured_key="nominal",
             smooth_hv=not ismass,
-            smooth_other=False,
         )
     )
     syst_uncerts, syst_covs, syst_info = (
