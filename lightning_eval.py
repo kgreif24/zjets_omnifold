@@ -28,6 +28,7 @@ from plotter import Plotter
 from cli.of_config import OfConfig
 from wasserstein_metric import WassersteinOne
 import utils.subprocess_utils as su
+from utils.weights_io import write_weights_npz
 
 
 class OfEval:
@@ -447,10 +448,10 @@ class OfEval:
                 )
 
             # Save new weights for future use
-            np.savez(
+            write_weights_npz(
                 f"{self.save_dir}/iteration_{self.iteration}_step_{self.step}.npz",
-                raw_train_output=predictions_train,
-                raw_test_output=predictions_test,
+                raw_train=predictions_train,
+                raw_test=predictions_test,
                 network_train=network_weights_train,
                 network_test=network_weights_test,
                 train=self.updated_weights_train,

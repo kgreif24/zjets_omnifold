@@ -376,6 +376,93 @@ class OfConfig:
             ),
         )
 
+        # AUSSIE (non-iterative alternative to Omnifold step 2)
+        self.parser.add_argument(
+            "--aussie_min_lr",
+            type=float,
+            default=0.0000001,
+            help="Minimum learning rate for the AUSSIE unfolder",
+        )
+        self.parser.add_argument(
+            "--aussie_max_lr",
+            type=float,
+            default=0.00001,
+            help="Maximum learning rate for the AUSSIE unfolder",
+        )
+        self.parser.add_argument(
+            "--aussie_max_steps",
+            type=int,
+            default=11000,
+            help="Maximum number of steps for AUSSIE training",
+        )
+        self.parser.add_argument(
+            "--aussie_warmup_steps",
+            type=int,
+            default=500,
+            help=(
+                "Linear warmup steps for AUSSIE training. A short warmup helps "
+                "stabilise the gradient-of-gradient loss at init."
+            ),
+        )
+        self.parser.add_argument(
+            "--aussie_cos_steps",
+            type=int,
+            default=3000,
+            help="Steps in the cosine annealing phase for AUSSIE training",
+        )
+        self.parser.add_argument(
+            "--aussie_linear_steps",
+            type=int,
+            default=15000,
+            help="Steps in the linear cooldown after the cosine phase for AUSSIE",
+        )
+        self.parser.add_argument(
+            "--aussie_batch_size",
+            type=int,
+            default=128,
+            help=(
+                "Batch size for AUSSIE training. Smaller than the Omnifold "
+                "default to accommodate the create_graph=True double-backward."
+            ),
+        )
+        self.parser.add_argument(
+            "--aussie_min_checkpoint_steps",
+            type=int,
+            default=5500,
+            help="Minimum steps before a checkpoint becomes eligible as the best",
+        )
+        self.parser.add_argument(
+            "--aussie_classifier_override",
+            type=str,
+            default=None,
+            help=(
+                "Override for the step-1 classifier checkpoint used by AUSSIE. "
+                "If None, falls back to "
+                "{root_dir}/iteration_1_step_1/best_model.ckpt"
+            ),
+        )
+        self.parser.add_argument(
+            "--aussie_grad_clip",
+            type=float,
+            default=1.0,
+            help="Value passed to Trainer(gradient_clip_val=...) for AUSSIE",
+        )
+        self.parser.add_argument(
+            "--aussie_logit_clamp",
+            type=float,
+            default=10.0,
+            help="Clamp on log R_theta(x) for numerical stability in AUSSIE loss",
+        )
+        self.parser.add_argument(
+            "--aussie_val_check_interval",
+            type=int,
+            default=500,
+            help=(
+                "Run validation every this many optimizer steps for AUSSIE "
+                "training. Passed directly to Trainer(val_check_interval=...)."
+            ),
+        )
+
         # Logging
         self.parser.add_argument(
             "--wandb", action="store_true", help="Use wandb for logging"
