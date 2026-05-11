@@ -302,6 +302,7 @@ class UncertaintyCalculator:
                 "muEffTrig",
             ],
             "MC Stat": ["mc-stat-test", "mc-stat-train"],
+            "Data Stat": ["data-stat"],
             "Theory": [
                 "theoryQCD",
                 "theoryPDF",
@@ -451,16 +452,23 @@ class UncertaintyCalculator:
         mc_stat_def = self.uncertainty_definitions.get("mc-stat-test")
         if mc_stat_def is not None:
 
-            # There are two possible ways to compute MC test uncertainty:
+            # There are three possible ways to compute MC test uncertainty:
             # 1. Bootstrap the MC test sample
             # 2. Use the weighted Poisson counting error in the measured histogram
+            # 3. For distributions where bins are correlated, a covariance matrix is built and the sqrt of the diagonal of the covariance matrix gives the uncertainty
             # Default to 2 unless the bootstrap hists are provided, in which case use 1
             prefix = mc_stat_def.get("prefix", "bootstrap_mc_test_")
             mc_stat_test_bs_keys = [
                 key for key in all_hists.keys() if key.startswith(prefix)
             ]
+            if measured_hist_var.ndim == 2:
+                var = np.diag(measured_hist_var)
+                cov = measured_hist_var # Is a 2x2 non-diagonal cov matrix
+                syst_uncerts["mc-stat-test"] = np.sqrt(var) / measured_hist
+                syst_covs["mc-stat-test"]    = cov
+                
             # Note with bootstraps fill off diagonal elements of the covariance matrix
-            if len(mc_stat_test_bs_keys) > 0:
+            elif len(mc_stat_test_bs_keys) > 0:
                 mc_stat_test_bs_hists = np.array(
                     [all_hists[key][0] for key in mc_stat_test_bs_keys]
                 )
@@ -479,6 +487,7 @@ class UncertaintyCalculator:
                 syst_covs["mc-stat-test"] = np.diag(measured_hist_var)
             syst_info["mc-stat-test"] = mc_stat_def.copy()
 
+        
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
         mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-train")
         if mc_stat_bs_def is not None:
@@ -739,7 +748,13 @@ class UncertaintyCalculator:
         """
 
         central_hist, central_hist_var, _ = all_hists[measured_key]
-        syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
+        if central_hist_var.ndim == 2:
+            var = np.diag(central_hist_var)
+            cov = central_hist_var # Is a 2x2 non-diagonal cov matrix
+            syst_uncerts = [np.sqrt(var) / central_hist]
+        else:
+            syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
+
         if is_madgraph:
             weight_names = self.madgraph_uncertainties
         else:
