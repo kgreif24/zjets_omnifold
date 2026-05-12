@@ -440,12 +440,7 @@ class Plotter:
         # the histograms using uproot
         if plot_dict["type"] == "fastjet":
             tobject = self._get_cached_root_object(root_index, plot_dict["key"])
-            if "TH2" in tobject.classname:
-                hist, binsx, binsy = tobject.to_numpy()
-                bins = (binsx, binsy)
-            else:
-                hist, bins = tobject.to_numpy()
-
+            hist, bins = tobject.to_numpy()
             # Get variance from ROOT object
             variance = tobject.variances()
 

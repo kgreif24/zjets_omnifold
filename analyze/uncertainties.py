@@ -30,7 +30,6 @@ class UncertaintyCalculator:
         uncertainty_groups: Optional[Dict[str, List[str]]] = None,
         hide_individual_uncertainties: bool = True,
         multifold_nn_init: bool = False,
-        smooth_hv: bool = False,
     ):
         """Initialize the UncertaintyCalculator.
 
@@ -53,8 +52,6 @@ class UncertaintyCalculator:
         multifold_nn_init : bool, optional
             If True, use the multifold nn-stability uncertainty, which only differs
             from the Omnifold one by an additional numeric factor
-        smooth_hv : bool, optional
-            If True, smooth the hidden variable & hvhad uncertainty only (default: False)
         """
         if uncertainty_definitions is None:
             uncertainty_definitions = self._get_default_definitions()
@@ -66,7 +63,6 @@ class UncertaintyCalculator:
         self.uncertainty_groups = uncertainty_groups
         self.hide_individual_uncertainties = hide_individual_uncertainties
         self.multifold_nn_init = multifold_nn_init
-        self.smooth_hv = smooth_hv
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
@@ -193,20 +189,20 @@ class UncertaintyCalculator:
                 "prefix": None,
             },
             "hvhad": {
-                "name": "Hidden variable (HC)",
+                "name": "Hadron composition",
                 "color": "orange",
                 "stochastic": False,
                 "prefix": None,
             },
-            "mc-stat": {
-                "name": "MC stat",
+            "mc-stat-test": {
+                "name": "MC stat (test)",
                 "color": "green",
                 "stochastic": True,
-                "prefix": None,
+                "prefix": "bootstrap_mc_test_",
             },
-            "mc-stat-bs": {
-                "name": "MC stat (bootstrap)",
-                "color": "teal",
+            "mc-stat-train": {
+                "name": "MC stat (train)",
+                "color": "magenta",
                 "stochastic": True,
                 "prefix": "bootstrap_mc_",
             },
@@ -218,55 +214,55 @@ class UncertaintyCalculator:
             },
             "data-stat": {
                 "name": "Data stat",
-                "color": "blue",
+                "color": "mediumslateblue",
                 "stochastic": True,
                 "prefix": "bootstrap_data_",
             },
             "theoryQCD": {
                 "name": "Theory QCD",
-                "color": "limegreen",        # strong green
+                "color": "gold",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPDF": {
                 "name": "Theory PDF",
-                "color": "teal",             # green-blue
+                "color": "goldenrod",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryAlphaS": {
                 "name": "Theory AlphaS",
-                "color": "darkcyan",         # deeper cyan
+                "color": "mediumslateblue",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSsoft": {
                 "name": "Theory PS soft",
-                "color": "turquoise",        # bright cyan
+                "color": "indigo",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSjet": {
                 "name": "Theory PS jet",
-                "color": "deepskyblue",      # bright blue
+                "color": "crimson",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryMPI": {
                 "name": "Theory MPI",
-                "color": "royalblue",        # strong blue
+                "color": "dimgray",
                 "stochastic": False,
                 "prefix": None,
             },
             "theoryPSscale": {
                 "name": "Theory PS scale",
-                "color": "slateblue",        # blue-purple
+                "color": "saddlebrown",
                 "stochastic": False,
                 "prefix": None,
             },
             "topBackground": {
                 "name": "Top background",
-                "color": "tomato",
+                "color": "navajowhite",
                 "stochastic": False,
                 "prefix": None,
             },
@@ -305,7 +301,8 @@ class UncertaintyCalculator:
                 "muEffTrack",
                 "muEffTrig",
             ],
-            "MC Stat": ["mc-stat", "mc-stat-bs"],
+            "MC Stat": ["mc-stat-test", "mc-stat-train"],
+            "Data Stat": ["data-stat"],
             "Theory": [
                 "theoryQCD",
                 "theoryPDF",
@@ -397,9 +394,8 @@ class UncertaintyCalculator:
         self,
         all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
         measured_key: str = "nominal",
-        ungrouped: bool = False,
-        signed: bool = False,
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
+        smooth_hv: bool = True,
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Dict]]:
         """Calculate all uncertainties from histogram dictionary.
         Will only calculate uncertainties that are defined in the
         uncertainty_definitions dictionary, the rest will be ignored.
@@ -418,15 +414,21 @@ class UncertaintyCalculator:
             - bins: The bin edges
         measured_key : str, optional
             Key in all_hists for the measured/unfolded distribution (default: "nominal")
-        ungrouped : bool, optional
-            If True, return only ungrouped uncertainties without applying grouping
+        smooth_hv : bool, optional
+            If True, smooth the hidden variable uncertainties only (default: True)
 
         Returns:
         --------
         syst_uncerts : dict[str, np.ndarray]
-            Dictionary mapping uncertainty names to fractional uncertainty arrays.
+            Dictionary mapping uncertainty names to signed fractional uncertainty
+            arrays. Non-stochastic uncertainties retain their sign; stochastic
+            uncertainties (mc-stat, nn-stability, etc.) are inherently non-negative
+            since they are derived from std/sqrt(var). Uncertainties are not grouped.
+            Call process_signed_uncertainties to obtain absolute-valued, grouped
+            uncertainties suitable for budget plots and total uncertainty computation.
         syst_covs : dict[str, np.ndarray]
             Dictionary mapping uncertainty names to covariance matrices.
+            Covariance matrices are computed using signed uncertainties.
         syst_info : dict[str, dict]
             Dictionary mapping uncertainty names to metadata (name, color, etc.).
             Useful for plotting only uncertainties that are active (in the dictionary)
@@ -446,16 +448,53 @@ class UncertaintyCalculator:
         syst_covs = {}
         syst_info = {}
 
-        # MC statistical uncertainty (from raw MC stat uncertainty)
-        mc_stat_def = self.uncertainty_definitions.get("mc-stat")
+        # MC test statistical uncertainty
+        mc_stat_def = self.uncertainty_definitions.get("mc-stat-test")
         if mc_stat_def is not None:
-            mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
-            syst_uncerts["mc-stat"] = mc_stat_uncert_unnorm / measured_hist
-            syst_covs["mc-stat"] = np.diag(measured_hist_var)
-            syst_info["mc-stat"] = mc_stat_def.copy()
+
+            # There are three possible ways to compute MC test uncertainty:
+            # 1. Use the weighted Poisson counting error in the measured histogram
+            # 2. Bootstrap the MC test sample and build covariance matrix using
+            # the spread of the bootstraps.
+            # 3. For the jet pT profile observables, can calculate
+            # an analytic uncertainty on the weighted mean. Cheaper than bootstrapping
+            # so use this instead when possible.
+            prefix = mc_stat_def.get("prefix", "bootstrap_mc_test_")
+            mc_stat_test_bs_keys = [
+                key for key in all_hists.keys() if key.startswith(prefix)
+            ]
+
+            # Case #3: covariance matrix covering passed in as second item in
+            # "measured_key" tuple. Note _fill_covariance_matrix is not
+            # called since the matrix has already been calculated
+            if measured_hist_var.ndim == 2:
+                var = np.diag(measured_hist_var)
+                cov = measured_hist_var  # Is a 2x2 non-diagonal cov matrix
+                syst_uncerts["mc-stat-test"] = np.sqrt(var) / measured_hist
+                syst_covs["mc-stat-test"] = cov
+
+            # Case #2: use histograms built from bootstraps of the testing set
+            elif len(mc_stat_test_bs_keys) > 0:
+                mc_stat_test_bs_hists = np.array(
+                    [all_hists[key][0] for key in mc_stat_test_bs_keys]
+                )
+                mc_stat_test_bs_uncert_unnorm = np.std(mc_stat_test_bs_hists, axis=0)
+                syst_uncerts["mc-stat-test"] = (
+                    mc_stat_test_bs_uncert_unnorm / measured_hist
+                )
+                syst_covs["mc-stat-test"] = self._fill_covariance_matrix(
+                    mc_stat_test_bs_hists,
+                    means=np.mean(mc_stat_test_bs_hists, axis=0),
+                )
+            # Case #1: Use the poisson counting error directly
+            else:
+                mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
+                syst_uncerts["mc-stat-test"] = mc_stat_uncert_unnorm / measured_hist
+                syst_covs["mc-stat-test"] = np.diag(measured_hist_var)
+            syst_info["mc-stat-test"] = mc_stat_def.copy()
 
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
-        mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-bs")
+        mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-train")
         if mc_stat_bs_def is not None:
             prefix = mc_stat_bs_def.get("prefix", "bootstrap_mc_")
             mc_stat_bs_keys = [
@@ -463,12 +502,12 @@ class UncertaintyCalculator:
             ]
             mc_stat_bs_hists = np.array([all_hists[key][0] for key in mc_stat_bs_keys])
             mc_stat_bs_uncert_unnorm = np.std(mc_stat_bs_hists, axis=0)
-            syst_uncerts["mc-stat-bs"] = mc_stat_bs_uncert_unnorm / measured_hist
-            syst_covs["mc-stat-bs"] = self._fill_covariance_matrix(
+            syst_uncerts["mc-stat-train"] = mc_stat_bs_uncert_unnorm / measured_hist
+            syst_covs["mc-stat-train"] = self._fill_covariance_matrix(
                 mc_stat_bs_hists,
                 means=np.mean(mc_stat_bs_hists, axis=0),
             )
-            syst_info["mc-stat-bs"] = mc_stat_bs_def.copy()
+            syst_info["mc-stat-train"] = mc_stat_bs_def.copy()
 
         # Data statistical uncertainty
         data_stat_def = self.uncertainty_definitions.get("data-stat")
@@ -513,10 +552,7 @@ class UncertaintyCalculator:
             dd_hist, _, _ = all_hists["dd"]
             dd_target_hist, _, _ = all_hists["target_dd"]
             dd_uncert_unnorm = dd_hist - dd_target_hist
-            if signed:
-                syst_uncerts["dd"] = dd_uncert_unnorm / measured_hist
-            else:
-                syst_uncerts["dd"] = np.abs(dd_uncert_unnorm) / measured_hist
+            syst_uncerts["dd"] = dd_uncert_unnorm / measured_hist
             # Note we re-normalize the dd uncertainty to match the measured histogram!
             syst_covs["dd"] = self._fill_covariance_matrix(
                 [dd_uncert_unnorm * (measured_hist / dd_target_hist)],
@@ -532,44 +568,75 @@ class UncertaintyCalculator:
             if syst_key in all_hists:
                 syst_hist, _, _ = all_hists[syst_key]
                 uncert_unnorm = syst_hist - measured_hist
-                if (syst_key == "hv" or syst_key == "hvhad") and self.smooth_hv:
+                if syst_key in ["hv", "hvhad"] and smooth_hv:
                     bin_centers = (bins[1:] + bins[:-1]) / 2
                     uncert_unnorm = self._smooth_uncertainty(uncert_unnorm, bin_centers)
-                if signed:
-                    syst_uncerts[syst_key] = (uncert_unnorm) / measured_hist
-                else:
-                    syst_uncerts[syst_key] = np.abs(uncert_unnorm) / measured_hist
+                syst_uncerts[syst_key] = uncert_unnorm / measured_hist
                 syst_covs[syst_key] = self._fill_covariance_matrix([uncert_unnorm])
                 syst_info[syst_key] = syst_def.copy()
-        if ungrouped:
-            return syst_uncerts, syst_covs, syst_info
 
-          # make cov diagonal for some variables
-        # for syst_key, syst_def in self.uncertainty_definitions.items():
-        #     if syst_key in ["theoryPSsoft","theoryPSjet","theoryMPI","theoryPSscale"]:
-        #         syst_covs[syst_key] = np.diag(np.diag(syst_covs[syst_key]))
-            # if syst_key in ["theoryPSscale"]:
-            #     cov = syst_covs[syst_key].copy()
-            #     n_bins = cov.shape[0]
-                
-            #     # Define last 4 bins
-            #     last_bins = np.arange(n_bins - 4, n_bins)
-            #     first_bins = np.arange(n_bins - 4)
-                
-            #     # Zero off-diagonal correlations between the two blocks
-            #     cov[np.ix_(first_bins, last_bins)] = 0
-            #     cov[np.ix_(last_bins, first_bins)] = 0
-            #     cov[np.ix_(last_bins, last_bins)] = np.diag(np.diag(cov[np.ix_(last_bins, last_bins)]))
-            #     syst_covs[syst_key] = cov
-            #     print(cov)
-                
-        # Apply uncertainty grouping
-        if self.uncertainty_groups:
-            syst_uncerts, syst_covs, syst_info = self._apply_grouping(
-                syst_uncerts, syst_covs, syst_info
-            )
-            
         return syst_uncerts, syst_covs, syst_info
+
+    def process_signed_uncertainties(
+        self,
+        signed_uncerts: Dict[str, np.ndarray],
+        syst_covs: Dict[str, np.ndarray],
+        syst_info: Dict[str, Dict],
+        ungrouped: bool = False,
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Dict]]:
+        """Process signed fractional uncertainties into unsigned grouped uncertainties.
+
+        Takes the output of calculate_uncertainties (signed, ungrouped) and returns
+        absolute-valued, grouped uncertainties suitable for uncertainty budget plots
+        and total uncertainty computation.
+
+        Covariance matrices are filled with signed uncertainties and passed through
+        unchanged (only grouped by summing) to preserve correct statistical properties.
+
+        Arguments:
+        ----------
+        signed_uncerts : dict[str, np.ndarray]
+            Signed fractional uncertainties from calculate_uncertainties.
+        syst_covs : dict[str, np.ndarray]
+            Covariance matrices from calculate_uncertainties.
+        syst_info : dict[str, dict]
+            Metadata from calculate_uncertainties.
+        ungrouped : bool
+            If True, do not group uncertainties and only return the absolute values
+
+        Returns:
+        --------
+        syst_uncerts : dict[str, np.ndarray]
+            Unsigned (absolute value applied) fractional uncertainties, grouped
+            in quadrature according to uncertainty_groups.
+        syst_covs : dict[str, np.ndarray]
+            Covariance matrices grouped by summing.
+        syst_info : dict[str, dict]
+            Metadata for each uncertainty (grouped entries reflect group names).
+        """
+        # Apply absolute value to non-stochastic uncertainties.
+        # Stochastic uncertainties (nn-stability, mc-stat, data-stat) are already
+        # non-negative since they are computed via std / sqrt(var).
+        abs_uncerts = {}
+        for key, uncert in signed_uncerts.items():
+            syst_def = self.uncertainty_definitions.get(key, {})
+            if syst_def.get("stochastic", False):
+                abs_uncerts[key] = uncert
+            else:
+                abs_uncerts[key] = np.abs(uncert)
+
+        # Shallow-copy covs and info so _apply_grouping does not mutate the
+        # caller's dictionaries when it deletes individual keys.
+        covs_copy = dict(syst_covs)
+        info_copy = dict(syst_info)
+
+        # Apply grouping (adds in quadrature for uncerts, sums for covs).
+        if self.uncertainty_groups and not ungrouped:
+            abs_uncerts, covs_copy, info_copy = self._apply_grouping(
+                abs_uncerts, covs_copy, info_copy
+            )
+
+        return abs_uncerts, covs_copy, info_copy
 
     def _apply_grouping(
         self,
@@ -686,7 +753,18 @@ class UncertaintyCalculator:
         """
 
         central_hist, central_hist_var, _ = all_hists[measured_key]
-        syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
+        # Same as MC test uncertainty above, can calculated stat uncertainty
+        # using three different methods (bootstrapping not implemented here
+        # since it is not used).
+        # Case #3: Use covariance matrix from analytic uncertainty on the
+        # weighted mean
+        if central_hist_var.ndim == 2:
+            var = np.diag(central_hist_var)
+            syst_uncerts = [np.sqrt(var) / central_hist]
+        # Case #1: Use the simple poisson counting error
+        else:
+            syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
+
         if is_madgraph:
             weight_names = self.madgraph_uncertainties
         else:

@@ -5,6 +5,7 @@ annotated-types==0.7.0
 asttokens==3.0.0
 attrs==25.1.0
 awkward==2.7.4
+boost-histogram
 awkward_cpp==44
 certifi==2025.10.5
 charset-normalizer==3.4.4

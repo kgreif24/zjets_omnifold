@@ -9,12 +9,140 @@ import awkward as ak
 import energyflow as ef
 import jet_clusterer
 import multiprocessing
-import dask
-import dask.array as da
+from multiprocessing.shared_memory import SharedMemory
+import uproot
+import weightedstats as ws
 from tqdm import tqdm
 from numba import njit, prange
 
 from common_utils import extract_kinematics
+
+
+def _nnid_worker(args: tuple) -> tuple:
+    """Worker function for parallel NNID calculation.
+
+    Must be defined at module level so it is picklable (required by
+    multiprocessing). Attaches to pre-existing SharedMemory blocks by name
+    to access sorted_emds and sort_indices without copying.
+
+    Arguments:
+    args - Tuple of (weight_name, jet_weights_arr, thresholds,
+                     shm_emds_name, emds_shape, emds_dtype,
+                     shm_idx_name, idx_shape, idx_dtype).
+
+    Returns:
+    Tuple of (weight_name, nnids, median_ris, median_rjs).
+    """
+    (
+        weight_name,
+        jet_weights_arr,
+        thresholds,
+        shm_emds_name,
+        emds_shape,
+        emds_dtype,
+        shm_idx_name,
+        idx_shape,
+        idx_dtype,
+    ) = args
+
+    # Attach to shared memory — zero per-worker copy, safe with spawn.
+    shm_emds = SharedMemory(name=shm_emds_name)
+    shm_idx = SharedMemory(name=shm_idx_name)
+    sorted_emds = np.ndarray(emds_shape, dtype=emds_dtype, buffer=shm_emds.buf)
+    sort_indices = np.ndarray(idx_shape, dtype=idx_dtype, buffer=shm_idx.buf)
+
+    n_jets = sorted_emds.shape[0]
+
+    jet_weights = np.asarray(jet_weights_arr).flatten()
+    jet_weights = jet_weights * n_jets / np.sum(jet_weights)
+
+    thresholds_arr = np.asarray(thresholds, dtype=np.float64)
+
+    # Find threshold crossing columns without materializing O(n²) arrays.
+    # find_threshold_cols computes per-row cumsum on-the-fly with numba
+    # parallelism and early termination once all 2k thresholds are satisfied.
+    cols_k, cols_2k = find_threshold_cols(jet_weights, sort_indices, thresholds_arr)
+
+    if np.any(cols_k < 0) or np.any(cols_2k < 0):
+        raise RuntimeError(
+            "Some thresholds were not reached for all jets; check weight normalization."
+        )
+
+    # Index sorted EMDs for all thresholds at once: (n_jets, n_thres)
+    jet_range = np.arange(n_jets)
+    r_k = sorted_emds[jet_range[:, None], cols_k]
+    r_2k = sorted_emds[jet_range[:, None], cols_2k]
+    emd_ratios = r_2k / r_k
+
+    nnids = np.zeros(len(thresholds))
+    median_ris = np.zeros(len(thresholds))
+    median_rjs = np.zeros(len(thresholds))
+
+    for thres_idx, thres in enumerate(thresholds):
+        median_ris[thres_idx] = ws.numpy_weighted_median(
+            r_k[:, thres_idx], weights=jet_weights
+        )
+        median_rjs[thres_idx] = ws.numpy_weighted_median(
+            r_2k[:, thres_idx], weights=jet_weights
+        )
+        nnid = opt.minimize(
+            nnid_nll,
+            x0=2.0,
+            args=(emd_ratios[:, thres_idx], jet_weights, thres, 2 * thres),
+            method="L-BFGS-B",
+            bounds=[(0.01, None)],
+            options={"disp": False, "iprint": -1},
+        )
+        nnids[thres_idx] = nnid.x
+
+    shm_emds.close()
+    shm_idx.close()
+
+    return weight_name, nnids, median_ris, median_rjs
+
+
+@njit(parallel=True, cache=True)
+def find_threshold_cols(
+    jet_weights: np.ndarray, sort_indices: np.ndarray, thresholds: np.ndarray
+) -> tuple:
+    """Find column indices where cumulative sorted weight first reaches each threshold.
+
+    Computes the per-row cumulative sum on-the-fly without materializing the
+    full sorted_weights or cumsum arrays. Exits each row as soon as all
+    2*threshold levels are satisfied (early termination).
+
+    Arguments:
+    jet_weights  - 1D array of normalized jet weights, shape (n_jets,).
+    sort_indices - 2D array of sort indices, shape (n_jets, n_jets).
+                   sort_indices[i, j] is the original index of the j-th nearest
+                   neighbor of jet i.
+    thresholds   - 1D array of threshold values, shape (n_thres,).
+                   Should be sorted in ascending order.
+
+    Returns:
+    cols_k  - 2D int64 array, shape (n_jets, n_thres). cols_k[i, t] is the
+              column where the cumsum for jet i first reaches thresholds[t].
+    cols_2k - 2D int64 array, shape (n_jets, n_thres). Same but for
+              2 * thresholds[t].
+    """
+    n_jets, n_neighbors = sort_indices.shape
+    n_thres = len(thresholds)
+    cols_k = np.full((n_jets, n_thres), -1, dtype=np.int64)
+    cols_2k = np.full((n_jets, n_thres), -1, dtype=np.int64)
+    for i in prange(n_jets):
+        cumsum = 0.0
+        found_2k = 0
+        for j in range(n_neighbors):
+            cumsum += jet_weights[sort_indices[i, j]]
+            for t in range(n_thres):
+                if cols_k[i, t] == -1 and cumsum >= thresholds[t]:
+                    cols_k[i, t] = j
+                if cols_2k[i, t] == -1 and cumsum >= 2.0 * thresholds[t]:
+                    cols_2k[i, t] = j
+                    found_2k += 1
+            if found_2k == n_thres:
+                break  # all thresholds satisfied for this jet
+    return cols_k, cols_2k
 
 
 @njit(parallel=True, cache=True)
@@ -147,36 +275,39 @@ def calculate_emds(
 
 
 def calculate_emds_from_file(
-    tree,
+    file_path,
+    tree_name,
     algorithm,
     R,
     ptmin=None,
     ptmax=None,
     etamax=None,
     max_jets=None,
-    get_truth=True,
     n_jobs=-1,
     random_seed: int | None = None,
     save_jet_info: bool = False,
     save_path=None,
     **kwargs,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Calculate Earth Mover's Distances (EMDs) from a ROOT file TTree.
+    """Calculate Earth Mover's Distances (EMDs) from a ROOT file.
 
     This function performs the complete analysis pipeline:
-    1. Extracts kinematics from the TTree (or list of TTrees)
-    2. Clusters jets using the specified algorithm
-    3. Filters jets based on pT and eta cuts
-    4. Preprocesses jets (centers and rotates)
-    5. Calculates EMDs between all jet pairs
+    1. Opens the ROOT file(s) and reads the TTree
+    2. Extracts kinematics from the TTree (or list of TTrees)
+    3. Clusters jets using the specified algorithm
+    4. Filters jets based on pT and eta cuts
+    5. Preprocesses jets (centers and rotates)
+    6. Calculates EMDs between all jet pairs
 
     Arguments:
     ----------
-    tree : uproot.TTree or list of uproot.TTree
-        The TTree object(s) from uproot containing event data. If a list is
-        provided, kinematics are loaded from each tree and concatenated along
-        the event dimension. Returned event indices address the concatenated
-        events (i.e. tree 0 events first, then tree 1, etc.).
+    file_path : str or list of str
+        Path(s) to the ROOT file(s). If a list is provided, kinematics are
+        loaded from each file and concatenated along the event dimension.
+        Returned event indices address the concatenated events
+        (i.e. file 0 events first, then file 1, etc.).
+    tree_name : str
+        Name of the TTree within the ROOT file(s).
     algorithm : fastjet.JetAlgorithm
         Jet clustering algorithm (e.g., fj.antikt_algorithm).
     R : float
@@ -193,8 +324,6 @@ def calculate_emds_from_file(
     max_jets : int, optional
         Maximum number of jets to keep after filtering. If specified,
         jets beyond this limit will be dropped (default: None, no limit).
-    get_truth : bool, optional
-        If True, get truth level data. If False, get reco level data.
     n_jobs : int, optional
         Number of parallel jobs for jet clustering and EMD calculation.
         If -1, uses all available CPUs (default: -1).
@@ -225,25 +354,28 @@ def calculate_emds_from_file(
     if ptmin is None:
         ptmin = 500.0
 
-    # Get kinematics from the tree(s)
-    if isinstance(tree, list):
-        all_kinematics = [
-            extract_kinematics(t, get_truth=get_truth, **kwargs) for t in tree
-        ]
+    # Get kinematics from the file(s)
+    if isinstance(file_path, list):
+        all_kinematics = []
+        for path in file_path:
+            with uproot.open(path) as f:
+                tree = f[tree_name]
+                all_kinematics.append(extract_kinematics(tree, **kwargs))
         pt = ak.concatenate([k[0] for k in all_kinematics], axis=0)
         eta = ak.concatenate([k[1] for k in all_kinematics], axis=0)
         phi = ak.concatenate([k[2] for k in all_kinematics], axis=0)
         masses = ak.concatenate([k[3] for k in all_kinematics], axis=0)
         print(
-            f"Concatenated kinematics from {len(tree)} trees "
+            f"Concatenated kinematics from {len(file_path)} files "
             f"({len(pt)} total events)"
         )
     else:
-        pt, eta, phi, masses = extract_kinematics(
-            tree,
-            get_truth=get_truth,
-            **kwargs,
-        )
+        with uproot.open(file_path) as f:
+            tree = f[tree_name]
+            pt, eta, phi, masses = extract_kinematics(
+                tree,
+                **kwargs,
+            )
 
     # Cluster jets
     # Convert n_jobs=-1 to None for clusterer (which uses all CPUs)
@@ -352,212 +484,9 @@ def calculate_emds_from_file(
     return emds, filtered_event_indices
 
 
-def calculate_correlation_dimension_from_emds(
-    emds: np.ndarray | da.Array,
-    emd_weights: np.ndarray | da.Array,
-    bins: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calculate correlation dimension from Earth Mover's Distances (EMDs).
-
-    This function now supports both numpy arrays and dask arrays. When using
-    dask arrays, the histogramming will be performed in parallel across chunks.
-
-    Arguments:
-    emds - A numpy or dask array of EMD values (typically from calculate_emds).
-    emd_weights - A numpy or dask array of weights corresponding to each EMD value.
-    bins - A numpy array of bins to use in the histogram.
-
-    Returns:
-    dims - The correlation dimension values.
-    dims_var - The variance of the correlation dimension values.
-    midbins - The midpoints of the bins used in the calculation.
-    """
-    # Check if we're working with dask arrays
-    is_dask = isinstance(emds, da.Array) or isinstance(emd_weights, da.Array)
-
-    if is_dask:
-        # Ensure both are dask arrays
-        if not isinstance(emds, da.Array):
-            emds = da.from_array(emds, chunks=emd_weights.chunks)
-        if not isinstance(emd_weights, da.Array):
-            emd_weights = da.from_array(emd_weights, chunks=emds.chunks)
-
-        # Take upper triangle and mask invalid emds
-        emds = da.triu(emds)
-        mask = (emds > 0) & da.isfinite(emds)
-        emds = emds[mask].flatten()
-        emd_weights = emd_weights[mask].flatten()
-
-        # Calculate the correlation dimension
-        midbins = (bins[1:] + bins[:-1]) / 2
-        dmidbins = np.log(midbins[1:]) - np.log(midbins[:-1])
-
-        # Use dask histogram for parallel computation
-        hist, _ = da.histogram(emds, bins=bins, weights=emd_weights)
-        var, _ = da.histogram(emds, bins=bins, weights=emd_weights**2)
-
-        # Compute the histograms (trigger computation)
-        hist = hist.compute()
-        var = var.compute()
-
-    else:
-        # Original numpy implementation
-        # Take upper triangle and mask invalid emds
-        emds = np.triu(emds)
-        mask = (emds > 0) & np.isfinite(emds)
-        emds = emds[mask].flatten()
-        emd_weights = emd_weights[mask].flatten()
-
-        # Calculate the correlation dimension
-        midbins = (bins[1:] + bins[:-1]) / 2
-        dmidbins = np.log(midbins[1:]) - np.log(midbins[:-1])
-        hist, _ = np.histogram(emds, bins=bins, weights=emd_weights)
-        var, _ = np.histogram(emds, bins=bins, weights=emd_weights**2)
-
-    # Calculate the CDF (same for both numpy and dask after computation)
-    counts = np.cumsum(hist) + np.finfo(float).eps
-    counts_err = np.sqrt(np.cumsum(var))
-
-    # Calculate the correlation dimension
-    dims = (np.log(counts[1:]) - np.log(counts[:-1])) / dmidbins
-    dims_var = (
-        (counts_err[1:] / counts[1:]) ** 2 + (counts_err[:-1] / counts[:-1]) ** 2
-    ) / dmidbins
-
-    return dims, dims_var, midbins
-
-
-def calculate_correlation_dimension_from_file(
-    npz_path: str,
-    weights_dict: dict[str, np.ndarray],
-    bins: np.ndarray,
-    n_jobs=1,
-    chunk_size: int | None = None,
-) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    """Calculate correlation dimension from EMDs stored in a .npz file.
-
-    This function loads EMDs and event indices from a .npz file (produced by
-    calculate_emds_from_file), broadcasts event-level weights to EMD pairs,
-    and calculates the correlation dimension for each set of weights.
-
-    The histogramming is performed using dask arrays for efficient parallel
-    computation, avoiding the pickling overhead of multiprocessing.
-
-    Arguments:
-    ----------
-    npz_path : str
-        Path to the .npz file containing 'emds' and 'event_indices' arrays.
-    weights_dict : dict[str, np.ndarray]
-        Dictionary mapping histogram names to event-level weights.
-        Each weights array should have shape (n_events,) where n_events is
-        the number of unique events in the event_indices array.
-    bins : np.ndarray
-        Array of bin edges to use for the histogram in the correlation
-        dimension calculation.
-    n_jobs : int, optional
-        Number of parallel workers for dask computation.
-        If -1, uses all available CPUs (default: 1).
-    chunk_size : int, optional
-        Size of chunks for dask array. If None, automatically determines
-        a reasonable chunk size based on array size and available memory.
-        Smaller chunks use less memory but have more overhead.
-
-    Returns:
-    --------
-    results : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
-        Dictionary mapping histogram names to tuples of (dims, dims_var, midbins)
-        where:
-        - dims: The correlation dimension values
-        - dims_var: The variance of the correlation dimension values
-        - midbins: The midpoints of the bins used in the calculation
-    """
-
-    # Load EMDs and event indices once from disk
-    print(f"Loading EMDs from {npz_path}...")
-    data = np.load(npz_path)
-    emds = data["emds"]
-    event_indices = data["event_indices"]
-    data.close()
-
-    print(f"Loaded EMDs with shape {emds.shape}")
-    print(f"Loaded event indices with shape {event_indices.shape}")
-
-    # Ensure event_indices is a 1D array
-    event_indices = np.asarray(event_indices).flatten()
-
-    # Check that EMDs shape matches event_indices
-    n_jets = len(event_indices)
-    if emds.shape != (n_jets, n_jets):
-        raise ValueError(
-            f"EMD shape {emds.shape} does not match expected shape "
-            f"({n_jets}, {n_jets}) based on event_indices length"
-        )
-
-    # Convert EMDs to dask array with appropriate chunking
-    # For large arrays, we want chunks that are large enough to be efficient
-    # but small enough to fit in memory. A good default is ~100MB per chunk.
-    if chunk_size is None:
-        # Estimate chunk size: aim for ~100MB chunks (assuming float64)
-        bytes_per_element = 8  # float64
-        target_chunk_bytes = 100 * 1024 * 1024  # 100 MB
-        # For a 2D array, chunk_size^2 * 8 bytes = target_chunk_bytes
-        chunk_size = int(np.sqrt(target_chunk_bytes / bytes_per_element))
-        # Round down to a reasonable size (e.g., multiple of 1000)
-        chunk_size = (chunk_size // 1000) * 1000
-        if chunk_size < 1000:
-            chunk_size = 1000
-        if chunk_size > n_jets:
-            chunk_size = n_jets
-
-    print(f"Converting EMDs to dask array with chunk size {chunk_size}...")
-    # Create dask array with square chunks
-    emds_da = da.from_array(emds, chunks=(chunk_size, chunk_size))
-
-    # Configure dask threading/processes based on n_jobs
-    if n_jobs == -1:
-        n_workers = multiprocessing.cpu_count()
-    else:
-        n_workers = n_jobs
-
-    # Set dask threading configuration
-    # Use threads for better memory efficiency with numpy operations
-    with dask.config.set(scheduler="threads", num_workers=n_workers):
-        n_histograms = len(weights_dict)
-        print(
-            f"Processing {n_histograms} weight sets using dask "
-            f"with {n_workers} workers..."
-        )
-        results = {}
-        for hist_name, weights in tqdm(
-            weights_dict.items(),
-            total=n_histograms,
-            desc="Processing weight sets",
-            unit="set",
-        ):
-            # Ensure event_indices is a 1D array
-            event_indices_arr = np.asarray(event_indices).flatten()
-            weights_arr = np.asarray(weights)
-
-            # Get the weights of the jets (fine if some events have multiple jets)
-            jet_weights = weights_arr[event_indices_arr]
-
-            # Create EMD weights matrix: weight for EMD(i,j) = weight(i) * weight(j)
-            # This represents the product of weights for the two events
-            # Convert to dask array with same chunking as EMDs
-            jet_weights_da = da.from_array(jet_weights, chunks=emds_da.chunks[0])
-            emd_weights_da = jet_weights_da[:, None] * jet_weights_da[None, :]
-
-            dims, dims_var, midbins = calculate_correlation_dimension_from_emds(
-                emds_da, emd_weights_da, bins
-            )
-            results[hist_name] = (dims, dims_var, midbins)
-
-    return results
-
-
 def sort_emd_matrix(
     emds: np.ndarray,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Sort EMD matrix rows by distance.
 
     This function performs the expensive sorting operation once, allowing the
@@ -572,6 +501,9 @@ def sort_emd_matrix(
     sorted_emds - A 2D array where each row i contains distances from jet i
         to all other jets, sorted in ascending order. Shape is (n_jets, n_jets).
         The last column contains inf (self-distance).
+    sort_indices - A 2D array of the original jet indices corresponding to the
+        sorted positions in sorted_emds. sort_indices[i, k] is the original
+        index of the k-th nearest neighbor of jet i.
     """
     # Calculate symmetric matrix of EMDs
     full_emds = emds + emds.T
@@ -591,74 +523,109 @@ def sort_emd_matrix(
     sorted_emds = parallel_take_along_axis(full_emds, sort_indices)
 
     print(f"Sorted EMD matrix with shape {sorted_emds.shape}")
-    return sorted_emds
+    return sorted_emds, sort_indices
 
 
 def calculate_nnids_from_sorted_emds(
     sorted_emds: np.ndarray,
+    sort_indices: np.ndarray,
     weights_dict: dict[str, np.ndarray],
-    points: np.ndarray,
+    thresholds: np.ndarray,
+    n_jobs: int = 1,
 ) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Calculate nearest neighbor intrinsic dimension from pre-sorted EMDs.
 
     This function takes pre-sorted EMD matrices (from sort_emd_matrix) and
     calculates NNIDs for each point and each weight set.
 
-    The jet weights are used to weight each jet's contribution to the
-    likelihood function.
+    For each weight set the weighted k-th nearest neighbor of jet i is defined
+    as the neighbor at which the cumulative (normalized) weight of all closer
+    jets first reaches k.  This replaces the unweighted column index k used in
+    the raw sorted matrix, so the EMD ratio μ = r_{2k}/r_k is computed from
+    weight-dependent column positions rather than fixed ones.
+
+    Jet weights are normalized to sum to N (the number of jets) independently
+    for each weight set before the weighted NN positions are determined.
 
     Arguments:
-    sorted_emds - A 2D array of sorted EMD values from sort_emd_matrix.
+    sorted_emds - A 2D array of sorted EMD values from sort_emd_matrix,
+        shape (n_jets, n_jets).
+    sort_indices - A 2D array of original jet indices from sort_emd_matrix,
+        shape (n_jets, n_jets). sort_indices[i, k] is the original index of
+        the k-th nearest neighbor of jet i.
     weights_dict - Dictionary mapping weight set names to 1D weight arrays.
-    points - A numpy array of points to use in the calculation.
+    thresholds - A numpy array of weighted rank thresholds to use in the
+        calculation.
+    n_jobs - Number of parallel workers. Use -1 for all CPUs, 1 for sequential
+        (default: 1). Values > 1 use spawn-based multiprocessing; the large
+        read-only arrays (sorted_emds, sort_indices) are placed in shared
+        memory once and attached by each worker without per-worker copies.
 
     Returns:
-    results - Dictionary mapping weight set names to (nnids, avg_ris, avg_rjs) tuples.
+    results - Dictionary mapping weight set names to (nnids, median_ris, median_rjs)
     """
     n_weight_sets = len(weights_dict)
-    print(f"Processing {n_weight_sets} weight sets for {len(points)} points...")
+    print(f"Processing {n_weight_sets} weight sets for {len(thresholds)} thresholds...")
 
-    # Pre-compute EMD ratios for each point (these don't depend on weights)
-    emd_ratios_by_point = {}
-    for point in points:
-        emd_ratios_by_point[point] = sorted_emds[:, 2 * point] / sorted_emds[:, point]
+    # Place the large read-only arrays into shared memory once.
+    # Workers attach by name — no per-worker copies, and safe with spawn
+    # (unlike fork, which conflicts with OpenMP/numba in Jupyter).
+    shm_emds = SharedMemory(create=True, size=sorted_emds.nbytes)
+    shm_idx = SharedMemory(create=True, size=sort_indices.nbytes)
+    try:
+        np.copyto(
+            np.ndarray(sorted_emds.shape, dtype=sorted_emds.dtype, buffer=shm_emds.buf),
+            sorted_emds,
+        )
+        np.copyto(
+            np.ndarray(
+                sort_indices.shape, dtype=sort_indices.dtype, buffer=shm_idx.buf
+            ),
+            sort_indices,
+        )
 
-    results = {}
-    for weight_name, jet_weights in tqdm(
-        weights_dict.items(),
-        total=n_weight_sets,
-        desc="Processing weight sets",
-        unit="set",
-    ):
-        jet_weights = np.asarray(jet_weights).flatten()
-
-        # Prepare output arrays for this weight set
-        nnids = np.zeros(len(points))
-        avg_ris = np.zeros(len(points))
-        avg_rjs = np.zeros(len(points))
-
-        # Loop through each point
-        for pidx, point in enumerate(points):
-            emd_ratios = emd_ratios_by_point[point]
-
-            # Weighted average distance
-            avg_ris[pidx] = np.average(sorted_emds[:, point], weights=jet_weights)
-            avg_rjs[pidx] = np.average(sorted_emds[:, 2 * point], weights=jet_weights)
-
-            # Minimize the likelihood function
-            nnid = opt.minimize(
-                nnid_nll,
-                x0=2.0,
-                args=(emd_ratios, jet_weights, point, 2 * point),
-                method="L-BFGS-B",
-                bounds=[(0.01, None)],
-                options={"disp": False, "iprint": -1},
+        task_args = [
+            (
+                name,
+                np.asarray(weights).flatten(),
+                thresholds,
+                shm_emds.name,
+                sorted_emds.shape,
+                sorted_emds.dtype,
+                shm_idx.name,
+                sort_indices.shape,
+                sort_indices.dtype,
             )
-            nnids[pidx] = nnid.x
+            for name, weights in weights_dict.items()
+        ]
 
-        results[weight_name] = (nnids, avg_ris, avg_rjs)
+        if n_jobs == 1:
+            worker_results = [
+                _nnid_worker(args)
+                for args in tqdm(task_args, desc="Processing weight sets", unit="set")
+            ]
+        else:
+            n_workers = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
+            print(f"Processing {len(task_args)} weight, {n_workers} workers...")
+            with multiprocessing.get_context("spawn").Pool(n_workers) as pool:
+                worker_results = list(
+                    tqdm(
+                        pool.imap_unordered(_nnid_worker, task_args),
+                        total=len(task_args),
+                        desc="Processing weight sets",
+                        unit="set",
+                    )
+                )
+    finally:
+        shm_emds.close()
+        shm_emds.unlink()
+        shm_idx.close()
+        shm_idx.unlink()
 
-    return results
+    return {
+        name: (nnids, median_ris, median_rjs)
+        for name, nnids, median_ris, median_rjs in worker_results
+    }
 
 
 def nnid_nll(
@@ -716,3 +683,29 @@ def nnid_nll(
     t3 = -(j - i - 1) * np.sum(jet_weights * np.log(log_arg))
 
     return t1 + t2 + t3
+
+
+def poisson_bootstrap_weights(
+    weights: np.ndarray,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Fluctuate jet weights within their Poisson uncertainty.
+
+    Samples Poisson(1) multipliers independently for each jet and multiplies
+    them by the original weights. This is the standard Poisson bootstrap
+    used to estimate statistical uncertainties on weighted distributions.
+
+    Arguments:
+    weights - 1D array of jet weights.
+    rng     - Optional numpy random Generator. If None, uses
+              np.random.default_rng().
+
+    Returns:
+    bootstrapped - weights multiplied by Poisson(1) samples.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    weights = np.asarray(weights).flatten()
+    poisson_multipliers = rng.poisson(lam=1.0, size=len(weights)).astype(float)
+    return poisson_multipliers * weights

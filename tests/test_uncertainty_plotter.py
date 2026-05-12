@@ -16,7 +16,7 @@ test_uncertainty_definitions = {
     },
     "data-stat": {
         "name": "Data Stat",
-        "color ": "blue",
+        "color": "blue",
         "stochastic": True,
         "prefix": "bootstrap_data_",
     },
@@ -78,7 +78,7 @@ def test_uncertainty_plotter_plot_basic(tmp_path):
     )
 
     # Test basic plot generation
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz")
 
     # Check that plots were generated
     png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
@@ -116,7 +116,7 @@ def test_systematic_uncertainties(tmp_path):
     assert all([key in weights_data.keys() for key in expected_systematics])
 
     # Test plot generation with systematic weights
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz")
 
 
 def test_dual_target_mode(tmp_path):
@@ -136,7 +136,9 @@ def test_dual_target_mode(tmp_path):
     assert plotter.target2_path == "./assets/truth_evts_100_200.root"
 
     # Test basic functionality with dual target mode
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot(
+        "./assets/unc_wgts.npz", "./assets/target_wgts.npz", "./assets/target2_wgts.npz"
+    )
 
 
 def test_uncertainty_budget_plot(tmp_path):
@@ -154,7 +156,7 @@ def test_uncertainty_budget_plot(tmp_path):
 
     # Test uncertainty budget plot generation
     # This tests the budget plot functionality
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz")
 
     # Check that budget plots were generated
     png_files = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
@@ -179,7 +181,9 @@ def test_cached_pass190_for_all_trees(tmp_path):
 
     # Test that caching works for all trees
     # This tests the _get_cached_pass190 method
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot(
+        "./assets/unc_wgts.npz", "./assets/target_wgts.npz", "./assets/target2_wgts.npz"
+    )
 
 
 def test_kinematic_cuts_all_trees(tmp_path):
@@ -200,7 +204,7 @@ def test_kinematic_cuts_all_trees(tmp_path):
 
     # Test that kinematic cuts are applied to all trees
     # This tests the kinematic filtering functionality
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz")
 
     # Verify that kinematic cuts work
     source_pT_ll = plotter._get_data("pT_ll", is_target=False)
@@ -228,7 +232,7 @@ def test_track_weights_batch(tmp_path):
 
     # Test track weight batch processing
     # This tests the batch processing functionality for track weights
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz")
 
     # Verify that track weights are processed correctly
     # The exact implementation depends on the track weight processing method
@@ -249,7 +253,7 @@ def test_efficient_weight_loading(tmp_path):
 
     # Test efficient weight loading
     # This tests the optimized weight loading functionality
-    plotter.plot("./assets/unc_wgts.npz")
+    plotter.plot("./assets/unc_wgts.npz", "./assets/target_wgts.npz")
 
     # Verify that weights are loaded efficiently
     # The exact implementation depends on the weight loading optimization

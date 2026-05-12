@@ -180,7 +180,11 @@ def get_kinematics(
     muon_prekey, muon_postkey = "", ""
     if get_truth:
         if syst_kw is not None:
-            assert "theory" in syst_kw or syst_kw in ["hv2", "hvhad"]
+            assert (
+                "theory" in syst_kw
+                or syst_kw in ["hv2", "hvhad"]
+                or "nonstrong" in syst_kw
+            )
         prekey = "truth_"
         muon_prekey = "truth_"
     # Note we only adjust the muon keys if we are running muon systematics
@@ -665,6 +669,8 @@ def get_syst_pre_and_post_keys(syst_kw):
         return "", ""
     elif syst_kw in ["dd", "hv2", "hvhad"]:
         return "", ""
+    elif "nonstrong" in syst_kw:
+        return "", ""
     else:
         raise ValueError(f"Systematic {syst_kw} not recognized!")
 
@@ -712,6 +718,6 @@ def calc_muon_syst_pass190(tree, stop=None, syst_kw=None, pt_thresh=190):
     # Return the filter
     cf_logic = (syst_ptll > pt_thresh) & ((syst_mll > 81) & (syst_mll < 101))
     term1 = ((ptll < pt_thresh) | ((mll < 81) | (mll > 101))) & cf_logic
-    term2 = (ptll > pt_thresh) & ((mll > 81) & (mll < 101)) & cf_logic & pass190
+    term2 = (ptll > pt_thresh) & ((mll >= 81) & (mll <= 101)) & cf_logic & pass190
     term3 = yll > -98
     return (term1 | term2) & term3
