@@ -1349,8 +1349,7 @@ def make_uncertainty_budget_fig(
     do_chi2_test=False,
     simple_corr_labels: bool = False,
     draw_group=None,
-    pdf_name=None,
-    draw_cov_matrix=False,
+    draw_cov_matrix=True,
 ):
     """Create uncertainty budget and correlation matrix plots.
 
@@ -1535,24 +1534,12 @@ def make_uncertainty_budget_fig(
 
     # ===== Figure 3: Correlation matrix plot =====
     fig_correlation_matrix = None
-    if (draw_group is None) or (
-        draw_cov_matrix
-    ):  # only draw correlation matrix for the full covariance
+    if draw_cov_matrix:
         fig_correlation_matrix = plot_correlation_matrix(
             total_cov=total_cov,
             bins=bin_edges,
             llab=llab,
-            simple_labels=simple_corr_labels,
-        )
-        if pdf_name is not None:
-            pdf_name_uncertainties = pdf_name.replace(".pdf", "_uncertainties.pdf")
-            pdf_name_cor = pdf_name.replace(".pdf", "_corr.pdf")
-            fig_uncertainty_budget.savefig(
-                pdf_name_uncertainties, dpi=SAVE_DPI, format="pdf", bbox_inches="tight"
-            )
-            fig_correlation_matrix.savefig(
-                pdf_name_cor, dpi=SAVE_DPI, format="pdf", bbox_inches="tight"
-            )
+            simple_labels=simple_corr_labels)
 
     return fig_uncertainty_budget, fig_correlation_matrix
 
@@ -1615,6 +1602,7 @@ def draw_plot(
     pdf_name=None,
     is_profile=False,
     smooth_hv=True,
+    do_chi2_test=True,
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
@@ -1662,6 +1650,10 @@ def draw_plot(
         If provided, save output as a PDF at this path. When the uncertainty
         budget is drawn, the budget and correlation figures are appended as
         pages 2 and 3 of that PDF rather than saved as separate files.
+    do_chi2_test : bool, optional
+        Passed to make_uncertainty_budget_fig. Performs a chi-squared test
+        against the target histogram (only meaningful when is_omni_data is
+        False). Default: True.
     Returns:
     --------
     fig : matplotlib.figure.Figure
@@ -1685,7 +1677,6 @@ def draw_plot(
         "marker": "o",
         "label": "IBU Measurement",
     }
-    lumi = 140.1
     draw_ratioplot = (
         (mgfxfx_truth_results is not None)
         or (sherpa_truth_results is not None)
@@ -1725,6 +1716,7 @@ def draw_plot(
     omni_uncert = np.sqrt(
         np.sum(np.array(list(omni_uncert_tuple[0].values())) ** 2, axis=0)
     )
+
     # Calculate theory uncertainties for MadGraph
     if mgfxfx_truth_results is not None:
         mgfxfx_uncert = uncertainty_calculator.get_total_theory_uncertainty(
@@ -1747,23 +1739,14 @@ def draw_plot(
                     np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
                 )
             elif fmt["is_truth_pd"]:
-                if is_xSec:
-                    target_hist = (
-                        result_dict["nominal"][0] / lumi
-                    )  # omnifold comes pre-lumi-divided, but pseudodata does not
-                    result_uncert = np.where(
-                        target_hist > 0, 1 / np.sqrt(target_hist * lumi), 0
-                    )  # rel error is stat only.
-                elif is_profile:
-                    target_hist = result_dict["nominal"][0]
+                target_hist = result_dict["nominal"][0]
+                if is_profile:
                     result_uncert = (
                         np.sqrt(np.diag(result_dict["nominal"][1])) / target_hist
-                    )  # if is profile, this si the covariance matri
+                    )  # if is profile, uncert is the diagonal of the covariance matrix
+                # Otherwise just use the square root of the variance for truth pd
                 else:
-                    target_hist = result_dict["nominal"][0]
-                    result_uncert = np.where(
-                        target_hist > 0, 1 / np.sqrt(target_hist), 0
-                    )
+                    result_uncert = result_dict["nominal"][1] / target_hist
             else:
                 result_uncert = uncertainty_calculator.get_total_theory_uncertainty(
                     result_dict, measured_key="nominal", is_madgraph=fmt["is_madgraph"]
@@ -1785,16 +1768,16 @@ def draw_plot(
             data_measurement_mode=is_omni_data,
             measured_hist=omni_density,
             target_hist=target_hist,
-            do_chi2_test=True,
+            do_chi2_test=do_chi2_test,
             simple_corr_labels=True,
             draw_cov_matrix=False,
         )
 
-    # Sherpa
+    # Draw Sherpa density
     if sherpa_truth_results is not None:
         sherpa_density = sherpa_truth_results["nominal"][0]
         if is_xSec:
-            sherpa_density = sherpa_density / lumi / bin_widths
+            sherpa_density = sherpa_density / bin_widths
         _ = make_error_boxes(
             axs[0],
             bin_centers,
@@ -1807,11 +1790,11 @@ def draw_plot(
             label=r"Drell Yan: Sherpa2.2.11 + X",
         )
 
-    # MGFxFx
+    # Draw MG density
     if mgfxfx_truth_results is not None:
         mgfxfx_density = mgfxfx_truth_results["nominal"][0]
         if is_xSec:
-            mgfxfx_density = mgfxfx_density / lumi / bin_widths
+            mgfxfx_density = mgfxfx_density / bin_widths
         _ = make_error_boxes(
             axs[0],
             bin_centers,
@@ -1824,7 +1807,7 @@ def draw_plot(
             label=("Drell Yan: MG5+Py8 + X"),
         )
 
-    # Additional results
+    # Draw densities for additional results
     if additional_results:
         for result_dict, fmt, result_uncert in zip(
             results_list, formatting_dicts, results_uncerts
@@ -1832,10 +1815,7 @@ def draw_plot(
 
             result_density = result_dict["nominal"][0]
             if is_xSec:
-                if not fmt["is_omni_data"]:
-                    result_density = result_density / lumi / bin_widths
-                else:
-                    result_density = result_density / bin_widths
+                result_density = result_density / bin_widths
             _ = make_error_boxes(
                 axs[0],
                 bin_centers,
@@ -1849,6 +1829,8 @@ def draw_plot(
                 marker=fmt["marker"],
                 label=fmt["label"],
             )
+
+    # Draw IBU density
     if ibu_results is not None:
         ibu_density = ibu_results["nominal"]
         ibu_uncertainty = ibu_results["total_unc"]
@@ -1864,7 +1846,7 @@ def draw_plot(
             label=formatting_IBU["label"],
         )
 
-    # OmniFold
+    # Draw OmniFold density
     omni_density = omni_results["nominal"][0]
     if is_xSec:
         omni_density = omni_density / bin_widths
@@ -1939,7 +1921,7 @@ def draw_plot(
         markeredgewidth=2,
     )
 
-    # this just adds the X = text under MG or Sherpa
+    # Add text under MG and Sherpa legend labels
     if mgfxfx_truth_results is not None or sherpa_truth_results is not None:
         handles, labels = axs[0].get_legend_handles_labels()
         targets = ("Drell Yan: Sherpa2.2.11 + X", "Drell Yan: MG5+Py8 + X")
@@ -1960,6 +1942,8 @@ def draw_plot(
         axs[0].set_yscale("log")
     else:
         axs[0].set_yscale("linear")
+
+    # Draw ratio plot
     if draw_ratioplot:
         axs[1].minorticks_on()
         axs[1].errorbar(
@@ -1977,6 +1961,8 @@ def draw_plot(
             linewidth=1,
             markeredgewidth=2,
         )
+
+        # Draw Sherpa ratio
         if sherpa_truth_results is not None:
             _ = make_error_boxes(
                 axs[1],
@@ -1994,6 +1980,7 @@ def draw_plot(
                 marker="s",
                 label=r"Sherpa",
             )
+        # Draw MG ratio
         if mgfxfx_truth_results is not None:
             _ = make_error_boxes(
                 axs[1],
@@ -2011,16 +1998,14 @@ def draw_plot(
                 marker="^",
                 label=r"MGFxFx",
             )
+        # Draw additional results ratios
         if additional_results:
             for result_dict, fmt, result_uncert in zip(
                 results_list, formatting_dicts, results_uncerts
             ):
                 result_density = result_dict["nominal"][0]
                 if is_xSec:
-                    if not fmt["is_omni_data"]:
-                        result_density = result_density / lumi / bin_widths
-                    else:
-                        result_density = result_density / bin_widths
+                    result_density = result_density / bin_widths
                 _ = make_error_boxes(
                     axs[1],
                     bin_centers,
@@ -2037,6 +2022,7 @@ def draw_plot(
                     marker=fmt["marker"],
                     label=fmt["label"],
                 )
+        # Draw IBU ratio
         if ibu_results is not None:
             _ = make_error_boxes(
                 axs[1],
