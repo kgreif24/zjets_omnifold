@@ -1,3 +1,4 @@
+# Comment out features to exclude them from plotting in the standard observable notebooks.
 features:
   - pT_l1
   - pT_l2

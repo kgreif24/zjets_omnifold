@@ -21,6 +21,12 @@ def check_memory(limit_gb=20):
         sys.exit(1)
 
 
+# Effective number of events - i.e. effective statstics of a weighted dataset
+# if all events have the same weight, this is the same as the number of events
+def nEff(weights):
+    return (sum(weights)) ** 2 / sum(weights**2)
+
+
 def extract_kinematics(
     tree,
     start: int = None,
@@ -317,7 +323,8 @@ def get_muon_kinematics(
     stop - stopping event index, optional
 
     Returns:
-    (ak.Array) - awkward array of shape (n_events, 2, 4) with [pt, eta, phi, mass] for each muon
+    (ak.Array) - awkward array of shape (n_events, 2, 4) with [pt, eta, phi, mass]
+    for each muon
     """
 
     # Set prekey based on get_truth
@@ -462,7 +469,8 @@ def build_jets(
     Returns:
     --------
     jets : ak.Array of arrays
-        Awkward array of shape [n_events, n_jets, 4]. 4 corresponds to (pt, y, phi, m) for each jet.
+        Awkward array of shape [n_events, n_jets, 4]. 4 corresponds to (pt, y, phi, m)
+        for each jet.
     event_jet_indices : ak.Array
         Awkward array of shape [n_events, n_tracks].
 
@@ -500,8 +508,8 @@ def build_jets(
 
 
 def eval_jet_expressions(jets, expressions, nevents=-1):
-    """eval_jet_expressions - Evaluates multiple arithmetic expressions involving jet info fields,
-    propagating -99 for missing jets, with progress output every 10%.
+    """eval_jet_expressions - Evaluates multiple arithmetic expressions involving jet
+    info fields, propagating -99 for missing jets, with progress output every 10%.
 
     Arguments:
     jets - list/array of per-event jet info arrays, shape (n_events, n_jets, 4)
@@ -597,7 +605,8 @@ def eval_jet_expressions(jets, expressions, nevents=-1):
         results[expr] = val
         if (j + 1) % max(1, len(expressions) // 10) == 0 or j == len(expressions) - 1:
             print(
-                f"Processed {j+1}/{len(expressions)} expressions ({100*(j+1)/len(expressions):.0f}%)"
+                f"Processed {j+1}/{len(expressions)} expressions"
+                f" ({100*(j+1)/len(expressions):.0f}%)"
             )
 
     print("Finished evaluating all expressions.")
@@ -733,8 +742,6 @@ def make_jet_count_histograms(
       dictionary: hist_dict[weight_name] = (hist, variance, bin_edges)
     """
 
-    n_bins = len(jets_list)
-
     # --- Identify weight groups ---
     ensemble = [k for k in weights_dict if k.startswith("ensemble_")]
     bootstrap_mc = [k for k in weights_dict if k.startswith("bootstrap_mc_")]
@@ -847,14 +854,13 @@ def make_hists_with_uncertainty(data, bins, observables, weights_dict):
     Returns:
     --------
     hist_dict : dict
-        Nested dictionary: hist_dict[observable][weight_name] = (hist, variance, bin_edges)
+        Nested dict: hist_dict[observable][weight_name] = (hist, variance, bin_edges)
     """
     hist_dict = {}
 
     for obs in observables:
         data_obs = np.asarray(data[obs])
         bin_edges = np.asarray(bins[obs])
-        n_bins = len(bin_edges) - 1
 
         # --- Identify weight groups ---
         nominal_w = np.asarray(weights_dict["nominal"])
