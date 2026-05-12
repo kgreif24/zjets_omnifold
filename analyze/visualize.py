@@ -8,7 +8,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as mh
 import matplotlib.gridspec as gs
-from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
 import uncertainties
 import scipy.stats as stats
@@ -764,11 +763,17 @@ def plot_nnid_data(
     # Plot MadGraph prediction
     if madgraph_results is not None:
         dy_madgraph = get_theory_nnid_uncertainties(
-            madgraph_results, index=0, is_madgraph=True, measured_key="madgraph",
+            madgraph_results,
+            index=0,
+            is_madgraph=True,
+            measured_key="madgraph",
             smooth_window=smooth_window,
         )
         dx_madgraph = get_theory_nnid_uncertainties(
-            madgraph_results, index=1, is_madgraph=True, measured_key="madgraph",
+            madgraph_results,
+            index=1,
+            is_madgraph=True,
+            measured_key="madgraph",
             smooth_window=smooth_window,
         )
         y_madgraph, x_madgraph, _ = madgraph_results["madgraph"]
@@ -787,11 +792,17 @@ def plot_nnid_data(
     # Plot Sherpa prediction
     if sherpa_results is not None:
         dy_sherpa = get_theory_nnid_uncertainties(
-            sherpa_results, index=0, is_madgraph=False, measured_key="sherpa",
+            sherpa_results,
+            index=0,
+            is_madgraph=False,
+            measured_key="sherpa",
             smooth_window=smooth_window,
         )
         dx_sherpa = get_theory_nnid_uncertainties(
-            sherpa_results, index=1, is_madgraph=False, measured_key="sherpa",
+            sherpa_results,
+            index=1,
+            is_madgraph=False,
+            measured_key="sherpa",
             smooth_window=smooth_window,
         )
         y_sherpa, x_sherpa, _ = sherpa_results["sherpa"]
@@ -854,12 +865,18 @@ def plot_nnid_data(
         targets = (madgraph_label, sherpa_label)
         insert_idx = (
             max(
-                (i for i, l in enumerate(labels_ordered) if any(t in l for t in targets)),
+                (
+                    i
+                    for i, l in enumerate(labels_ordered)
+                    if any(t in l for t in targets)
+                ),
                 default=-1,
             )
             + 1
         )
-        handles_ordered.insert(insert_idx, plt.Line2D([], [], linestyle="None", color="white"))
+        handles_ordered.insert(
+            insert_idx, plt.Line2D([], [], linestyle="None", color="white")
+        )
         labels_ordered.insert(insert_idx, r"X = EW Zjj, VZ$\rightarrow$V$\mu\mu$")
     ax.legend(handles_ordered, labels_ordered, fontsize=12, frameon=False)
 
@@ -1341,8 +1358,8 @@ def make_uncertainty_budget_fig(
     do_chi2_test=False,
     simple_corr_labels: bool = False,
     draw_group=None,
-    pdf_name = None,
-    draw_cov_matrix = False,
+    pdf_name=None,
+    draw_cov_matrix=False,
 ):
     """Create uncertainty budget and correlation matrix plots.
 
@@ -1352,6 +1369,9 @@ def make_uncertainty_budget_fig(
 
     Optionally computes method bias and performs a chi-squared test when not in
     data measurement mode.
+
+    Note that function only works for pseudodata and data measurements, not for
+    generator theory uncertainties since we don't plan to publish these!
 
     Arguments:
     ----------
@@ -1393,14 +1413,14 @@ def make_uncertainty_budget_fig(
     else:
         if measured_hist is None or target_hist is None:
             raise ValueError(
-                "measured_hist and target_hist must be provided when data_measurement_mode is False"
+                "measured_hist and target_hist must be provided when"
+                " data_measurement_mode is False"
             )
         denom = np.where(target_hist > 0, target_hist, 1)
-        mbias = (target_hist - measured_hist ) ** 2
+        mbias = (target_hist - measured_hist) ** 2
         rel_mbias = np.sqrt(mbias) / denom
         signed_rel_mbias = (target_hist - measured_hist) / denom
 
-    # Only works fro data in current implimentation, would need to be modify the output of uncertainty_calculator.get_total_theory_uncertainty for it to work on MG or Sherpa
     total_vars = np.sum(np.array(list(uncertainty_details[0].values())) ** 2, axis=0)
     total_uncert = np.sqrt(total_vars)
     total_uncert_plot = np.append(total_uncert, total_uncert[-1])
@@ -1408,7 +1428,7 @@ def make_uncertainty_budget_fig(
     # ===== Figure 2: Uncertainty budget plot =====
     fig_uncertainty_budget, ax = plt.subplots(figsize=figsize)
 
-    # Plot total uncertainty, only for the full uncertainty list, not for individual groups
+    # Plot total uncertainty for the full uncertainty list, not for individual groups
     if draw_group is None:
         ax.plot(
             bin_edges,
@@ -1439,11 +1459,11 @@ def make_uncertainty_budget_fig(
 
     # Plot method bias (only in standard mode, not data comparison mode)
     if rel_mbias is not None:
-        # we can decite to use signed rel_mbias by if the plotted nominal uncertainties are signed
-        if (bottom_uncert < 0):
+        # Use signed rel_mbias by if the plotted uncertainties are signed
+        if bottom_uncert < 0:
             rel_mbias = signed_rel_mbias
             bottom_uncert = min(bottom_uncert, min(rel_mbias))
-            
+
         plot_mbias = np.append(rel_mbias, rel_mbias[-1])
         ax.fill_between(
             bin_edges,
@@ -1454,7 +1474,7 @@ def make_uncertainty_budget_fig(
             alpha=0.3,
             label="Method bias",
         )
-    
+
     # Set plot properties
     if log_xscale:
         ax.set_xscale("log")
@@ -1497,7 +1517,8 @@ def make_uncertainty_budget_fig(
     # Calculate total covariance matrix
     if draw_group is not None:
         cov_matrices = [
-            cov for syst_name, cov in uncertainty_details[1].items()
+            cov
+            for syst_name, cov in uncertainty_details[1].items()
             if syst_name in draw_group
         ]
     else:
@@ -1516,17 +1537,17 @@ def make_uncertainty_budget_fig(
     )
 
     # Calculate chi-squared test if requested (only when not in data_measurement_mode)
-    chi2_label = ""
     if do_chi2_test and not data_measurement_mode:
         dof = len(bin_edges) - 1
-        D = target_hist - measured_hist 
+        D = target_hist - measured_hist
         chi2 = D.dot(np.linalg.inv(chi2_cov)).dot(D.T)
         p_value = 1 - stats.chi2.cdf(chi2, dof)
-        chi2_label = f"\ndof={dof}, $\\chi^2$={chi2:.2f}, p={p_value:.3f}"
         print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
 
     # ===== Figure 3: Correlation matrix plot =====
-    if ( (draw_group is None) or (draw_cov_matrix) ):  # only draw correlation matrix for the full covariance, not for individual groups
+    if (draw_group is None) or (
+        draw_cov_matrix
+    ):  # only draw correlation matrix for the full covariance
         fig_correlation_matrix = plot_correlation_matrix(
             total_cov=total_cov,
             bins=bin_edges,
@@ -1536,10 +1557,12 @@ def make_uncertainty_budget_fig(
         if pdf_name is not None:
             pdf_name_uncertainties = pdf_name.replace(".pdf", "_uncertainties.pdf")
             pdf_name_cor = pdf_name.replace(".pdf", "_corr.pdf")
-            fig_uncertainty_budget.savefig(pdf_name_uncertainties, dpi=200, format="pdf", bbox_inches="tight")
-            fig_correlation_matrix.savefig(pdf_name_cor, dpi=200, format="pdf", bbox_inches="tight")
-
-
+            fig_uncertainty_budget.savefig(
+                pdf_name_uncertainties, dpi=200, format="pdf", bbox_inches="tight"
+            )
+            fig_correlation_matrix.savefig(
+                pdf_name_cor, dpi=200, format="pdf", bbox_inches="tight"
+            )
 
 
 def nice_midpoint(low, up):
@@ -1592,15 +1615,14 @@ def draw_plot(
     is_xSec=True,
     logyScale=True,
     ratio_ylim=[0.2, 1.8],
-    dashed_lines_in_ratio=True,
     text_box=None,
     is_omni_data=True,
     results_list=None,
     formatting_dicts=None,
     omni_label=None,
     pdf_name=None,
-    is_profile = False,
-    smooth_hv = True
+    is_profile=False,
+    smooth_hv=True,
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
@@ -1628,20 +1650,22 @@ def draw_plot(
         If True, converts to cross-section.
     ratio_ylim : list, optional
         Y-limits for ratio subplot.
-    dashed_lines_in_ratio: bool or list, optional
-        if false, no dashed. if True, lines at snapped midpoints. If a list, draw lines at giveny values.
     is_omni_data : bool, optional
         If True, treats omni_results as data (False = pseudodata).
     results_list : list of dicts, optional
-        If provided, list of additional result dictionaries to plot, "omni_result" is reated as reference alwayse.
+        If provided, list of result dictionaries to plot in addition to nominal
     formatting_dicts : list of dicts, optional
-        If results_list is provided, list of formatting dicts for each result dict (e.g., color, label). Must be same length as results_list.
-        dictionary must contain the following items:
+        If results_list is provided, list of formatting dicts for each result.
+        Must be same length as results_list.
+        Dictionary must contain the following items:
             - "color": color for the result (e.g., "red")
             - "label": label for the legend (e.g., "MadGraph")
             - "marker": marker style for the result (e.g., "o")
-            - "is_omni_data": bool, whether this result should be treated as data (for uncertainty calculation)
-            - "is_madgraph": bool, whether this result is a MadGraph prediction.  If false and is_omni_data false, assume sherpa. (for uncertainty calculation)
+            - "is_omni_data": bool, whether this result should be treated as data
+            (for uncertainty calculation)
+            - "is_madgraph": bool, whether this result is a MadGraph prediction.
+            If false and is_omni_data false, assume sherpa.
+            (for uncertainty calculation)
     pdf_loc : str, optional
         If provided, location to save the figure as a PDF file (e.g., "obs.pdf").
     Returns:
@@ -1695,12 +1719,10 @@ def draw_plot(
 
     signed_uncerts, syst_covs, syst_info = (
         uncertainty_calculator.calculate_uncertainties(
-            omni_results,
-            measured_key="nominal",
-            smooth_hv=smooth_hv
+            omni_results, measured_key="nominal", smooth_hv=smooth_hv
         )
     )
-    
+
     omni_uncert_tuple = uncertainty_calculator.process_signed_uncertainties(
         signed_uncerts, syst_covs, syst_info
     )
@@ -1730,7 +1752,6 @@ def draw_plot(
                     np.sum(np.array(list(result_uncert_tuple[0].values())) ** 2, axis=0)
                 )
             elif fmt["is_truth_pd"]:
-                data_measurement_mode = True
                 if is_xSec:
                     target_hist = (
                         result_dict["nominal"][0] / lumi
@@ -1739,10 +1760,12 @@ def draw_plot(
                         target_hist > 0, 1 / np.sqrt(target_hist * lumi), 0
                     )  # rel error is stat only.
                 elif is_profile:
-                    target_hist   = result_dict["nominal"][0]
-                    result_uncert = np.sqrt(np.diag(result_dict["nominal"][1])) / target_hist # if is profile, this si the covariance matri
+                    target_hist = result_dict["nominal"][0]
+                    result_uncert = (
+                        np.sqrt(np.diag(result_dict["nominal"][1])) / target_hist
+                    )  # if is profile, this si the covariance matri
                 else:
-                    target_hist   = result_dict["nominal"][0]
+                    target_hist = result_dict["nominal"][0]
                     result_uncert = np.where(
                         target_hist > 0, 1 / np.sqrt(target_hist), 0
                     )
@@ -1752,13 +1775,12 @@ def draw_plot(
                 )
             results_uncerts.append(result_uncert)
 
-
     omni_density = omni_results["nominal"][0]
     if draw_uncertainty_budget:
         make_uncertainty_budget_fig(
             binning,
             omni_uncert_tuple,
-            figsize=( 12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
+            figsize=(12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
             xlabel=xlabel,
             log_xscale=False,
             llab="Simulation Internal",
@@ -1768,17 +1790,11 @@ def draw_plot(
             target_hist=target_hist,
             do_chi2_test=True,
             simple_corr_labels=True,
-            pdf_name = pdf_name,
-            draw_cov_matrix = False
+            pdf_name=pdf_name,
+            draw_cov_matrix=False,
         )
-    # if "trackj1" in var:
-    #     df = multifold[mask_trackj1]
-    # elif "trackj2" in var:
-    #     df = multifold[mask_trackj2]
-    # else:
-    #     df = multifold
 
-    ### Sherpa
+    # Sherpa
     if sherpa_truth_results is not None:
         sherpa_density = sherpa_truth_results["nominal"][0]
         if is_xSec:
@@ -1795,7 +1811,7 @@ def draw_plot(
             label=r"Drell Yan: Sherpa2.2.11 + X",
         )
 
-    ### MGFxFx
+    # MGFxFx
     if mgfxfx_truth_results is not None:
         mgfxfx_density = mgfxfx_truth_results["nominal"][0]
         if is_xSec:
@@ -1911,7 +1927,6 @@ def draw_plot(
 
     # Adjust y-axis limits
     axs[0].set_ylim([0.3 * y_min, 1.3 * y_max])
-
     axs[0].errorbar(
         bin_centers,
         omni_density,
@@ -2078,7 +2093,7 @@ def draw_uncertainty_group(
     xlabel="default",
     smooth_hv=True,
     target_hist=None,
-    draw_cov_matrix = False,
+    draw_cov_matrix=False,
 ):
     """Draw measurement with optional theory comparisons and r gbatio plot.
 
@@ -2107,7 +2122,7 @@ def draw_uncertainty_group(
         omni_results, measured_key="nominal", smooth_hv=smooth_hv
     )
     grouping = uc.uncertainty_groups[group]
-    
+
     if target_hist is not None:
         omni_density = omni_results["nominal"][0]
         target_hist = target_hist["nominal"][0]
@@ -2126,7 +2141,7 @@ def draw_uncertainty_group(
         do_chi2_test=False,
         simple_corr_labels=True,
         draw_group=grouping,
-        draw_cov_matrix = draw_cov_matrix,
+        draw_cov_matrix=draw_cov_matrix,
     )
 
 

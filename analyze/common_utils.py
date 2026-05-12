@@ -67,13 +67,6 @@ def extract_kinematics(
         stop=stop,
     )
 
-    # DEBUG!!! Filter out events which don't pass selection
-    p190 = tree["truth_pass190"].array(entry_start=start, entry_stop=stop)
-    pT_ll = tree["truth_pT_ll"].array(entry_start=start, entry_stop=stop)
-    keep_mask = np.logical_and(p190 == 1, pT_ll > 200)
-    kinematics = kinematics[keep_mask, ...]
-    pdgids = pdgids[keep_mask, ...]
-
     # Extract pT, eta, phi from kinematics array
     # kinematics shape is (n_events, 3, n_particles) where axis 1 is [pT, eta, phi]
     pt = kinematics[:, 0, :]  # Extract pT

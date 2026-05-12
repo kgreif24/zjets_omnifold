@@ -453,21 +453,27 @@ class UncertaintyCalculator:
         if mc_stat_def is not None:
 
             # There are three possible ways to compute MC test uncertainty:
-            # 1. Bootstrap the MC test sample
-            # 2. Use the weighted Poisson counting error in the measured histogram
-            # 3. For distributions where bins are correlated, a covariance matrix is built and the sqrt of the diagonal of the covariance matrix gives the uncertainty
-            # Default to 2 unless the bootstrap hists are provided, in which case use 1
+            # 1. Use the weighted Poisson counting error in the measured histogram
+            # 2. Bootstrap the MC test sample and build covariance matrix using
+            # the spread of the bootstraps.
+            # 3. For the jet pT profile observables, can calculate
+            # an analytic uncertainty on the weighted mean. Cheaper than bootstrapping
+            # so use this instead when possible.
             prefix = mc_stat_def.get("prefix", "bootstrap_mc_test_")
             mc_stat_test_bs_keys = [
                 key for key in all_hists.keys() if key.startswith(prefix)
             ]
+
+            # Case #3: covariance matrix covering passed in as second item in
+            # "measured_key" tuple. Note _fill_covariance_matrix is not
+            # called since the matrix has already been calculated
             if measured_hist_var.ndim == 2:
                 var = np.diag(measured_hist_var)
-                cov = measured_hist_var # Is a 2x2 non-diagonal cov matrix
+                cov = measured_hist_var  # Is a 2x2 non-diagonal cov matrix
                 syst_uncerts["mc-stat-test"] = np.sqrt(var) / measured_hist
-                syst_covs["mc-stat-test"]    = cov
-                
-            # Note with bootstraps fill off diagonal elements of the covariance matrix
+                syst_covs["mc-stat-test"] = cov
+
+            # Case #2: use histograms built from bootstraps of the testing set
             elif len(mc_stat_test_bs_keys) > 0:
                 mc_stat_test_bs_hists = np.array(
                     [all_hists[key][0] for key in mc_stat_test_bs_keys]
@@ -480,14 +486,13 @@ class UncertaintyCalculator:
                     mc_stat_test_bs_hists,
                     means=np.mean(mc_stat_test_bs_hists, axis=0),
                 )
-            # With only Poisson bin counts the covariance matrix is diagonal
+            # Case #1: Use the poisson counting error directly
             else:
                 mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
                 syst_uncerts["mc-stat-test"] = mc_stat_uncert_unnorm / measured_hist
                 syst_covs["mc-stat-test"] = np.diag(measured_hist_var)
             syst_info["mc-stat-test"] = mc_stat_def.copy()
 
-        
         # MC statistical uncertainty (from bootstrap MC stat uncertainty)
         mc_stat_bs_def = self.uncertainty_definitions.get("mc-stat-train")
         if mc_stat_bs_def is not None:
@@ -748,10 +753,15 @@ class UncertaintyCalculator:
         """
 
         central_hist, central_hist_var, _ = all_hists[measured_key]
+        # Same as MC test uncertainty above, can calculated stat uncertainty
+        # using three different methods (bootstrapping not implemented here
+        # since it is not used).
+        # Case #3: Use covariance matrix from analytic uncertainty on the
+        # weighted mean
         if central_hist_var.ndim == 2:
             var = np.diag(central_hist_var)
-            cov = central_hist_var # Is a 2x2 non-diagonal cov matrix
             syst_uncerts = [np.sqrt(var) / central_hist]
+        # Case #1: Use the simple poisson counting error
         else:
             syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
 
