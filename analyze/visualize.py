@@ -1,13 +1,13 @@
 """
-Visualization functions for jet analysis.
+Plotting functions for analysis of Omnifold Z+jets measurement
 """
 
-import re
 import io
 import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as mh
 import matplotlib.gridspec as gs
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
 import uncertainties
 import scipy.stats as stats
@@ -20,15 +20,6 @@ mh.style.use("ATLAS")
 
 # DPI used when saving figures to disk (e.g. via pdf_name in draw_plot)
 SAVE_DPI = 200
-
-
-def _strip_latex(s):
-    """Return a terminal-friendly version of a LaTeX label string."""
-    s = re.sub(r"\\(?:text|mathrm)\{([^}]*)\}", r"\1", s)  # \text{X} -> X
-    s = re.sub(r"_\{([^}]*)\}", r"_\1", s)  # _{X} -> _X
-    s = re.sub(r"\^\{([^}]*)\}", r"^\1", s)  # ^{X} -> ^X
-    s = s.replace("$", "").replace("\\", "")
-    return s.strip()
 
 
 def figs_to_grid(figs, ncols=4):
@@ -1404,8 +1395,9 @@ def make_uncertainty_budget_fig(
     --------
     fig_uncertainty_budget : matplotlib.figure.Figure
         Uncertainty budget plot.
-    fig_correlation_matrix : matplotlib.figure.Figure
-        Correlation matrix plot.
+    fig_correlation_matrix : matplotlib.figure.Figure or None
+        Correlation matrix plot, or None when suppressed by draw_group /
+        draw_cov_matrix settings.
     """
     if data_measurement_mode:
         mbias = None
@@ -1492,9 +1484,6 @@ def make_uncertainty_budget_fig(
         for syst_name in uncertainty_details[2].keys():
             if syst_name in draw_group:
                 top_uncert = max(top_uncert, np.max(uncertainty_details[0][syst_name]))
-    # if top_uncert > 0.2 or np.isnan(top_uncert):
-    #     ax.set_ylim(bottom=bottom_uncert, top=0.2)
-    # else:
     ax.set_ylim(bottom=bottom_uncert * 1.2, top=top_uncert * 1.2)
 
     ax.legend(
@@ -1545,6 +1534,7 @@ def make_uncertainty_budget_fig(
         print(f"Chi-squared test: dof={dof}, χ²={chi2:.5f}, p-value={p_value:.4f}")
 
     # ===== Figure 3: Correlation matrix plot =====
+    fig_correlation_matrix = None
     if (draw_group is None) or (
         draw_cov_matrix
     ):  # only draw correlation matrix for the full covariance
@@ -1558,11 +1548,13 @@ def make_uncertainty_budget_fig(
             pdf_name_uncertainties = pdf_name.replace(".pdf", "_uncertainties.pdf")
             pdf_name_cor = pdf_name.replace(".pdf", "_corr.pdf")
             fig_uncertainty_budget.savefig(
-                pdf_name_uncertainties, dpi=200, format="pdf", bbox_inches="tight"
+                pdf_name_uncertainties, dpi=SAVE_DPI, format="pdf", bbox_inches="tight"
             )
             fig_correlation_matrix.savefig(
-                pdf_name_cor, dpi=200, format="pdf", bbox_inches="tight"
+                pdf_name_cor, dpi=SAVE_DPI, format="pdf", bbox_inches="tight"
             )
+
+    return fig_uncertainty_budget, fig_correlation_matrix
 
 
 def nice_midpoint(low, up):
@@ -1666,12 +1658,15 @@ def draw_plot(
             - "is_madgraph": bool, whether this result is a MadGraph prediction.
             If false and is_omni_data false, assume sherpa.
             (for uncertainty calculation)
-    pdf_loc : str, optional
-        If provided, location to save the figure as a PDF file (e.g., "obs.pdf").
+    pdf_name : str, optional
+        If provided, save output as a PDF at this path. When the uncertainty
+        budget is drawn, the budget and correlation figures are appended as
+        pages 2 and 3 of that PDF rather than saved as separate files.
     Returns:
     --------
-    None
-        Produces matplotlib figures.
+    fig : matplotlib.figure.Figure
+        The main measurement figure. If draw_uncertainty_budget is True,
+        returns a tuple (fig, fig_budget, fig_corr) where fig_corr may be None.
     """
     target_hist = None
     additional_results = results_list is not None and formatting_dicts is not None
@@ -1776,8 +1771,10 @@ def draw_plot(
             results_uncerts.append(result_uncert)
 
     omni_density = omni_results["nominal"][0]
+    fig_budget = None
+    fig_corr = None
     if draw_uncertainty_budget:
-        make_uncertainty_budget_fig(
+        fig_budget, fig_corr = make_uncertainty_budget_fig(
             binning,
             omni_uncert_tuple,
             figsize=(12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
@@ -1790,7 +1787,6 @@ def draw_plot(
             target_hist=target_hist,
             do_chi2_test=True,
             simple_corr_labels=True,
-            pdf_name=pdf_name,
             draw_cov_matrix=False,
         )
 
@@ -2082,8 +2078,18 @@ def draw_plot(
         axs[1].axhline(line2, color="gray", linestyle="--", linewidth=1)
 
     if pdf_name is not None:
-        fig.savefig(pdf_name, dpi=200, format="pdf", bbox_inches="tight")
-    return
+        extra_figs = [f for f in [fig_budget, fig_corr] if f is not None]
+        if extra_figs:
+            with PdfPages(pdf_name) as pdf:
+                pdf.savefig(fig, dpi=SAVE_DPI, bbox_inches="tight")
+                for ef in extra_figs:
+                    pdf.savefig(ef, dpi=SAVE_DPI, bbox_inches="tight")
+        else:
+            fig.savefig(pdf_name, dpi=SAVE_DPI, format="pdf", bbox_inches="tight")
+
+    if fig_budget is not None:
+        return fig, fig_budget, fig_corr
+    return fig
 
 
 def draw_uncertainty_group(
