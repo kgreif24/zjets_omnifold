@@ -253,6 +253,8 @@ def get_truth_to_reco_ratio(gn, t_mc, prior_weights, reco_pass, truth_pass):
             return nominal_numerator / denominator
         elif gn == "prw":
             nominal_sf = ak.to_numpy(t_mc["prw"].array())
+            # Replace SFs of 0 with 1 to avoid division by zero
+            nominal_sf = np.where(nominal_sf == 0, 1, nominal_sf)
             varied_sf = ak.to_numpy(t_mc["syst_prwDown"].array())
             weight = varied_sf * nominal_weight / nominal_sf
             denominator = np.sum(weight[reco_pass == 1])
@@ -511,7 +513,9 @@ for gn in args.group_names:
             )
         else:
             central_weights *= nominal_root_weights
-            use_factor = nominal_factor
+            use_factor = get_truth_to_reco_ratio(
+                gn, t, prior_weights, pass200, truth_pass200
+            )
         central_weights = norm_weights(
             central_weights,
             truth_pass200,
