@@ -1593,6 +1593,7 @@ def draw_plot(
     draw_uncertainty_budget=True,
     is_xSec=True,
     logyScale=True,
+    logxScale=False,
     ratio_ylim=[0.2, 1.8],
     text_box=None,
     is_omni_data=True,
@@ -1603,6 +1604,7 @@ def draw_plot(
     is_profile=False,
     smooth_hv=True,
     do_chi2_test=True,
+    draw_cov_matrix=False,
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
@@ -1628,6 +1630,10 @@ def draw_plot(
         If True, produces uncertainty budget plot.
     is_xSec : bool, optional
         If True, converts to cross-section.
+    logyScale : bool, optional
+        If True, use log scale for y-axis (default: True).
+    logxScale : bool, optional
+        If True, use log scale for x-axis (default: False).
     ratio_ylim : list, optional
         Y-limits for ratio subplot.
     is_omni_data : bool, optional
@@ -1654,6 +1660,9 @@ def draw_plot(
         Passed to make_uncertainty_budget_fig. Performs a chi-squared test
         against the target histogram (only meaningful when is_omni_data is
         False). Default: True.
+    draw_cov_matrix : bool, optional
+        Passed to make_uncertainty_budget_fig. If True, draws the covariance
+        matrix. Default: False.
     Returns:
     --------
     fig : matplotlib.figure.Figure
@@ -1762,7 +1771,7 @@ def draw_plot(
             omni_uncert_tuple,
             figsize=(12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
             xlabel=xlabel,
-            log_xscale=False,
+            log_xscale=logxScale,
             llab="Simulation Internal",
             rlab="Z+jets Omnifold",
             data_measurement_mode=is_omni_data,
@@ -1770,7 +1779,7 @@ def draw_plot(
             target_hist=target_hist,
             do_chi2_test=do_chi2_test,
             simple_corr_labels=True,
-            draw_cov_matrix=False,
+            draw_cov_matrix=draw_cov_matrix,
         )
 
     # Draw Sherpa density
@@ -1943,6 +1952,9 @@ def draw_plot(
     else:
         axs[0].set_yscale("linear")
 
+    if logxScale:
+        axs[0].set_xscale("log")
+
     # Draw ratio plot
     if draw_ratioplot:
         axs[1].minorticks_on()
@@ -2043,6 +2055,8 @@ def draw_plot(
 
         axs[1].set_xlim(binning[0], binning[-1])
         axs[1].set_ylim(ratio_ylim)
+        if logxScale:
+            axs[1].set_xscale("log")
         axs[1].xaxis.set_tick_params(
             labelsize=16, which="both", direction="in", top=True
         )
