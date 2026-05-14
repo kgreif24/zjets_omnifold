@@ -9,7 +9,6 @@ from __future__ import annotations
 
 
 import numpy as np
-import boost_histogram as bh
 import dask
 import awkward as ak
 import vector
@@ -30,6 +29,11 @@ def _calculate_eec_chunk(
     This is an internal function that processes a subset of events from a TTree.
     Each worker opens its own file handle to avoid serialization issues with
     uproot TTree objects.
+
+    Only off-diagonal pairs (i < j) are formed; the factor of 2 on the energy
+    products accounts for both orderings (i,j) and (j,i). The normalization
+    denominator is (sum E_i)^2, so each per-event histogram sums to less than 1
+    (the missing fraction equals the diagonal self-pair contributions).
 
     Arguments:
     ----------
@@ -53,22 +57,17 @@ def _calculate_eec_chunk(
         Energy products for each pair, shape [n_events_chunk, var]
     zs : ak.Array
         Angular z values for each pair, shape [n_events_chunk, var]
-    counts : np.ndarray
-        Number of pairs per event, shape [n_events_chunk]
     """
 
     # Open file handle within the worker to avoid serialization issues
     with uproot.open(file_path) as f:
         tree = f[tree_name]
 
-        # Extract kinematics for this chunk and get counts of tracks per event
-        # pass_flags_chunk is already sliced for this chunk
         pt, eta, phi, masses = cu.extract_kinematics(
             tree,
             start=start,
             stop=stop,
         )
-    counts = ak.to_numpy(ak.count(pt, axis=1))
 
     # Build four-vectors
     vector.register_awkward()
@@ -81,17 +80,19 @@ def _calculate_eec_chunk(
     Et = four_vectors.Et
     p3_unit = four_vectors.to_Vector3D().unit()
 
-    # Make pairs of energy weights and unit vectors
+    # Make pairs of energy weights and unit vectors (i < j only; each pair
+    # is multiplied by 2 to account for both orderings (i,j) and (j,i))
     energy_weight_pairs = ak.combinations(
-        Et, 2, axis=1, fields=["a", "b"], replacement=True
+        Et, 2, axis=1, fields=["a", "b"], replacement=False
     )
     p3_unit_pairs = ak.combinations(
-        p3_unit, 2, axis=1, fields=["a", "b"], replacement=True
+        p3_unit, 2, axis=1, fields=["a", "b"], replacement=False
     )
 
-    # Calculate energy sums, products, and z values
+    # Normalize by total Et squared (includes self-pairs), so each per-event
+    # histogram sums to less than 1 (missing the diagonal self-pair contributions).
     energy_sums = ak.to_numpy(ak.sum(Et, axis=1)) ** 2
-    energy_products = energy_weight_pairs.a * energy_weight_pairs.b
+    energy_products = 2 * energy_weight_pairs.a * energy_weight_pairs.b
     cos_thetas = p3_unit_pairs.a.dot(p3_unit_pairs.b)
     zs = (1 - cos_thetas) / 2
 
@@ -99,20 +100,20 @@ def _calculate_eec_chunk(
     if invert_z:
         zs = 1 - zs
 
-    return energy_sums, energy_products, zs, counts
+    return energy_sums, energy_products, zs
 
 
 def _histogram_chunk(
     eec_result: tuple[ak.Array, ak.Array, np.ndarray],
     event_weights: np.ndarray,
     bins: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build a weighted histogram from a single EEC chunk.
+) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]:
+    """Build weighted EEC accumulator arrays from a single chunk.
 
     Arguments:
     ----------
     eec_result : tuple
-        Tuple of (energy_products, zs, counts) from _calculate_eec_chunk.
+        Tuple of (energy_sums, energy_products, zs, counts) from _calculate_eec_chunk.
     event_weights : np.ndarray
         Event-level weights to apply, shape [n_events_chunk].
     bins : np.ndarray
@@ -120,43 +121,66 @@ def _histogram_chunk(
 
     Returns:
     --------
-    hist : np.ndarray
-        Histogram counts, shape [len(bins) - 1].
-    hist_var : np.ndarray
-        Histogram variances, shape [len(bins) - 1].
+    H : np.ndarray
+        Weighted sum of per-event EEC histograms, shape [len(bins) - 1].
+    HH : np.ndarray
+        Weighted outer-product sum, shape [len(bins) - 1, len(bins) - 1].
+    W : float
+        Sum of event weights.
+    W2 : float
+        Sum of squared event weights.
     bins : np.ndarray
-        Bin edges for the histogram.
+        Bin edges (passed through for aggregation).
     """
 
-    # Extract EEC results
-    energy_sums, energy_products, zs, counts = eec_result
+    energy_sums, energy_products, zs = eec_result
+    n_events = len(energy_sums)
+    n_bins = len(bins) - 1
 
-    # Broadcast event weights to pair level
-    pair_weights = ak.broadcast_arrays(
-        event_weights / energy_sums,
-        energy_products,
-    )[0]
-
-    # Flatten arrays for histogramming
+    # Flatten pair-level arrays and build event index array
     flat_zs = ak.to_numpy(ak.flatten(zs))
-    flat_weights = ak.to_numpy(ak.flatten(pair_weights) * ak.flatten(energy_products))
+    flat_ep = ak.to_numpy(ak.flatten(energy_products))
+    pair_counts = ak.to_numpy(ak.count(energy_products, axis=1))
+    event_indices = np.repeat(np.arange(n_events), pair_counts)
 
-    # Build histogram — Weight storage accumulates sum(w) and sum(w^2) in one pass
-    h = bh.Histogram(bh.axis.Variable(bins), storage=bh.storage.Weight())
-    h.fill(flat_zs, weight=flat_weights)
-    hist = h.values()
-    hist_var = h.variances()
-    return hist, hist_var, bins
+    # Normalize each pair contribution by its event's energy sum^2
+    pair_contributions = flat_ep / np.repeat(energy_sums, pair_counts)
+
+    # Digitize z values; pairs outside [bins[0], bins[-1]] are discarded
+    bin_indices = np.searchsorted(bins, flat_zs, side='right') - 1
+    valid = (bin_indices >= 0) & (bin_indices < n_bins)
+
+    # Build V matrix [n_events, n_bins] via a single vectorized bincount
+    flat_idx = event_indices[valid] * n_bins + bin_indices[valid]
+    V = np.bincount(
+        flat_idx, weights=pair_contributions[valid], minlength=n_events * n_bins
+    ).reshape(n_events, n_bins)
+
+    # Accumulate weighted sums
+    Vw = V * event_weights[:, None]
+    H = Vw.sum(axis=0)
+    HH = Vw.T @ Vw
+    W = float(event_weights.sum())
+    W2 = float((event_weights**2).sum())
+
+    return H, HH, W, W2, bins
 
 
 def _sum_histograms(
-    hist_list: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    hist_list: list[tuple[np.ndarray, np.ndarray, float, float, np.ndarray]],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Sum a list of histograms."""
-    hist = np.sum([h[0] for h in hist_list], axis=0)
-    hist_var = np.sum([h[1] for h in hist_list], axis=0)
-    bins = hist_list[0][2]
-    return hist, hist_var, bins
+    """Aggregate chunk accumulators and compute the final EEC histogram and covariance.
+    """
+    H_total = np.sum([h[0] for h in hist_list], axis=0)
+    HH_total = np.sum([h[1] for h in hist_list], axis=0)
+    W_total = sum(h[2] for h in hist_list)
+    W2_total = sum(h[3] for h in hist_list)
+    bins = hist_list[0][4]
+
+    h_bar = H_total / W_total
+    cov = HH_total / W_total**2 - np.outer(h_bar, h_bar) * W2_total / W_total**2
+
+    return h_bar, cov, bins
 
 
 def calculate_eec_parallel(
@@ -310,7 +334,10 @@ def run_eec_workflow_parallel(
     --------
     histograms : dict
         Dictionary mapping weight names to tuples of
-        (histogram, histogram_variance, bin_edges).
+        (h_bar, cov_matrix, bin_edges), where h_bar is the normalized EEC
+        histogram of shape [n_bins], cov_matrix is the [n_bins, n_bins]
+        statistical covariance of the weighted mean, and bin_edges has shape
+        [n_bins + 1]. Per-bin variances are np.diag(cov_matrix).
     """
 
     # Apply max_events limit if specified
@@ -322,7 +349,10 @@ def run_eec_workflow_parallel(
 
     # Create delayed EEC tasks
     chunk_results, chunk_ranges = calculate_eec_parallel(
-        file_path, tree_name, chunk_size=chunk_size, max_events=max_events,
+        file_path,
+        tree_name,
+        chunk_size=chunk_size,
+        max_events=max_events,
         invert_z=invert_z,
     )
 

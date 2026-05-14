@@ -1,6 +1,7 @@
 __pycache__
 *.pyc
 plot_storage
+plots
 weight_storage
 plotting_mc
 slurm*

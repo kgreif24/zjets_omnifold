@@ -1,0 +1,140 @@
+# Comment out features to exclude them from plotting in the standard observable notebooks.
+features:
+  - pT_l1
+  - pT_l2
+  - eta_l1
+  - eta_l2
+  - phi_l1
+  - phi_l2
+  - pT_trackj1
+  - pT_trackj2
+  - y_trackj1
+  - y_trackj2
+  - phi_trackj1
+  - phi_trackj2
+  - pT_ll
+  - y_ll
+  - Ntracks_trackj1
+  - Ntracks_trackj2
+  - m_trackj1
+  - m_trackj2
+  - tau1_trackj1
+  - tau1_trackj2
+  - tau2_trackj1
+  - tau2_trackj2
+  - tau3_trackj1
+  - tau3_trackj2
+  - HT_tracks
+  - Ntracks
+
+features_ylog:
+  pT_l1: true
+  pT_l2: true
+  eta_l1: false
+  eta_l2: false
+  phi_l1: false
+  phi_l2: false
+  pT_trackj1: true
+  pT_trackj2: true
+  y_trackj1: false
+  y_trackj2: false
+  phi_trackj1: false
+  phi_trackj2: false
+  pT_ll: true
+  y_ll: false
+  Ntracks_trackj1: false
+  Ntracks_trackj2: false
+  m_trackj1: true
+  m_trackj2: true
+  tau1_trackj1: true
+  tau1_trackj2: true
+  tau2_trackj1: true
+  tau2_trackj2: true
+  tau3_trackj1: true
+  tau3_trackj2: true
+  HT_tracks: true
+  Ntracks: false
+
+bins:
+  pT_l1: [25.0, 125.0, 200.0, 300.0, 400.0, 500.0, 800.0]
+  pT_l2: [25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 400.0]
+  eta_l1: [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
+  eta_l2: [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
+  phi_l1: [-3.14169265, -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.14169265]
+  phi_l2: [-3.14169265, -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.14169265]
+  pT_trackj1: [5.0, 50.0, 100.0, 150.0, 200.0, 300.0, 1000.0]
+  pT_trackj2: [5.0, 25.0, 50.0, 100.0, 500.0]
+  y_trackj1: [-2.5, -2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5]
+  y_trackj2: [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+  phi_trackj1: [-3.14169265, -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.14169265]
+  phi_trackj2: [-3.14169265, -2.8, -2.4, -2.0, -1.6, -1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.14169265]
+  pT_ll: [200.0, 230.0, 300.0, 450.0, 600.0, 1000.0]
+  y_ll: [-2.5, -2.0, -1.5, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5]
+  Ntracks_trackj1: [0.5, 6.5, 10.5, 14.5, 19.5, 25.5, 39.5]
+  Ntracks_trackj2: [0.5, 3.5, 7.5, 11.5, 15.5, 34.5]
+  m_trackj1: [0.0, 8.0, 16.0, 24.0, 32.0, 42.0, 70.0]
+  m_trackj2: [0.0, 5.0, 10.0, 20.0, 40.0]
+  tau1_trackj1: [0.0, 0.05, 0.1, 0.17, 0.25, 0.35, 0.4, 0.9]
+  tau1_trackj2: [0.0, 0.1, 0.2, 0.35, 0.5, 0.9]
+  tau2_trackj1: [0.0, 0.025, 0.05, 0.08, 0.12, 0.17, 0.25, 0.5]
+  tau2_trackj2: [0.0, 0.025, 0.1, 0.17, 0.25, 0.5]
+  tau3_trackj1: [0.0, 0.025, 0.05, 0.1, 0.3]
+  tau3_trackj2: [0.0, 0.025, 0.08, 0.14, 0.3]
+  HT_tracks: [0.0, 160.0, 235.0, 320.0, 440.0, 700.0, 1700.0]
+  Ntracks: [-0.5, 30.5, 60.5, 85.5, 115.5, 160.5]
+
+plot_labels:
+  pT_l1: "Leading lepton $p_{\\text{T}}$ [GeV]"
+  pT_l2: "Subleading lepton $p_\\text{T}$ [GeV]"
+  eta_l1: "Leading lepton $\\eta$"
+  eta_l2: "Subleading lepton $\\eta$"
+  phi_l1: "Leading lepton $\\phi$"
+  phi_l2: "Subleading lepton $\\phi$"
+  pT_trackj1: "Leading jet $p_{\\text{T}}$ [GeV]"
+  pT_trackj2: "Subleading jet $p_{\\text{T}}$ [GeV]"
+  y_trackj1: "Leading jet $y$"
+  y_trackj2: "Subleading jet $y$"
+  phi_trackj1: "Leading jet $\\phi$"
+  phi_trackj2: "Subleading jet $\\phi$"
+  pT_ll: "Dilepton $p_{\\text{T}}$ [GeV]"
+  y_ll: "Dilepton $y$"
+  Ntracks_trackj1: "Leading jet $n_\\text{ch}$"
+  Ntracks_trackj2: "Subleading jet $n_\\text{ch}$"
+  m_trackj1: "Leading jet $m$ [GeV]"
+  m_trackj2: "Subleading jet $m$ [GeV]"
+  tau1_trackj1: "Leading jet $\\tau_1$"
+  tau1_trackj2: "Subleading jet $\\tau_1$"
+  tau2_trackj1: "Leading jet $\\tau_2$"
+  tau2_trackj2: "Subleading jet $\\tau_2$"
+  tau3_trackj1: "Leading jet $\\tau_3$"
+  tau3_trackj2: "Subleading jet $\\tau_3$"
+  HT_tracks: "$H_T$ [GeV]"
+  Ntracks: "Charged Hadron Multiplicity, $n_\\text{ch}$"
+
+labels:
+  pT_l1: "d$\\sigma$/d$p_\\text{T}^{\\mu 1}$ [fb/GeV]"
+  pT_l2: "d$\\sigma$/d$p_\\text{T}^{\\mu 2}$ [fb/GeV]"
+  eta_l1: "d$\\sigma$/d$\\eta^{\\mu 1}$ [fb]"
+  eta_l2: "d$\\sigma$/d$\\eta^{\\mu 2}$ [fb]"
+  phi_l1: "d$\\sigma$/d$\\phi^{\\mu 1}$ [fb]"
+  phi_l2: "d$\\sigma$/d$\\phi^{\\mu 2}$ [fb]"
+  pT_trackj1: "d$\\sigma$/d$p_\\text{T}$ [fb/GeV]"
+  pT_trackj2: "d$\\sigma$/d$p_\\text{T}$ [fb/GeV]"
+  y_trackj1: "d$\\sigma$/d$y$ [fb]"
+  y_trackj2: "d$\\sigma$/d$y$ [fb]"
+  phi_trackj1: "d$\\sigma$/d$\\phi$ [fb]"
+  phi_trackj2: "d$\\sigma$/d$\\phi$ [fb]"
+  pT_ll: "d$\\sigma$/d$p_\\text{T}^{\\mu\\mu}$ [fb/GeV]"
+  y_ll: "d$\\sigma$/d$y^{\\mu\\mu}$ [fb]"
+  Ntracks_trackj1: "d$\\sigma$/dn$_\\text{ch}$ [fb]"
+  Ntracks_trackj2: "d$\\sigma$/dn$_\\text{ch}$ [fb]"
+  m_trackj1: "d$\\sigma$/d$m$ [fb/GeV]"
+  m_trackj2: "d$\\sigma$/d$m$ [fb/GeV]"
+  tau1_trackj1: "d$\\sigma$/d$\\tau_1$ [fb]"
+  tau1_trackj2: "d$\\sigma$/d$\\tau_1$ [fb]"
+  tau2_trackj1: "d$\\sigma$/d$\\tau_2$ [fb]"
+  tau2_trackj2: "d$\\sigma$/d$\\tau_2$ [fb]"
+  tau3_trackj1: "d$\\sigma$/d$\\tau_3$ [fb]"
+  tau3_trackj2: "d$\\sigma$/d$\\tau_3$ [fb]"
+  HT_tracks: "d$\\sigma$/d$H_T$ [fb/GeV]"
+  Ntracks: "d$\\sigma$/d$n_\\text{ch}$ [fb]"

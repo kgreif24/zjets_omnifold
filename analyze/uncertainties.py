@@ -74,6 +74,8 @@ class UncertaintyCalculator:
             "weights_theoryPSsoft",
             "weights_theoryMPI",
             "weights_theoryPSscale",
+            "weights_ns_theory_diboson_up",
+            "weights_ns_theory_ew_zjj_up",
         ]
         self.sherpa_uncertainties = [
             "weights_theoryQCD",
@@ -300,6 +302,7 @@ class UncertaintyCalculator:
                 "muEffTrig",
             ],
             "MC Stat": ["mc-stat-test", "mc-stat-train"],
+            "Data Stat": ["data-stat"],
             "Theory": [
                 "theoryQCD",
                 "theoryPDF",
@@ -392,7 +395,7 @@ class UncertaintyCalculator:
         all_hists: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]],
         measured_key: str = "nominal",
         smooth_hv: bool = True,
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict]]:
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Dict]]:
         """Calculate all uncertainties from histogram dictionary.
         Will only calculate uncertainties that are defined in the
         uncertainty_definitions dictionary, the rest will be ignored.
@@ -449,16 +452,29 @@ class UncertaintyCalculator:
         mc_stat_def = self.uncertainty_definitions.get("mc-stat-test")
         if mc_stat_def is not None:
 
-            # There are two possible ways to compute MC test uncertainty:
-            # 1. Bootstrap the MC test sample
-            # 2. Use the weighted Poisson counting error in the measured histogram
-            # Default to 2 unless the bootstrap hists are provided, in which case use 1
+            # There are three possible ways to compute MC test uncertainty:
+            # 1. Use the weighted Poisson counting error in the measured histogram
+            # 2. Bootstrap the MC test sample and build covariance matrix using
+            # the spread of the bootstraps.
+            # 3. For the jet pT profile observables, can calculate
+            # an analytic uncertainty on the weighted mean. Cheaper than bootstrapping
+            # so use this instead when possible.
             prefix = mc_stat_def.get("prefix", "bootstrap_mc_test_")
             mc_stat_test_bs_keys = [
                 key for key in all_hists.keys() if key.startswith(prefix)
             ]
-            # Note with bootstraps fill off diagonal elements of the covariance matrix
-            if len(mc_stat_test_bs_keys) > 0:
+
+            # Case #3: covariance matrix covering passed in as second item in
+            # "measured_key" tuple. Note _fill_covariance_matrix is not
+            # called since the matrix has already been calculated
+            if measured_hist_var.ndim == 2:
+                var = np.diag(measured_hist_var)
+                cov = measured_hist_var  # Is a 2x2 non-diagonal cov matrix
+                syst_uncerts["mc-stat-test"] = np.sqrt(var) / measured_hist
+                syst_covs["mc-stat-test"] = cov
+
+            # Case #2: use histograms built from bootstraps of the testing set
+            elif len(mc_stat_test_bs_keys) > 0:
                 mc_stat_test_bs_hists = np.array(
                     [all_hists[key][0] for key in mc_stat_test_bs_keys]
                 )
@@ -470,7 +486,7 @@ class UncertaintyCalculator:
                     mc_stat_test_bs_hists,
                     means=np.mean(mc_stat_test_bs_hists, axis=0),
                 )
-            # With only Poisson bin counts the covariance matrix is diagonal
+            # Case #1: Use the poisson counting error directly
             else:
                 mc_stat_uncert_unnorm = np.sqrt(measured_hist_var)
                 syst_uncerts["mc-stat-test"] = mc_stat_uncert_unnorm / measured_hist
@@ -569,6 +585,7 @@ class UncertaintyCalculator:
         signed_uncerts: Dict[str, np.ndarray],
         syst_covs: Dict[str, np.ndarray],
         syst_info: Dict[str, Dict],
+        ungrouped: bool = False,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Dict]]:
         """Process signed fractional uncertainties into unsigned grouped uncertainties.
 
@@ -587,6 +604,8 @@ class UncertaintyCalculator:
             Covariance matrices from calculate_uncertainties.
         syst_info : dict[str, dict]
             Metadata from calculate_uncertainties.
+        ungrouped : bool
+            If True, do not group uncertainties and only return the absolute values
 
         Returns:
         --------
@@ -615,7 +634,7 @@ class UncertaintyCalculator:
         info_copy = dict(syst_info)
 
         # Apply grouping (adds in quadrature for uncerts, sums for covs).
-        if self.uncertainty_groups:
+        if self.uncertainty_groups and not ungrouped:
             abs_uncerts, covs_copy, info_copy = self._apply_grouping(
                 abs_uncerts, covs_copy, info_copy
             )
@@ -737,7 +756,18 @@ class UncertaintyCalculator:
         """
 
         central_hist, central_hist_var, _ = all_hists[measured_key]
-        syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
+        # Same as MC test uncertainty above, can calculated stat uncertainty
+        # using three different methods (bootstrapping not implemented here
+        # since it is not used).
+        # Case #3: Use covariance matrix from analytic uncertainty on the
+        # weighted mean
+        if central_hist_var.ndim == 2:
+            var = np.diag(central_hist_var)
+            syst_uncerts = [np.sqrt(var) / central_hist]
+        # Case #1: Use the simple poisson counting error
+        else:
+            syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
+
         if is_madgraph:
             weight_names = self.madgraph_uncertainties
         else:
