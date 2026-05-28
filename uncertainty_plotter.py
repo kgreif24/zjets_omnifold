@@ -19,7 +19,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
 import scipy.stats as stats
 import plotter
-from analyze import uncertainties as uncert_module
+from analyze.utils import uncertainties as uncert_module
 
 
 class UncertaintyPlotter(plotter.Plotter):
