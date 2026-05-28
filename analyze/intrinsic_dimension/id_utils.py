@@ -2,12 +2,13 @@
 Utility functions for intrinsic dimension calculations.
 """
 
+import sys
+import os
 import scipy.optimize as opt
 import numpy as np
 import vector
 import awkward as ak
 import energyflow as ef
-import jet_clusterer
 import multiprocessing
 from multiprocessing.shared_memory import SharedMemory
 import uproot
@@ -15,7 +16,9 @@ import weightedstats as ws
 from tqdm import tqdm
 from numba import njit, prange
 
-from common_utils import extract_kinematics
+sys.path.insert(0, os.path.abspath(".."))
+from utils.common_utils import extract_kinematics  # noqa: E402
+import utils.jet_clusterer as jet_clusterer  # noqa: E402
 
 
 def _nnid_worker(args: tuple) -> tuple:

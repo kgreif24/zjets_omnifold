@@ -9,11 +9,12 @@ import mplhep as mh
 import matplotlib.gridspec as gs
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
-import uncertainties
 import scipy.stats as stats
 import scipy.signal as signal
 from typing import Optional
 from matplotlib.collections import PatchCollection
+
+from . import uncertainties
 
 # Set ATLAS plotting style
 mh.style.use("ATLAS")

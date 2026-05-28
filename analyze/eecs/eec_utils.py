@@ -7,14 +7,16 @@ for computing EECs and building weighted histograms.
 
 from __future__ import annotations
 
-
+import sys
+import os
 import numpy as np
 import dask
 import awkward as ak
 import vector
 import uproot
 
-import common_utils as cu
+sys.path.insert(0, os.path.abspath(".."))
+import utils.common_utils as cu  # noqa: E402
 
 
 def _calculate_eec_chunk(
