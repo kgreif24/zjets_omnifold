@@ -221,7 +221,7 @@ class UncertaintyPlotter(plotter.Plotter):
 
         # Get target weights efficiently from .npz file
         # (get MG weights if in data comparison mode)
-        mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
+        mg_weight_names = self.uncertainty_calculator.theory_uncertainties
         target_weights = self._get_target_weights_efficiently(
             target_wt_file,
             get_mg_weights=mg_weight_names if self.data_comparison_mode else None,
@@ -231,7 +231,7 @@ class UncertaintyPlotter(plotter.Plotter):
         target2_weights = {}
         if self.dual_target_mode:
             # Get sherpa uncertainty weights if in data comparison mode
-            sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
+            sherpa_weight_names = self.uncertainty_calculator.theory_uncertainties
             get_sherpa_weights = (
                 sherpa_weight_names if self.data_comparison_mode else None
             )
@@ -270,7 +270,7 @@ class UncertaintyPlotter(plotter.Plotter):
             )
 
             # Process target theory weights if they exist
-            mg_weight_names = self.uncertainty_calculator.madgraph_uncertainties
+            mg_weight_names = self.uncertainty_calculator.theory_uncertainties
             if self.data_comparison_mode:
                 for weight_name in mg_weight_names:
                     if weight_name in target_weights:
@@ -288,7 +288,7 @@ class UncertaintyPlotter(plotter.Plotter):
                 )
 
                 # Process target2 theory weights if they exist
-                sherpa_weight_names = self.uncertainty_calculator.sherpa_uncertainties
+                sherpa_weight_names = self.uncertainty_calculator.theory_uncertainties
                 if self.data_comparison_mode:
                     for weight_name in sherpa_weight_names:
                         if weight_name in weights_dict:
@@ -588,6 +588,11 @@ class UncertaintyPlotter(plotter.Plotter):
                 for key, uncert in syst_uncerts.items():
                     histogram_data[plot["key"] + "_" + key + "_uncert"] = uncert
                     histogram_data[plot["key"] + "_" + key + "_cov"] = syst_covs[key]
+
+                # Also write individual signed (ungrouped) uncertainties to the
+                # .npz file for later processing
+                for key, uncert in signed_uncerts.items():
+                    histogram_data[plot["key"] + "_" + key + "_signed_uncert"] = uncert
 
                 # Calculate theory uncertainties for targets if in data comparison mode
                 target_uncert = None

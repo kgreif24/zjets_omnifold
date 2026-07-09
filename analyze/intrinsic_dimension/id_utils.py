@@ -96,7 +96,7 @@ def _nnid_worker(args: tuple) -> tuple:
             bounds=[(0.01, None)],
             options={"disp": False, "iprint": -1},
         )
-        nnids[thres_idx] = nnid.x
+        nnids[thres_idx] = nnid.x[0]
 
     shm_emds.close()
     shm_idx.close()

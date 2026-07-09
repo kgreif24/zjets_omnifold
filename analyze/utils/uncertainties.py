@@ -66,7 +66,7 @@ class UncertaintyCalculator:
 
         # Hardcode the theory uncertainties, since we will only ever care about
         # the total theory uncertainty and don't need to visualize the budget
-        self.madgraph_uncertainties = [
+        self.theory_uncertainties = [
             "weights_theoryQCD",
             "weights_theoryPDF",
             "weights_theoryAlphaS",
@@ -74,13 +74,8 @@ class UncertaintyCalculator:
             "weights_theoryPSsoft",
             "weights_theoryMPI",
             "weights_theoryPSscale",
-            "weights_ns_theory_diboson_up",
-            "weights_ns_theory_ew_zjj_up",
-        ]
-        self.sherpa_uncertainties = [
-            "weights_theoryQCD",
-            "weights_theoryPDF",
-            "weights_theoryAlphaS",
+            "weights_nonstrongDiboson",
+            "weights_nonstrongEW",
         ]
 
     @staticmethod
@@ -703,7 +698,7 @@ class UncertaintyCalculator:
                 "cov": merged_cov,
                 "merged_from": available_uncertainties,
                 "info": {
-                    "name": group_name.title(),
+                    "name": group_name,
                     "color": first_color,
                     "stochastic": False,
                     "prefix": None,
@@ -768,11 +763,7 @@ class UncertaintyCalculator:
         else:
             syst_uncerts = [np.sqrt(central_hist_var) / central_hist]
 
-        if is_madgraph:
-            weight_names = self.madgraph_uncertainties
-        else:
-            weight_names = self.sherpa_uncertainties
-        for weight_name in weight_names:
+        for weight_name in self.theory_uncertainties:
             if weight_name in all_hists:
                 syst_hist, _, _ = all_hists[weight_name]
                 syst_uncert = np.abs(syst_hist - central_hist) / central_hist
