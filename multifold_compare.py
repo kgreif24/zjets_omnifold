@@ -15,7 +15,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.stats as stats
 import pathlib
-from analyze.uncertainties import UncertaintyCalculator
+from analyze.utils.uncertainties import UncertaintyCalculator
 
 
 parser = argparse.ArgumentParser(description="Run plotting functions")
@@ -206,8 +206,7 @@ print(
     f"{region_masks['multifold'].sum()} / {len(multifold)} multifold events pass"
 )
 
-# Dictionary to store chi-squared test results (only used in pseudodata mode)
-chi2_results = {}
+histogram_data = {}
 
 # Loop through the observables
 for obs_dict in plots:
@@ -362,6 +361,21 @@ for obs_dict in plots:
     total_var = np.sum(np.array(list(syst_uncerts.values())) ** 2, axis=0)
     rel_total_uncert = np.sqrt(total_var)
     total_uncert = rel_total_uncert * source_hist
+    total_cov = np.sum(list(syst_covs.values()), axis=0)
+
+    # Store histogram data using the same schema as uncertainty_plotter.py.
+    # Uncertainty arrays are fractional; covariance matrices are in histogram units.
+    histogram_data[key + "_hist"] = source_hist
+    histogram_data[key + "_uncert"] = rel_total_uncert
+    histogram_data[key + "_cov"] = total_cov
+    histogram_data[key + "_bins"] = bins
+    for uncert_key, uncert in syst_uncerts.items():
+        histogram_data[key + "_" + uncert_key + "_uncert"] = uncert
+        histogram_data[key + "_" + uncert_key + "_cov"] = syst_covs[uncert_key]
+
+    # Also write individual signed (ungrouped) uncertainties to the .npz file
+    for uncert_key, uncert in signed_uncerts.items():
+        histogram_data[key + "_" + uncert_key + "_signed_uncert"] = uncert
 
     # Build main uncertainty plot
     fig, (ax, rax) = plt.subplots(
@@ -578,9 +592,6 @@ for obs_dict in plots:
     budget_fig.savefig(budget_name, dpi=300)
     plt.close(budget_fig)
 
-    # Calculate total covariance matrix from syst_covs
-    total_cov = np.sum(list(syst_covs.values()), axis=0)
-
     # Create and save correlation matrix plot
     n_bins = total_cov.shape[0]
     std_devs = np.sqrt(np.diag(total_cov))
@@ -644,6 +655,7 @@ for obs_dict in plots:
     # Save correlation matrix plot
     corr_name = plot_dir / (key + "_corr_matrix" + extension)
     corr_fig.savefig(corr_name, dpi=300)
+    histogram_data[key + "_corr_matrix"] = str(corr_name)
     plt.close(corr_fig)
 
     # Chi-squared test (only when comparing to target, i.e., not in data mode)
@@ -660,13 +672,11 @@ for obs_dict in plots:
         chi2 = D.dot(np.linalg.inv(test_cov)).dot(D.T)
         p_value = 1 - stats.chi2.cdf(chi2, dof)
         print(f"{key:<20} dof: {dof:<7} χ2: {chi2:.5f} \t p value: {p_value:.4f}")
-        # Store results for saving to .npz file
-        chi2_results[key + "_chi2"] = chi2
-        chi2_results[key + "_p_value"] = p_value
-        chi2_results[key + "_dof"] = dof
+        histogram_data[key + "_chi2"] = chi2
+        histogram_data[key + "_p_value"] = p_value
+        histogram_data[key + "_dof"] = dof
 
-# Save chi-squared results to .npz file (only in pseudodata mode)
-if not args.data and chi2_results:
-    chi2_npz_path = plot_dir / "chi2_results.npz"
-    np.savez(chi2_npz_path, **chi2_results)
-    print(f"\nSaved chi-squared results to: {chi2_npz_path}")
+# Save histogram data to .npz file
+histogram_npz_path = plot_dir / "multifold_histograms.npz"
+np.savez(histogram_npz_path, **histogram_data)
+print(f"\nSaved histogram data to: {histogram_npz_path}")

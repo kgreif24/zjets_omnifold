@@ -613,8 +613,8 @@ plots:
   Ntracks_trackj1:
     <<: *default_plot
     key: "Ntracks_trackj1"
-    ylabel: $d\sigma/dN_{ch,j1}$ [fb]
-    xlabel: "$N_{ch,j1}$"
+    ylabel: $d\sigma/dn_{ch,j1}$ [fb]
+    xlabel: "$n_{ch,j1}$"
     ulim: 0.16
     nbins: 81
     binlow: 0
@@ -641,8 +641,8 @@ plots:
   Ntracks_trackj2:
     <<: *default_plot
     key: "Ntracks_trackj2"
-    ylabel: $d\sigma/dN_{ch,j2}$ [fb]
-    xlabel: "$N_{ch,j2}$"
+    ylabel: $d\sigma/dn_{ch,j2}$ [fb]
+    xlabel: "$n_{ch,j2}$"
     ulim: 0.16
     nbins: 81
     binlow: 0
@@ -660,8 +660,8 @@ plots:
   Ntracks:
     <<: *default_plot
     key: "Ntracks"
-    ylabel: $d\sigma/dN_{ch}$ [fb]
-    xlabel: "$N_{ch}$"
+    ylabel: $d\sigma/dn_{ch}$ [fb]
+    xlabel: "$n_{ch}$"
     ulim: 0.281
     nbins: 257
     binlow: 0

@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import numpy as np
 import awkward as ak
-import jet_clusterer
 import psutil
 import sys
 import json
+
+from . import jet_clusterer
 
 
 def check_memory(limit_gb=20):

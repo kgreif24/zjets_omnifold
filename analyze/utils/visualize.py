@@ -9,11 +9,12 @@ import mplhep as mh
 import matplotlib.gridspec as gs
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
-import uncertainties
 import scipy.stats as stats
 import scipy.signal as signal
 from typing import Optional
 from matplotlib.collections import PatchCollection
+
+from . import uncertainties
 
 # Set ATLAS plotting style
 mh.style.use("ATLAS")
@@ -1605,6 +1606,8 @@ def draw_plot(
     smooth_hv=True,
     do_chi2_test=True,
     draw_cov_matrix=False,
+    llab="Simulation Internal",
+    rlabel="Z+jets Omnifold",
 ):
     """Draw measurement with optional theory comparisons and ratio plot.
 
@@ -1663,6 +1666,10 @@ def draw_plot(
     draw_cov_matrix : bool, optional
         Passed to make_uncertainty_budget_fig. If True, draws the covariance
         matrix. Default: False.
+    llab : str, optional
+        Left-side label passed to mh.atlas.label (default: "Simulation Internal").
+    rlabel : str or None, optional
+        Right-side label passed to mh.atlas.label (default: "Z+jets Omnifold").
     Returns:
     --------
     fig : matplotlib.figure.Figure
@@ -1772,8 +1779,8 @@ def draw_plot(
             figsize=(12 * 2 / 3, 10 * 2 / 3),  # is 12 by 10 but smaller
             xlabel=xlabel,
             log_xscale=logxScale,
-            llab="Simulation Internal",
-            rlab="Z+jets Omnifold",
+            llab=llab,
+            rlab=rlabel,
             data_measurement_mode=is_omni_data,
             measured_hist=omni_density,
             target_hist=target_hist,
@@ -1872,8 +1879,8 @@ def draw_plot(
     mh.atlas.label(
         ax=axs[0],
         loc=0,
-        llabel="Simulation Internal",
-        rlabel="Z+jets Omnifold",
+        llabel=llab,
+        rlabel=rlabel,
     )
 
     if text_box is not None:
